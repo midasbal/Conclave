@@ -5,7 +5,21 @@
 #![deny(clippy::float_arithmetic)]
 pub mod world;
 
-pub const VERSION: u8 = 1;
+/// RULESET v2. Everything that changes what a strategy MEANS lives in this block: bytecode version, work weights and cap, cost, ruin floor, caps.
+/// Changing any constant here is a new ruleset (bump RULESET and VERSION); sealed strategies and receipts must carry the ruleset they were made under.
+pub const RULESET: u16 = 2;
+pub const VERSION: u8 = 2;
+/// per-tick metered work cap (work units, 1 unit is about 70 compute units on SBF). A full 20-seat arena at the cap costs about 20 * 70 * 64 + market per tick.
+pub const WORK_CAP: u32 = 64;
+/// op-budget divisions, in WORK units (not op counts)
+pub const DIVISIONS: [u32; 3] = [16, 32, 64];
+/// ruin floor: once an episode's PnL (realised + open) falls to this many vol-units below zero the seat is liquidated: flat for the rest of the episode
+pub const RUIN_FLOOR_VU: i64 = 60;
+pub const RUIN_FLOOR_Q16: i64 = -(RUIN_FLOOR_VU << 16);
+/// position cap in vol-target units. Targets are clamped to +-POS_CAP no matter what the program computes (SIZE and POS are clamped too).
+pub const POS_CAP: i32 = ONE;
+/// single-tick gap cap in vol units (never reached in 1.2M simulated ticks; it only bounds the worst case when the vol estimate has collapsed before a jump)
+pub const GAP_CAP_VU: i64 = 24;
 pub const NREG: usize = 16;
 pub const MAX_OPS: usize = 64;
 pub const RING: usize = 32;
@@ -13,7 +27,7 @@ pub const ONE: i32 = 1 << 16;
 pub const NSIG: u8 = 13;
 pub const HEADER: usize = 4;
 /// transaction cost: 0.05 vol-units per unit of position change
-pub const COST_Q16: i64 = 3277;
+pub const COST_Q16: i64 = 9830;
 
 pub mod op {
     pub const NOP: u8 = 0; pub const LDI: u8 = 1; pub const SIG: u8 = 2; pub const MOV: u8 = 3;
@@ -31,7 +45,7 @@ pub mod sg { pub const U1: u8 = 0; pub const CUM: u8 = 1; pub const T5: u8 = 2; 
     pub const VOLR: u8 = 6; pub const ZSC: u8 = 7; pub const TLEFT: u8 = 8; pub const POS: u8 = 9; pub const CASH: u8 = 10; pub const PNL: u8 = 11; pub const DD: u8 = 12; }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VmError { Length, Version, TooManyOps, BadOpcode, BadReg, BadOperand, NonCanonical }
+pub enum VmError { Length, Version, TooManyOps, BadOpcode, BadReg, BadOperand, NonCanonical, OverWorkCap }
 
 /// Validate a program blob: [version, n_ops, 0, 0] ++ n_ops*4 bytes. Returns n_ops. Canonical form required (unused operand bytes must be 0).
 pub fn validate(code: &[u8]) -> Result<usize, VmError> {
@@ -62,6 +76,7 @@ pub fn validate(code: &[u8]) -> Result<usize, VmError> {
         }
         i += 1;
     }
+    if work_of(code) > WORK_CAP { return Err(VmError::OverWorkCap); }
     Ok(n)
 }
 #[inline] fn sat(x: i64) -> i32 { const M: i64 = i32::MAX as i64; i32::try_from(x.clamp(-M, M)).unwrap_or(0) }
@@ -101,29 +116,30 @@ impl Market {
 }
 /// One strategy's live state. Everything resets at episode start (episode-scope registers).
 #[derive(Clone)]
-pub struct Seat { pub regs: [i32; NREG], pub pos: i32, pub cash: i64, pub trade: i64, pub peak: i64, pub dir: i8, pub size: i32, pub stop: i32, pub stopped: bool, pub work: u64 }
+pub struct Seat { pub regs: [i32; NREG], pub pos: i32, pub cash: i64, pub trade: i64, pub peak: i64, pub dir: i8, pub size: i32, pub stop: i32, pub stopped: bool, pub ruined: bool, pub work: u64 }
 impl Seat {
-    pub fn new() -> Self { Seat { regs: [0; NREG], pos: 0, cash: 0, trade: 0, peak: 0, dir: 0, size: ONE, stop: 0, stopped: false, work: 0 } }
+    pub fn new() -> Self { Seat { regs: [0; NREG], pos: 0, cash: 0, trade: 0, peak: 0, dir: 0, size: ONE, stop: 0, stopped: false, ruined: false, work: 0 } }
     pub fn pnl(&self) -> i64 { self.cash + self.trade }
     /// One tick. `code` must have passed `validate`. `r` is this tick's return, `sg0` from Market::advance (called first).
     pub fn step(&mut self, code: &[u8], m: &Market, r: i32, sg0: i64) {
-        let u = (r as i64) * 65536 / sg0;
+        let u = ((r as i64) * 65536 / sg0).clamp(-(GAP_CAP_VU << 16), GAP_CAP_VU << 16);
         self.trade += (self.pos as i64 * u) >> 16;
         let pnl = self.cash + self.trade; if pnl > self.peak { self.peak = pnl; }
+        if pnl <= RUIN_FLOOR_Q16 { self.ruined = true; }
         let n = code[1] as usize; let mut w: u64 = 0;
         let mut i = 0;
         while i < n {
             let o = HEADER + 4 * i; let (c, d, a, b) = (code[o], code[o + 1] as usize & 15, code[o + 2], code[o + 3]);
             let ra = self.regs[a as usize & 15]; let rb = self.regs[b as usize & 15];
-            w += 1;
+            w += u64::from(op_work(c, u32::from(a)));
             match c {
                 op::LDI => { self.regs[d] = (i16::from_le_bytes([a, b]) as i32) << 8; }
                 op::SIG => { self.regs[d] = match a { 0..=8 => m.f[a as usize], 9 => self.pos, 10 => sat(self.cash), 11 => sat(self.cash + self.trade), _ => sat(self.peak - (self.cash + self.trade)) }; }
                 op::MOV => self.regs[d] = ra,
                 op::ADD => self.regs[d] = sat(ra as i64 + rb as i64),
                 op::SUB => self.regs[d] = sat(ra as i64 - rb as i64),
-                op::MUL => { self.regs[d] = sat((ra as i64 * rb as i64) >> 16); w += 1; }
-                op::DIV => { self.regs[d] = if rb == 0 { 0 } else { sat(ra as i64 * 65536 / rb as i64) }; w += 3; }
+                op::MUL => { self.regs[d] = sat((ra as i64 * rb as i64) >> 16); }
+                op::DIV => { self.regs[d] = if rb == 0 { 0 } else { sat(ra as i64 * 65536 / rb as i64) }; }
                 op::NEG => self.regs[d] = -ra,
                 op::ABS => self.regs[d] = if ra < 0 { -ra } else { ra },
                 op::SIGN => self.regs[d] = sgn(ra),
@@ -137,14 +153,14 @@ impl Seat {
                 op::LTI => self.regs[d] = bool_q(ra < ((i8::from_le_bytes([b]) as i32) << 11)),
                 op::THR => { let t = (i8::from_le_bytes([b]) as i32) << 11; self.regs[d] = if ra >= t || ra <= -t { ra } else { 0 }; }
                 op::EMA => { let cur = self.regs[d] as i64; self.regs[d] = sat(cur + ((ra as i64 - cur) >> b)); }
-                op::HIST => { self.regs[d] = qdiv(m.at(a as u32) as i64, m.sg); w += 1; }
-                op::WSUM => { self.regs[d] = qdiv(m.wsum_raw(a as u32), m.sg); w += a as u64; }
-                op::VOLW => { let mut s = 0i64; let mut k = 0; while k < a as u32 { s += (m.at(k) as i64).abs(); k += 1; } self.regs[d] = qdiv(s, m.sgs * a as i64); w += a as u64; }
+                op::HIST => { self.regs[d] = qdiv(m.at(a as u32) as i64, m.sg); }
+                op::WSUM => { self.regs[d] = qdiv(m.wsum_raw(a as u32), m.sg); }
+                op::VOLW => { let mut s = 0i64; let mut k = 0; while k < a as u32 { s += (m.at(k) as i64).abs(); k += 1; } self.regs[d] = qdiv(s, m.sgs * a as i64); }
                 op::ZW => {
                     let nn = (a as u32).max(2); let mut s = 0i64; let mut k = 0; while k < nn { s += m.cat(k) as i64; k += 1; }
                     let mean = s / nn as i64; let mut dev = 0i64; k = 0; while k < nn { dev += (m.cat(k) as i64 - mean).abs(); k += 1; }
                     let mad = dev / nn as i64; let den = if mad > m.sg / 4 { mad } else { m.sg / 4 };
-                    self.regs[d] = qdiv(m.cat(0) as i64 - mean, den); w += 2 * a as u64;
+                    self.regs[d] = qdiv(m.cat(0) as i64 - mean, den);
                 }
                 op::LONG => { if ra != 0 { self.dir = 1; } }
                 op::SHORT => { if ra != 0 { self.dir = -1; } }
@@ -160,7 +176,8 @@ impl Seat {
         self.work += w;
         let mut target = (self.dir as i32) * self.size;
         if self.stop > 0 && target != 0 && self.trade <= -(self.stop as i64) { self.stopped = true; }
-        if self.stopped { target = 0; }
+        target = target.clamp(-POS_CAP, POS_CAP);
+        if self.ruined || self.stopped { target = 0; }
         let delta = (target - self.pos).abs() as i64;
         self.cash -= (delta * COST_Q16) >> 16;
         if target == 0 || (target > 0) != (self.pos > 0) && self.pos != 0 { self.cash += self.trade; self.trade = 0; }
@@ -169,13 +186,31 @@ impl Seat {
 }
 
 
-/// Static per-tick metered work of a validated program (straight-line, so it is a constant). Mirrors exactly what `Seat::step` accumulates:
-/// 1 per op, +1 MUL, +3 DIV, +1 HIST, +n WSUM/VOLW, +2n ZW. This is the quantity compute scales with, not the op count.
+/// Static per-tick metered work of a program (straight-line, so it is a constant). Mirrors exactly what `Seat::step` accumulates. This, not the op count, is what compute scales with.
 pub fn work_of(code: &[u8]) -> u32 {
     let n = code[1] as usize; let mut w = 0u32;
-    for i in 0..n { let o = HEADER + 4 * i; let (c, a) = (code[o], u32::from(code[o + 2]));
-        w += 1 + match c { op::MUL | op::HIST => 1, op::DIV => 3, op::WSUM | op::VOLW => a, op::ZW => 2 * a, _ => 0 }; }
+    for i in 0..n { let o = HEADER + 4 * i; w += op_work(code[o], u32::from(code[o + 2])); }
     w
+}
+/// Work weight of one op, calibrated on SBF (see the ruleset v2 notes): a plain op is 1 unit (about 70 CU); the rest are priced from measured compute.
+pub fn op_work(c: u8, a: u32) -> u32 {
+    match c { op::HIST => 5, op::WSUM => 5 + a.div_ceil(3), op::VOLW => 6 + (2 * a).div_ceil(5), op::ZW => 11 + a, _ => 1 }
+}
+
+/// Length of the ruleset pin block.
+pub const PINS_LEN: usize = 48;
+/// Everything that determines what a score means, as bytes. Arenas and receipts store it; a program build whose pins differ refuses to run the arena.
+pub fn pins_bytes() -> [u8; PINS_LEN] {
+    let mut p = [0u8; PINS_LEN];
+    p[0..2].copy_from_slice(&RULESET.to_le_bytes()); p[2] = VERSION; p[3] = world::GEN_VERSION;
+    p[4..8].copy_from_slice(&u32::try_from(COST_Q16).unwrap_or(0).to_le_bytes()); p[8..12].copy_from_slice(&WORK_CAP.to_le_bytes());
+    p[12..16].copy_from_slice(&u32::try_from(RUIN_FLOOR_VU).unwrap_or(0).to_le_bytes()); p[16..20].copy_from_slice(&u32::try_from(GAP_CAP_VU).unwrap_or(0).to_le_bytes());
+    p[20..24].copy_from_slice(&u32::try_from(POS_CAP).unwrap_or(0).to_le_bytes()); p[24] = u8::try_from(world::SEASON_PACKS).unwrap_or(0);
+    let tbl = [op_work(op::HIST, 0), op_work(op::WSUM, 1), op_work(op::WSUM, 32), op_work(op::VOLW, 1), op_work(op::VOLW, 32), op_work(op::ZW, 2), op_work(op::ZW, 32), op_work(op::ADD, 0)];
+    for (i, v) in tbl.iter().enumerate() { p[28 + i] = u8::try_from(*v).unwrap_or(255); }
+    for (i, d) in DIVISIONS.iter().enumerate() { p[36 + i] = u8::try_from(*d).unwrap_or(255); }
+    p[40..44].copy_from_slice(&world::gen_checksum().to_le_bytes());
+    p
 }
 
 // ---- state (de)serialisation, additive: lets a program persist Market/Seat between transactions without changing any semantics ----
@@ -203,15 +238,15 @@ impl Market {
     }
 }
 impl Seat {
-    pub const BYTES: usize = 4 * NREG + 4 + 8 * 3 + 1 + 4 + 4 + 1 + 8;
+    pub const BYTES: usize = 4 * NREG + 4 + 8 * 3 + 1 + 4 + 4 + 1 + 1 + 8;
     pub fn save(&self, o: &mut [u8]) {
         let mut p = 0; for v in self.regs { put32(o, &mut p, v); } put32(o, &mut p, self.pos); put64(o, &mut p, self.cash); put64(o, &mut p, self.trade); put64(o, &mut p, self.peak);
-        o[p] = self.dir.to_le_bytes()[0]; p += 1; put32(o, &mut p, self.size); put32(o, &mut p, self.stop); o[p] = self.stopped as u8; p += 1; put64u(o, &mut p, self.work);
+        o[p] = self.dir.to_le_bytes()[0]; p += 1; put32(o, &mut p, self.size); put32(o, &mut p, self.stop); o[p] = self.stopped as u8; p += 1; o[p] = self.ruined as u8; p += 1; put64u(o, &mut p, self.work);
     }
     pub fn load(o: &[u8]) -> Self {
         let mut p = 0; let mut s = Seat::new(); for v in s.regs.iter_mut() { *v = get32(o, &mut p); }
         s.pos = get32(o, &mut p); s.cash = get64(o, &mut p); s.trade = get64(o, &mut p); s.peak = get64(o, &mut p);
-        s.dir = i8::from_le_bytes([o[p]]); p += 1; s.size = get32(o, &mut p); s.stop = get32(o, &mut p); s.stopped = o[p] != 0; p += 1; s.work = get64u(o, &mut p); s
+        s.dir = i8::from_le_bytes([o[p]]); p += 1; s.size = get32(o, &mut p); s.stop = get32(o, &mut p); s.stopped = o[p] != 0; p += 1; s.ruined = o[p] != 0; p += 1; s.work = get64u(o, &mut p); s
     }
 }
 impl Default for Seat { fn default() -> Self { Self::new() } }

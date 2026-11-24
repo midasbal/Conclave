@@ -10,6 +10,16 @@ fn par_eps<F: Fn(usize, u64) -> Vec<i64> + Sync>(jobs: &[(usize, u64)], nstrat: 
 }
 fn main() {
     let args: Vec<String> = std::env::args().collect(); let m: usize = args.get(1).and_then(|x| x.parse().ok()).unwrap_or(1000); let ncand: usize = args.get(2).and_then(|x| x.parse().ok()).unwrap_or(400); let ntrain: usize = args.get(3).and_then(|x| x.parse().ok()).unwrap_or(40);
+    if args.get(1).map(|x| x.as_str()) == Some("pins") { println!("{}", conclave_vm::pins_bytes().iter().map(|b| format!("{:02x}", b)).collect::<String>()); return; }
+    if args.get(1).map(|x| x.as_str()) == Some("ruinstats") { // per-episode worst drawdown (running-min PnL) distribution over the fixed pool; run with the ruin floor effectively disabled
+        use conclave_vm::{world::{self, WORLD_T}, Market, Seat}; let pool = fixed_pool(); let n = pool.len(); let ths = [20.0, 30.0, 40.0, 60.0, 80.0, 120.0]; let mut cnt = vec![[0u32; 6]; n]; let mut mins: Vec<Vec<f64>> = vec![vec![]; n]; let mut tot = 0u32; let mut ubig = [0u64; 4]; let mut nt = 0u64;
+        for p in 0..NPACK { for e in 0..200u64 { let es = world::episode_seed(TEST_A + p as u64, TEST_B, e); let mut r = [0i32; WORLD_T]; world::gen_episode(p, es, &mut r); let mut m = Market::new(WORLD_T as u32); let mut seats: Vec<Seat> = pool.iter().map(|_| Seat::new()).collect(); let mut mn = vec![0i64; n];
+            for t in 0..WORLD_T { let sg0 = m.advance(r[t]); let u = (i64::from(r[t]) * 65536 / sg0).abs() as f64 / 65536.0; nt += 1; for (k, th) in [4.0, 8.0, 12.0, 20.0].iter().enumerate() { if u > *th { ubig[k] += 1; } } for (i, s) in seats.iter_mut().enumerate() { s.step(&pool[i].code, &m, r[t], sg0); mn[i] = mn[i].min(s.pnl()); } }
+            tot += 1; for i in 0..n { let d = -(mn[i] as f64) / 65536.0; mins[i].push(d); for (k, th) in ths.iter().enumerate() { if d >= *th { cnt[i][k] += 1; } } } } }
+        println!("per-tick |u| (vol units) share above 4/8/12/20: {:.5} {:.5} {:.5} {:.5}", ubig[0] as f64 / nt as f64, ubig[1] as f64 / nt as f64, ubig[2] as f64 / nt as f64, ubig[3] as f64 / nt as f64);
+        println!("{:16} {:>6} {:>6} {:>6} | share of episodes whose running drawdown reaches 20/30/40/60/80/120 vol-units", "strategy", "p50", "p90", "p99");
+        for i in 0..n { mins[i].sort_by(|a, b| a.partial_cmp(b).unwrap()); let q = |f: f64| mins[i][((mins[i].len() as f64 - 1.0) * f) as usize]; println!("{:16} {:6.1} {:6.1} {:6.1} | {}", pool[i].name, q(0.5), q(0.9), q(0.99), cnt[i].iter().map(|c| format!("{:5.1}%", 100.0 * *c as f64 / tot as f64)).collect::<Vec<_>>().join(" ")); } return;
+    }
     if args.get(1).map(|x| x.as_str()) == Some("workcheck") { // static work_of == metered Seat.work/tick for every pool program (+ max over pool)
         let pool = fixed_pool(); let progs: Vec<&[u8]> = pool.iter().map(|s| s.code.as_slice()).collect(); let n = pool.len(); let mut w = vec![0u64; n]; let mut o = vec![0i64; n];
         run_episode(&progs, 0, 1, 2, 0, &mut o, Some(&mut w)); let mut bad = 0; let mut mx = 0;
@@ -57,7 +67,7 @@ fn main() {
     let mut f = std::fs::File::create(&format!("{}/real{}_bank.bin",out,tag)).unwrap(); for v in &bank { f.write_all(&v.to_le_bytes()).unwrap(); }
     let mut blob = (n as u16).to_le_bytes().to_vec(); for s in &pool { blob.extend((s.code.len() as u16).to_le_bytes()); blob.extend(&s.code); } std::fs::write(&format!("{}/real{}_pool.bin",out,tag), &blob).unwrap();
     let mut js = String::from("{\"m\":"); js += &m.to_string(); js += ",\"strategies\":[";
-    for (i, s) in pool.iter().enumerate() { if i > 0 { js += ","; } js += &format!("{{\"name\":\"{}\",\"tier\":{},\"fam\":\"{}\",\"tuned\":{},\"ops\":{},\"bytes\":{},\"regs\":{},\"params\":{:?}}}", s.name, s.tier, s.fam, s.tuned, s.code[1], s.code.len(), s.regs, s.params); }
+    for (i, s) in pool.iter().enumerate() { if i > 0 { js += ","; } js += &format!("{{\"name\":\"{}\",\"tier\":{},\"fam\":\"{}\",\"tuned\":{},\"work\":{},\"ops\":{},\"bytes\":{},\"regs\":{},\"params\":{:?}}}", s.name, s.tier, s.fam, s.tuned, conclave_vm::work_of(&s.code), s.code[1], s.code.len(), s.regs, s.params); }
     js += "]}"; std::fs::write(&format!("{}/real{}_pool.json",out,tag), js).unwrap();
     std::fs::write(&format!("{}/real{}_tuning.txt",out,tag), tuned_log).unwrap();
     println!("pool {} strategies; bank written", n);

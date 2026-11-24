@@ -82,3 +82,25 @@ pub fn season_words(seed: &[u8; 32]) -> (u64, u64) {
     let w = |i: usize| -> u64 { let mut b = [0u8; 8]; b.copy_from_slice(&seed[i * 8..i * 8 + 8]); u64::from_le_bytes(b) };
     (w(0) ^ w(2), w(1) ^ w(3))
 }
+
+/// Ruleset v2: a season plays on SEASON_PACKS distinct packs drawn from the season seed (after lock), and every episode picks one of them.
+/// Strategies never see which packs were drawn. This replaces `pack_for` (v1: any of the 6 packs per episode).
+pub const SEASON_PACKS: usize = 2;
+pub fn season_packs(seed_a: u64, seed_b: u64) -> [usize; SEASON_PACKS] {
+    let h = splitmix(seed_a ^ seed_b.rotate_left(29) ^ 0x5345_4153_4F4E_5041);
+    let p0 = usize::try_from(h % (NPACK as u64)).unwrap_or(0);
+    let p1 = (p0 + 1 + usize::try_from(splitmix(h) % ((NPACK - 1) as u64)).unwrap_or(0)) % NPACK;
+    [p0, p1]
+}
+pub fn pack_for_season(packs: &[usize; SEASON_PACKS], ep_seed: u64) -> usize { packs[usize::try_from(splitmix(ep_seed ^ 0x5041_434B_5345_4153) % (SEASON_PACKS as u64)).unwrap_or(0)] }
+
+/// Generator version. Bump on ANY change to the tables or the generation procedure.
+pub const GEN_VERSION: u8 = 2;
+/// FNV-1a over every generator table value: pins the actual numbers, not just the label.
+pub fn gen_checksum() -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    let mut feed = |v: i64| { for b in v.to_le_bytes() { h ^= u32::from(b); h = h.wrapping_mul(0x0100_0193); } };
+    for v in VMULT { feed(v); } for v in LAM { feed(v); }
+    for p in PACKS.iter() { for v in p.w { feed(v); } feed(p.vol.0); feed(p.vol.1); feed(p.psw.0); feed(p.psw.1); feed(p.jm_milli); feed(p.drift_milli); feed(p.rho.0); feed(p.rho.1); }
+    h
+}

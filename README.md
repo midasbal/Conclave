@@ -63,6 +63,7 @@ No keypair is stored in this repository. The client reads its keys from a folder
 - `payer.json`: funds transactions and is the program upgrade authority
 - `conclave-program.json`: the program address keypair
 - `players.json`: a JSON array of keypair arrays used as test players
+- `strategies.json`: written by the client, it holds each strategy's secret salt and code; losing it means you can no longer prove or reveal a sealed strategy
 
 Keep that folder outside version control and out of any backup that is shared.
 

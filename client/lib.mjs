@@ -25,7 +25,9 @@ export const K = (pubkey, w = false, s = false) => ({ pubkey, isWritable: w, isS
 export const ixp = (tag, keys, data = Buffer.alloc(0)) => new TransactionInstruction({ programId: PROGRAM, keys, data: Buffer.concat([Buffer.from([tag]), Buffer.from(data)]) });
 export const u64 = n => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; }; export const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
 export const pda = (seeds, prog = PROGRAM) => PublicKey.findProgramAddressSync(seeds, prog)[0];
-export const hubPda = () => pda([Buffer.from("hub")]); export const regPda = (owner, id) => pda([Buffer.from("reg"), owner.toBuffer(), u64(id)]); export const stratPda = (owner, id) => pda([Buffer.from("strat"), owner.toBuffer(), u64(id)]);
+export const hubPda = () => pda([Buffer.from("hub")]);
+/** v2: strategy and registry accounts are keyed by the strategy id alone; the owner is a field. */
+export const regPda = id => pda([Buffer.from("reg"), u64(id)]); export const stratPda = id => pda([Buffer.from("strat"), u64(id)]); export const receiptPda = sid => pda([Buffer.from("receipt"), u64(sid)]);
 export const arenaPda = sid => pda([Buffer.from("arena"), u64(sid)]); export const poolPda = sid => pda([Buffer.from("pool"), u64(sid)]); export const identityPda = () => pda([Buffer.from("identity")]);
 export const eataOf = (owner, mint) => pda([owner.toBuffer(), mint.toBuffer()], ESPL);
 export const delegAccts = acct => ({ buffer: pda([Buffer.from("buffer"), acct.toBuffer()], PROGRAM), record: pda([Buffer.from("delegation"), acct.toBuffer()], DLP), meta: pda([Buffer.from("delegation-metadata"), acct.toBuffer()], DLP) });
@@ -40,6 +42,18 @@ export async function readAcct(url, a) { const r = (await rpc(url, "getAccountIn
 export function logger(file) { return (...a) => { const s = a.join(" "); console.log(s); fs.appendFileSync(file, s + "\n"); }; }
 export function loadPool() { const pool = fs.readFileSync(path.join(OUT, "real_pool.bin")); const meta = JSON.parse(fs.readFileSync(path.join(OUT, "real_pool.json"))).strategies; const n = pool.readUInt16LE(0); const progs = []; let off = 2; for (let i = 0; i < n; i++) { const l = pool.readUInt16LE(off); off += 2; progs.push(pool.subarray(off, off + l)); off += l; } const by = {}; meta.forEach((s, i) => by[s.name] = { code: progs[i], ops: s.ops, i }); return by; }
 export const sha256 = b => crypto.createHash("sha256").update(b).digest();
-// arena layout (mirror of program/src/lib.rs)
-export const A = { HDR: 1152, SLOT: 440, flags: d => d[4], ns: d => d[5], neps: d => d.readUInt32LE(80), curEp: d => d.readUInt32LE(88), curTick: d => d.readUInt32LE(92), ticks: d => d.readUInt32LE(152), start: d => Number(d.readBigUInt64LE(96)), seed: d => d.subarray(48, 80), pool: d => d.readBigUInt64LE(112),
-  total: (d, i) => d.readBigInt64LE(1152 + i * 440 + 48), rank: (d, i) => d.readUInt32LE(1152 + i * 440 + 44) };
+// ---- commitments (must match program/src/lib.rs) ----
+const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v1");
+export const codeCommit = (salt, code) => sha256(Buffer.concat([DOM_CODE, salt, code]));
+export const scoreCommit = (salt, season, id, total, wins, neps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha256(Buffer.concat([DOM_SCORE, salt, b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(2, x => x.writeUInt16LE(wins)), b(4, x => x.writeUInt32LE(neps))])); };
+/** strategy ids are random 64-bit numbers (the namespace is global); the secret salts live with the keys, outside the repo */
+export const newId = () => crypto.randomBytes(8).readBigUInt64LE();
+const stratFile = () => path.join(KEYS, "strategies.json");
+export const loadStrats = () => fs.existsSync(stratFile()) ? JSON.parse(fs.readFileSync(stratFile(), "utf8")) : [];
+export const saveStrats = a => fs.writeFileSync(stratFile(), JSON.stringify(a, null, 1), { mode: 0o600 });
+export const players = () => readKey("players.json").map(a => Keypair.fromSecretKey(Uint8Array.from(a)));
+// arena / receipt layouts (mirror of program/src/lib.rs)
+export const A = { HDR: 1280, SLOT: 440 };
+export const RC = { SIZE: 128 + 20 * 80, ENT: 128, ESZ: 80 };
+export function parseReceipt(d) { const n = d[5]; const out = { kind: d[4], ns: n, published: d[6], division: d[7], season: d.readBigUInt64LE(8), parent: d.readBigUInt64LE(16), ruleset: d.readUInt16LE(24), vmVersion: d[26], genVersion: d[27], packs: [d[28], d[29]], neps: d.readUInt32LE(32), seedA: d.readBigUInt64LE(40), seedB: d.readBigUInt64LE(48), pins: d.subarray(56, 104), entries: [] };
+  for (let i = 0; i < n; i++) { const e = 128 + i * 80; out.entries.push({ id: d.readBigUInt64LE(e), commit: d.subarray(e + 8, e + 40), score: d.subarray(e + 40, e + 72), rank: d.readUInt32LE(e + 72), wins: d.readUInt16LE(e + 76) }); } return out; }

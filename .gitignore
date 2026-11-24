@@ -35,3 +35,7 @@ Thumbs.db
 *.swo
 .idea/
 .vscode/
+
+# local run state
+client/pins_state.json
+client/last_v2_entries.json
