@@ -1,0 +1,26 @@
+[package]
+name = "conclave-svm-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+[dependencies]
+[dev-dependencies]
+magicblock-litesvm = "0.16.0"
+solana-address = "~2.6.1"
+solana-account = { version = "4.3.1", package = "magicblock-account" }
+solana-keypair = "3.1.2"
+solana-signer = "3.0.1"
+solana-message = "4.2.4"
+solana-transaction = "4.1.5"
+solana-instruction = "~3.4.0"
+solana-rent = "~4.3.0"
+solana-signature = "*"
+solana-hash = "~4.5.0"
+solana-transaction-error = "~3.3.1"
+sha2 = "0.10"
+conclave-vm = { path = "../../crates/conclave-vm" }
+conclave-lab = { path = "../../crates/conclave-lab" }
+conclave-conformance-tools = { path = "../../crates/conclave-conformance-tools" }
+[profile.test]
+opt-level = 2
+overflow-checks = true

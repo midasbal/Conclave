@@ -24,7 +24,8 @@ crates/conclave-lab   local reference simulator, strategy assembler and strategy
 crates/conclave-conformance        one pure function that runs a test vector, shared by every build target
 crates/conclave-conformance-tools  corpus generator and fuzzer
 tests/                conformance corpus, runners for WASM and SBF, and the SBF harness program
-program/              the on-chain program (SBF)
+program/              the on-chain program (SBF), PANIC_PASS.md documents its hardening
+tests/svm/            in-process SVM suite that runs the compiled program: lifecycle, edge cases, rejections, metering, fuzz
 client/               Node scripts that drive the program on devnet
 ```
 
@@ -66,6 +67,13 @@ tests/conformance.sh                   # host, WASM and SBF must agree bit for b
 cargo build --profile fuzz -p conclave-conformance-tools --features cov
 ./target/fuzz/cc-fuzz --seconds 60     # random programs, returns and states; reports any panic or divergence
 ```
+
+```
+tests/svm.sh                           # real program bytecode in an in-process SVM: lifecycle, 1 to 20 entrants, rejections, metering, parsing fuzz
+SVM_FUZZ_ITERS=200000 tests/svm.sh     # longer fuzz
+```
+
+The SVM suite replaces the rollup-native services (Magic, permission, VRF, eSPL, delegation) with small stand-in programs; the program, System, SPL Token and ATA programs are real. Rent refunds and TEE privacy are checked on devnet only.
 
 The conformance script needs the Solana CLI tools for the SBF leg and runs a local validator. `crates/conclave-vm/PANIC_FREEDOM.md` lists the bound that keeps every VM operation from aborting.
 

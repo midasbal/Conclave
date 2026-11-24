@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/conclave-vm", "crates/conclave-lab", "crates/conclave-conformance", "crates/conclave-conformance-tools"]
-exclude = ["program", "tests/sbf"]
+exclude = ["program", "tests/sbf", "tests/svm", "tests/svm/standins"]
 resolver = "2"
 
 [profile.release]

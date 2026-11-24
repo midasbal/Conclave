@@ -1,0 +1,16 @@
+[package]
+name = "conclave-svm-standins"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["cdylib", "lib"]
+[dependencies]
+solana-program = "4.0.0"
+[profile.release]
+opt-level = 3
+overflow-checks = true
+panic = "abort"
+lto = "fat"
+codegen-units = 1
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
