@@ -1,0 +1,19 @@
+conclave-strategy 1 ruleset 2
+name "Vote of four, at the cap"
+author "example"
+note "Exactly 64 work units: the heaviest strategy a division 64 season admits."
+
+z = zw 32            # 43
+w = wsum 12          # 9   (5 + ceil(12/3))
+m = sig MOM
+a = sig T20
+b = sign a
+c = sign m
+d = neg z
+e = sign d
+f = add b c
+f = add f e
+g = sign w
+f = add f g
+f = thr f 0.5        # act only when at least two of the four votes agree
+pos f

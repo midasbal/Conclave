@@ -1,0 +1,12 @@
+conclave-strategy 1 ruleset 2
+name "EMA cross"
+author "example"
+note "Fast and slow averages of the cumulative return; trade the sign of their gap."
+
+c    = sig CUM
+fast = ema c 1       # ema keeps its value from tick to tick
+slow = ema c 4
+d    = sub fast slow
+d    = thr d 0.0625
+d    = sign d
+pos d

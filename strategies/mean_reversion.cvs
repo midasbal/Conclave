@@ -1,0 +1,10 @@
+conclave-strategy 1 ruleset 2
+name "Fade the stretch"
+author "example"
+note "Bet against a price that is far from its 16-tick average."
+
+z = zw 16            # z-score against a 16-tick window (11 + 16 = 27 work units)
+z = thr z 1.0        # only act when stretched by at least one unit
+z = neg z            # fade it
+z = sign z
+pos z

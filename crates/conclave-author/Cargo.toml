@@ -1,0 +1,32 @@
+[package]
+name = "conclave-author"
+version = "0.1.0"
+edition = "2021"
+description = "Strategy authoring: versioned source format, assembler with exact work accounting, disassembler, and the ensemble simulator over the real conclave-vm"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "conclave-author"
+path = "src/bin/author.rs"
+
+[[bin]]
+name = "ca-corpus"
+path = "src/bin/corpus.rs"
+required-features = ["corpus"]
+
+[dependencies]
+conclave-vm = { path = "../conclave-vm" }
+sha2 = "0.10"
+conclave-conformance = { path = "../conclave-conformance", optional = true }
+conclave-conformance-tools = { path = "../conclave-conformance-tools", optional = true }
+
+[features]
+# the authored-path conformance corpus generator (not part of the WASM build)
+corpus = ["dep:conclave-conformance", "dep:conclave-conformance-tools"]
+
+[dev-dependencies]
+conclave-conformance = { path = "../conclave-conformance" }
+conclave-conformance-tools = { path = "../conclave-conformance-tools" }
+conclave-lab = { path = "../conclave-lab" }

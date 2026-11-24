@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/conclave-vm", "crates/conclave-lab", "crates/conclave-conformance", "crates/conclave-conformance-tools"]
+members = ["crates/conclave-vm", "crates/conclave-lab", "crates/conclave-conformance", "crates/conclave-conformance-tools", "crates/conclave-author"]
 exclude = ["program", "tests/sbf", "tests/svm", "tests/svm/standins"]
 resolver = "2"
 

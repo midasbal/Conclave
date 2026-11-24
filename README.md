@@ -21,6 +21,8 @@ Early build, running on Solana devnet. Interfaces and account layouts will chang
 ```
 crates/conclave-vm    strategy VM and world generator (no_std, integer only, no floats)
 crates/conclave-lab   local reference simulator, strategy assembler and strategy pool builder
+crates/conclave-author     strategy source format, assembler with exact work accounting, ensemble simulator (native CLI and WASM); see docs/AUTHORING.md
+strategies/           example strategies in the source format
 crates/conclave-conformance        one pure function that runs a test vector, shared by every build target
 crates/conclave-conformance-tools  corpus generator and fuzzer
 tests/                conformance corpus, runners for WASM and SBF, and the SBF harness program
@@ -69,6 +71,12 @@ tests/conformance.sh                   # host, WASM and SBF must agree bit for b
 cargo build --profile fuzz -p conclave-conformance-tools --features cov
 ./target/fuzz/cc-fuzz --seconds 60     # random programs, returns and states; reports any panic or divergence
 ```
+
+```
+tests/author.sh                      # assembler, simulator and the WASM build against the native CLI and the conformance WASM
+```
+
+The authored path is also part of the conformance gate: `tests/conformance/authored.bin` pins what the assembler emits for every example strategy and runs it on host, WASM and SBF.
 
 ```
 tests/svm.sh                           # real program bytecode in an in-process SVM: lifecycle, 1 to 20 entrants, rejections, metering, parsing fuzz

@@ -42,6 +42,8 @@ jobs:
         run: cd program && cargo build-sbf -- --locked
       - name: Conformance gate (host, WASM, SBF must agree bit for bit)
         run: tests/conformance.sh
+      - name: Authoring front (assembler, ensemble simulator, WASM build against native and the conformance WASM)
+        run: tests/author.sh
       - name: SVM suite (lifecycle, edge cases, rejections, metering, parsing fuzz)
         run: tests/svm.sh
       - name: Bounded VM fuzz (fails on any panic or divergence)

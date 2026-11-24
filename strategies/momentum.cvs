@@ -1,0 +1,9 @@
+conclave-strategy 1 ruleset 2
+name "Momentum 20"
+author "example"
+note "Trade the sign of the 20-tick trend once it is strong enough to matter."
+
+x = sig T20          # trailing 20-tick trend, in vol units
+x = thr x 0.125       # dead band: ignore weak trends
+x = sign x           # +1, -1 or 0
+pos x                # hold that direction at full size

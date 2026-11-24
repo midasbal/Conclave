@@ -1,0 +1,16 @@
+conclave-strategy 1 ruleset 2
+name "Breakout with a trade stop"
+author "example"
+note "Follow big z-score moves with a 4 vol-unit trade stop, re-armed on a flip."
+
+state prev           # carries last tick's direction (registers start at 0 every episode)
+z   = zw 20
+z   = thr z 1.5
+s   = sign z
+lvl = const 4        # stop distance in vol units
+stopset lvl
+chg = sub s prev
+chg = abs chg
+stopclr chg          # a changed direction re-arms a triggered stop
+prev = mov s
+pos s

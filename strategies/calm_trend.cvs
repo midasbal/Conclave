@@ -1,0 +1,11 @@
+conclave-strategy 1 ruleset 2
+name "Trend only when calm"
+author "example"
+note "Follow the 20-tick trend only while volatility is not elevated."
+
+t    = sig T20
+v    = sig VOLR
+calm = lti v 1.5     # 1.0 when the volatility ratio is below 1.5, else 0
+t    = sign t
+t    = mul t calm
+pos t
