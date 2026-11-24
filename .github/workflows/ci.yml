@@ -1,0 +1,61 @@
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+env:
+  CARGO_TERM_COLOR: never
+  SOLANA_VERSION: "3.1.9"
+  SVM_FUZZ_ITERS: "20000"
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/solana
+            target
+            program/target
+            tests/svm/target
+            tests/sbf/target
+          key: ${{ runner.os }}-${{ env.SOLANA_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Build every crate (host, locked)
+        run: cargo build --release --workspace --locked
+      - name: Build the program (SBF, locked)
+        run: cd program && cargo build-sbf -- --locked
+      - name: Conformance gate (host, WASM, SBF must agree bit for bit)
+        run: tests/conformance.sh
+      - name: SVM suite (lifecycle, edge cases, rejections, metering, parsing fuzz)
+        run: tests/svm.sh
+      - name: Bounded VM fuzz (fails on any panic or divergence)
+        run: |
+          cargo build --profile fuzz -p conclave-conformance-tools --features cov --locked
+          ./target/fuzz/cc-fuzz --seconds 120
+  reproducible-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Two clean builds must match each other and program/BUILD_HASH
+        run: scripts/repro-build.sh --twice --check

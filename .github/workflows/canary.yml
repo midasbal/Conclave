@@ -1,0 +1,35 @@
+name: devnet-canary
+# Runs a minimal ruleset v2 season on devnet under a throwaway wallet to catch validator or SDK drift.
+# The only secret is CANARY_KEY: the JSON key array of the dedicated throwaway wallet (never the payer or the upgrade authority).
+# Set it yourself under Settings > Secrets and variables > Actions > Repository secrets. No key is stored in this file.
+# Each run spends about 0.045 SOL of that wallet; keep it funded (the script never funds itself).
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  SOLANA_VERSION: "3.1.9"
+jobs:
+  canary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build the local replay tool
+        run: cargo build --release --locked -p conclave-lab
+      - name: Install client dependencies from the lockfile
+        run: cd client && npm ci --no-audit --no-fund
+      - name: Run the canary
+        env:
+          CANARY_KEY: ${{ secrets.CANARY_KEY }}
+        run: |
+          test -n "$CANARY_KEY" || { echo "secret CANARY_KEY is not set"; exit 2; }
+          node client/canary.mjs

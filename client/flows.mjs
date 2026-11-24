@@ -1,16 +1,16 @@
 import * as L from "./lib.mjs"; import fs from "fs";
 const { K, ixp, u64, u32, O, PublicKey, SystemProgram } = L;
 export const ATOKEN = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-export async function ctx() { const st = fs.existsSync(L.ROOT + "/client/state.json") ? JSON.parse(fs.readFileSync(L.ROOT + "/client/state.json")) : {}; const players = L.players(); const validator = new PublicKey((await L.rpc(L.TEE, "getIdentity")).result.identity);
+export async function ctx() { const st = fs.existsSync(L.ROOT + "/client/state.json") ? JSON.parse(fs.readFileSync(L.ROOT + "/client/state.json")) : {}; const players = process.env.CONCLAVE_SOLO ? [O] : L.players(); const validator = new PublicKey((await L.rpc(L.TEE, "getIdentity")).result.identity);
   const URL = `${L.TEE}?token=${await L.tokenFor(L.TEE, O)}`; const ptok = []; for (const p of players) ptok.push(`${L.TEE}?token=${await L.tokenFor(L.TEE, p)}`);
-  return { st, mint: st.mint ? new PublicKey(st.mint) : null, players, validator, URL, ptok, codes: L.loadPool(), hub: L.hubPda(), ata(o) { return L.getAssociatedTokenAddressSync(this.mint, o, true); }, save() { fs.writeFileSync(L.ROOT + "/client/state.json", JSON.stringify(this.st, null, 1)); } }; }
+  return { st, mint: process.env.CONCLAVE_MINT ? new PublicKey(process.env.CONCLAVE_MINT) : st.mint ? new PublicKey(st.mint) : null, players, validator, URL, ptok, codes: process.env.CONCLAVE_SOLO ? {} : L.loadPool(), hub: L.hubPda(), ata(o) { return L.getAssociatedTokenAddressSync(this.mint, o, true); }, save() { fs.writeFileSync(L.ROOT + "/client/state.json", JSON.stringify(this.st, null, 1)); } }; }
 export const hubLamports = async c => { const d = (await L.rpc(c.URL, "getAccountInfo", [c.hub.toBase58(), { encoding: "base64" }])).result?.value; return d ? d.lamports : null; };
 const delegIx = (c, payer, pdaK, kind, idOrSid) => { const a = L.delegAccts(pdaK); return ixp(2, [K(payer, true, true), K(SystemProgram.programId), K(pdaK, true), K(L.PROGRAM), K(a.buffer, true), K(a.record, true), K(a.meta, true), K(L.DLP), K(c.validator)], Buffer.concat([Buffer.from([kind]), u64(idOrSid)])); };
 /** register a sealed-strategy commitment on base and delegate the registry to the TEE. The salt is generated here and kept with the keys. */
 export async function register(c, ownerIdx, name, code) { const owner = c.players[ownerIdx]; const id = L.newId(); const salt = (await import("crypto")).randomBytes(32); const commit = L.codeCommit(salt, code); const reg = L.regPda(id);
   const s1 = await L.sendBase([ixp(1, [K(owner.publicKey, true, true), K(reg, true), K(SystemProgram.programId)], Buffer.concat([u64(id), commit]))], [O, owner]);
   const s2 = await L.sendBase([delegIx(c, owner.publicKey, reg, 1, id)], [O, owner]);
-  const all = L.loadStrats(); all.push({ id: id.toString(), owner: ownerIdx, name, salt: salt.toString("hex"), code: code.toString("hex") }); L.saveStrats(all); return { id, salt, commit, sigs: [s1, s2] }; }
+  if (!process.env.CONCLAVE_SOLO) { const all = L.loadStrats(); all.push({ id: id.toString(), owner: ownerIdx, name, salt: salt.toString("hex"), code: code.toString("hex") }); L.saveStrats(all); } /* disposable canary strategies are never written to the key folder */ return { id, salt, commit, sigs: [s1, s2] }; }
 export async function seal(c, ownerIdx, id, salt, code, wait = true) { const p = c.players[ownerIdx]; const s = L.stratPda(id);
   if (wait) for (let i = 0; i < 60; i++) { if (await L.readAcct(c.URL, L.regPda(id))) break; await L.sleep(700); }
   return L.sendTee(c.URL, [ixp(3, [K(p.publicKey, false, true), K(c.hub, true), K(s, true), K(L.permissionPdaFromAccount(s), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.regPda(id))], Buffer.concat([u64(id), salt, code]))], [O, p]); }

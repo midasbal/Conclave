@@ -12,13 +12,15 @@ export const OUT = process.env.CONCLAVE_OUT || path.join(ROOT, "out");
 export const LAB = path.join(ROOT, "target", "release", "conclave-lab");
 export const EV = path.join(ROOT, "evidence") + "/"; fs.mkdirSync(EV, { recursive: true });
 const readKey = f => JSON.parse(fs.readFileSync(path.join(KEYS, f), "utf8"));
-export const PROGRAM = Keypair.fromSecretKey(Uint8Array.from(readKey("conclave-program.json"))).publicKey;
+/** CONCLAVE_PROGRAM_ID lets keyless callers (the canary, CI) name the program without holding its address keypair */
+export const PROGRAM = process.env.CONCLAVE_PROGRAM_ID ? new PublicKey(process.env.CONCLAVE_PROGRAM_ID) : Keypair.fromSecretKey(Uint8Array.from(readKey("conclave-program.json"))).publicKey;
 export const DLP = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"), ESPL = new PublicKey("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"), TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 export const MAGIC = new PublicKey("Magic11111111111111111111111111111111111111"), MCTX = new PublicKey("MagicContext1111111111111111111111111111111");
 export const VRF = new PublicKey("Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"), SLOTH = new PublicKey("SysvarS1otHashes111111111111111111111111111"), EQUEUE = new PublicKey("5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc");
 export const BASE_URL = "https://rpc.magicblock.app/devnet", TEE = "https://devnet-tee.magicblock.app";
 export const base = new Connection(BASE_URL, "confirmed");
-export const O = Keypair.fromSecretKey(Uint8Array.from(readKey("payer.json")));
+/** the acting wallet: payer.json by default; CONCLAVE_SIGNER (JSON key array in the environment) or CONCLAVE_SIGNER_FILE override it, which is how the canary runs under its throwaway wallet */
+export const O = Keypair.fromSecretKey(Uint8Array.from(process.env.CONCLAVE_SIGNER ? JSON.parse(process.env.CONCLAVE_SIGNER) : process.env.CONCLAVE_SIGNER_FILE ? JSON.parse(fs.readFileSync(process.env.CONCLAVE_SIGNER_FILE, "utf8")) : readKey("payer.json")));
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const rpc = async (u, m, p = []) => { for (let a = 0; a < 3; a++) { try { const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: m, params: p }) }); return JSON.parse(await r.text()); } catch (e) { if (a == 2) return { error: String(e) }; await sleep(300); } } };
 export const K = (pubkey, w = false, s = false) => ({ pubkey, isWritable: w, isSigner: s });

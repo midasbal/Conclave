@@ -26,7 +26,9 @@ crates/conclave-conformance-tools  corpus generator and fuzzer
 tests/                conformance corpus, runners for WASM and SBF, and the SBF harness program
 program/              the on-chain program (SBF), PANIC_PASS.md documents its hardening
 tests/svm/            in-process SVM suite that runs the compiled program: lifecycle, edge cases, rejections, metering, fuzz
-client/               Node scripts that drive the program on devnet
+client/               Node scripts that drive the program on devnet, and the devnet canary (client/canary.mjs)
+scripts/              reproducible build, deployed-equals-artifact check, canary runner
+.github/workflows/    CI (keyless) and the scheduled devnet canary
 ```
 
 `conclave-vm` is the single source of truth for execution. The on-chain program and the local simulator both depend on it, so a season replayed locally produces the same scores as the chain.
@@ -72,6 +74,14 @@ cargo build --profile fuzz -p conclave-conformance-tools --features cov
 tests/svm.sh                           # real program bytecode in an in-process SVM: lifecycle, 1 to 20 entrants, rejections, metering, parsing fuzz
 SVM_FUZZ_ITERS=200000 tests/svm.sh     # longer fuzz
 ```
+
+```
+scripts/repro-build.sh --twice --check # two clean SBF builds must hash the same and equal program/BUILD_HASH
+scripts/verify-deployed.sh             # read-only: the program on devnet equals the artifact byte for byte
+scripts/canary.sh                      # minimal v2 season on devnet under the throwaway canary wallet
+```
+
+`program/REPRODUCIBLE.md` has the pinned recipe and the one thing to know: the SBF artifact depends on the absolute build path, so the script builds at a canonical path. The canary needs `conclave-keys/canary.json` (or `CANARY_KEY` in the environment) and refuses to run as the payer or the upgrade authority. CI (`.github/workflows/ci.yml`) uses no secrets and no chain. The scheduled canary workflow needs one repository secret, `CANARY_KEY`, set by you.
 
 The SVM suite replaces the rollup-native services (Magic, permission, VRF, eSPL, delegation) with small stand-in programs; the program, System, SPL Token and ATA programs are real. Rent refunds and TEE privacy are checked on devnet only.
 
