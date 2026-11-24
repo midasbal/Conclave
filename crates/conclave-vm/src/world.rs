@@ -26,7 +26,7 @@ pub fn episode_seed(seed_a: u64, seed_b: u64, ep: u64) -> u64 {
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> u64 { let mut x = self.0; x ^= x >> 12; x ^= x << 25; x ^= x >> 27; self.0 = x; x.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 33 }
-    fn u(&mut self, m: i64) -> i64 { i64::try_from(self.next() % m.unsigned_abs()).unwrap_or(i64::MAX) }
+    fn u(&mut self, m: i64) -> i64 { i64::try_from(self.next() % m.unsigned_abs().max(1)).unwrap_or(i64::MAX) }
 }
 /// Fill `out` with 150 per-tick returns (ppm) for `pack`, from `seed`. Regime ids are not exposed to strategies.
 pub fn gen_episode(pack: usize, seed: u64, out: &mut [i32; WORLD_T]) {

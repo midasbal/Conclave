@@ -21,6 +21,9 @@ Early build, running on Solana devnet. Interfaces and account layouts will chang
 ```
 crates/conclave-vm    strategy VM and world generator (no_std, integer only, no floats)
 crates/conclave-lab   local reference simulator, strategy assembler and strategy pool builder
+crates/conclave-conformance        one pure function that runs a test vector, shared by every build target
+crates/conclave-conformance-tools  corpus generator and fuzzer
+tests/                conformance corpus, runners for WASM and SBF, and the SBF harness program
 program/              the on-chain program (SBF)
 client/               Node scripts that drive the program on devnet
 ```
@@ -55,6 +58,16 @@ Client scripts:
 cd client
 npm install
 ```
+
+## Tests
+
+```
+tests/conformance.sh                   # host, WASM and SBF must agree bit for bit on the whole corpus
+cargo build --profile fuzz -p conclave-conformance-tools --features cov
+./target/fuzz/cc-fuzz --seconds 60     # random programs, returns and states; reports any panic or divergence
+```
+
+The conformance script needs the Solana CLI tools for the SBF leg and runs a local validator. `crates/conclave-vm/PANIC_FREEDOM.md` lists the bound that keeps every VM operation from aborting.
 
 ## Keys
 

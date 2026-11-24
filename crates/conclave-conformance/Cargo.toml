@@ -1,0 +1,10 @@
+[package]
+name = "conclave-conformance"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["rlib", "cdylib"]
+[dependencies]
+conclave-vm = { path = "../conclave-vm" }
+[features]
+cov = ["conclave-vm/cov"]

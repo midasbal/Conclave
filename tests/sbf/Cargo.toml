@@ -1,0 +1,17 @@
+[package]
+name = "conclave-sbf-harness"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["cdylib", "lib"]
+[dependencies]
+solana-program = "4.0.0"
+conclave-conformance = { path = "../../crates/conclave-conformance" }
+[profile.release]
+opt-level = 3
+overflow-checks = true      # the default SBF release profile turns these off; the real program turns them on, so the gate does too
+panic = "abort"
+lto = "fat"
+codegen-units = 1
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

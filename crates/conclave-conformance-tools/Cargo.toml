@@ -1,0 +1,16 @@
+[package]
+name = "conclave-conformance-tools"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+conclave-vm = { path = "../conclave-vm" }
+conclave-conformance = { path = "../conclave-conformance" }
+conclave-lab = { path = "../conclave-lab" }
+[features]
+cov = ["conclave-vm/cov", "conclave-conformance/cov"]
+[[bin]]
+name = "cc-gen"
+path = "src/gen.rs"
+[[bin]]
+name = "cc-fuzz"
+path = "src/fuzz.rs"

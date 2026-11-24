@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "conclave-conformance"
+version = "0.1.0"
+dependencies = [
+ "conclave-vm",
+]
+
+[[package]]
+name = "conclave-conformance-tools"
+version = "0.1.0"
+dependencies = [
+ "conclave-conformance",
+ "conclave-lab",
+ "conclave-vm",
+]
+
+[[package]]
 name = "conclave-lab"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,11 @@
+// WASM leg: run every vector of the golden corpus through conclave-conformance compiled to wasm32 and compare bytes with the host-generated expectation.
+import fs from "fs"; import path from "path"; import { fileURLToPath } from "url";
+const here = path.dirname(fileURLToPath(import.meta.url)); const corpusFile = process.argv[2] || path.join(here, "conformance/corpus.bin"); const wasmFile = process.argv[3] || path.join(here, "../target/wasm32-unknown-unknown/release/conclave_conformance.wasm");
+export function parseCorpus(b) { if (b.toString("latin1", 0, 4) !== "CCV1") throw new Error("bad corpus"); const n = b.readUInt32LE(4); let p = 8; const out = []; for (let i = 0; i < n; i++) { const sbf = b[p] !== 0; const ll = b[p + 1]; p += 2; const label = b.toString("utf8", p, p + ll); p += ll; const il = b.readUInt32LE(p); p += 4; const input = b.subarray(p, p + il); p += il; const ol = b.readUInt32LE(p); p += 4; const output = b.subarray(p, p + ol); p += ol; out.push({ sbf, label, input, output }); } return out; }
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const es = parseCorpus(fs.readFileSync(corpusFile)); const { instance } = await WebAssembly.instantiate(fs.readFileSync(wasmFile), {}); const X = instance.exports; const inPtr = X.cc_alloc(4096), outPtr = X.cc_alloc(4096);
+  let bad = 0; const byKind = {}; const t0 = Date.now();
+  for (let i = 0; i < es.length; i++) { const e = es[i]; new Uint8Array(X.memory.buffer, inPtr, e.input.length).set(e.input); const n = X.cc_run(inPtr, e.input.length, outPtr); const got = Buffer.from(new Uint8Array(X.memory.buffer, outPtr, n)); const k = e.input[0]; byKind[k] = byKind[k] || [0, 0]; byKind[k][0]++;
+    if (Buffer.compare(got, e.output) === 0) byKind[k][1]++; else { bad++; if (bad <= 10) console.log("DIVERGENCE", i, e.label, "wasm", got.toString("hex").slice(0, 80), "host", e.output.toString("hex").slice(0, 80)); } }
+  const names = ["validate", "world", "trace", "season", "pins", "opwork", "state", "synth"]; console.log(`WASM: ${es.length - bad}/${es.length} vectors bit-identical to the host (${((Date.now() - t0) / 1000).toFixed(1)}s) | ` + Object.entries(byKind).map(([k, v]) => `${names[k]} ${v[1]}/${v[0]}`).join(" "));
+  process.exit(bad ? 1 : 0); }
