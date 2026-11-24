@@ -1,0 +1,217 @@
+//! Conclave strategy VM v1. no_std, no alloc, no floats, no i128, no recursion, no panics on any validated program.
+//! Straight-line register machine: every tick the whole program runs once, top to bottom. Registers are episode-scope (zeroed at episode start).
+//! Values are Q16.16 in i32, symmetric saturation at +-(2^31-1). Everything a strategy can see is a vol-normalised signal; it never sees price level or regime.
+#![no_std]
+#![deny(clippy::float_arithmetic)]
+pub mod world;
+
+pub const VERSION: u8 = 1;
+pub const NREG: usize = 16;
+pub const MAX_OPS: usize = 64;
+pub const RING: usize = 32;
+pub const ONE: i32 = 1 << 16;
+pub const NSIG: u8 = 13;
+pub const HEADER: usize = 4;
+/// transaction cost: 0.05 vol-units per unit of position change
+pub const COST_Q16: i64 = 3277;
+
+pub mod op {
+    pub const NOP: u8 = 0; pub const LDI: u8 = 1; pub const SIG: u8 = 2; pub const MOV: u8 = 3;
+    pub const ADD: u8 = 4; pub const SUB: u8 = 5; pub const MUL: u8 = 6; pub const DIV: u8 = 7;
+    pub const NEG: u8 = 8; pub const ABS: u8 = 9; pub const SIGN: u8 = 10; pub const MIN: u8 = 11; pub const MAX: u8 = 12;
+    pub const GT: u8 = 13; pub const LT: u8 = 14; pub const AND: u8 = 15; pub const OR: u8 = 16; pub const NOT: u8 = 17;
+    pub const SEL: u8 = 18; pub const GTI: u8 = 19; pub const LTI: u8 = 20; pub const THR: u8 = 21;
+    pub const EMA: u8 = 22; pub const HIST: u8 = 23; pub const WSUM: u8 = 24; pub const VOLW: u8 = 25; pub const ZW: u8 = 26;
+    pub const LONG: u8 = 27; pub const SHORT: u8 = 28; pub const FLAT: u8 = 29; pub const SIZE: u8 = 30; pub const POS: u8 = 31;
+    pub const STOPSET: u8 = 32; pub const STOPCLR: u8 = 33;
+    pub const COUNT: u8 = 34;
+}
+/// signal ids for SIG
+pub mod sg { pub const U1: u8 = 0; pub const CUM: u8 = 1; pub const T5: u8 = 2; pub const T10: u8 = 3; pub const T20: u8 = 4; pub const MOM: u8 = 5;
+    pub const VOLR: u8 = 6; pub const ZSC: u8 = 7; pub const TLEFT: u8 = 8; pub const POS: u8 = 9; pub const CASH: u8 = 10; pub const PNL: u8 = 11; pub const DD: u8 = 12; }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VmError { Length, Version, TooManyOps, BadOpcode, BadReg, BadOperand, NonCanonical }
+
+/// Validate a program blob: [version, n_ops, 0, 0] ++ n_ops*4 bytes. Returns n_ops. Canonical form required (unused operand bytes must be 0).
+pub fn validate(code: &[u8]) -> Result<usize, VmError> {
+    if code.len() < HEADER { return Err(VmError::Length); }
+    if code[0] != VERSION { return Err(VmError::Version); }
+    if code[2] != 0 || code[3] != 0 { return Err(VmError::NonCanonical); }
+    let n = code[1] as usize;
+    if n > MAX_OPS { return Err(VmError::TooManyOps); }
+    if code.len() != HEADER + 4 * n { return Err(VmError::Length); }
+    let mut i = 0;
+    while i < n {
+        let o = &code[HEADER + 4 * i..HEADER + 4 * i + 4];
+        let (c, d, a, b) = (o[0], o[1], o[2], o[3]);
+        let r = |x: u8| -> Result<(), VmError> { if (x as usize) < NREG { Ok(()) } else { Err(VmError::BadReg) } };
+        let z = |x: u8| -> Result<(), VmError> { if x == 0 { Ok(()) } else { Err(VmError::NonCanonical) } };
+        match c {
+            op::NOP => { z(d)?; z(a)?; z(b)?; }
+            op::LDI => { r(d)?; }                                   // a,b = imm16 (LE, Q8)
+            op::SIG => { r(d)?; if a >= NSIG { return Err(VmError::BadOperand); } z(b)?; }
+            op::MOV | op::NEG | op::ABS | op::SIGN | op::NOT => { r(d)?; r(a)?; z(b)?; }
+            op::ADD | op::SUB | op::MUL | op::DIV | op::MIN | op::MAX | op::GT | op::LT | op::AND | op::OR | op::SEL => { r(d)?; r(a)?; r(b)?; }
+            op::GTI | op::LTI | op::THR => { r(d)?; r(a)?; }          // b = imm8 (i8, Q5)
+            op::EMA => { r(d)?; r(a)?; if b > 15 { return Err(VmError::BadOperand); } }
+            op::HIST => { r(d)?; if a as usize >= RING { return Err(VmError::BadOperand); } z(b)?; }
+            op::WSUM | op::VOLW | op::ZW => { r(d)?; if a == 0 || a as usize > RING { return Err(VmError::BadOperand); } z(b)?; }
+            op::LONG | op::SHORT | op::FLAT | op::SIZE | op::POS | op::STOPSET | op::STOPCLR => { z(d)?; r(a)?; z(b)?; }
+            _ => return Err(VmError::BadOpcode),
+        }
+        i += 1;
+    }
+    Ok(n)
+}
+#[inline] fn sat(x: i64) -> i32 { const M: i64 = i32::MAX as i64; i32::try_from(x.clamp(-M, M)).unwrap_or(0) }
+#[inline] fn bool_q(b: bool) -> i32 { if b { ONE } else { 0 } }
+#[inline] fn sgn(x: i32) -> i32 { if x > 0 { ONE } else if x < 0 { -ONE } else { 0 } }
+#[inline] fn qdiv(a: i64, b: i64) -> i32 { if b == 0 { 0 } else { sat(a * 65536 / b) } }
+
+/// Shared per-tick market state (computed once per tick for all seats). Integer only.
+pub struct Market {
+    pub t: u32, pub total: u32, sig: i64, sig_s: i64, x: i64, a: i64, ring: [i32; RING], cum: [i32; RING], pub f: [i32; 9], sg: i64, sgs: i64, cur: u32,
+}
+const SQRT5: i64 = 146543; const SQRT10: i64 = 207243; const SQRT20: i64 = 293086; // sqrt(n)*65536
+impl Market {
+    pub fn new(total: u32) -> Self { Market { t: 0, total, sig: 8000, sig_s: 8000, x: 0, a: 0, ring: [0; RING], cum: [0; RING], f: [0; 9], sg: 8000, sgs: 8000, cur: 0 } }
+    /// Ingest return r (ppm). Returns the lagged sigma (ppm, floored) that the engine uses to accrue PnL for THIS tick.
+    pub fn advance(&mut self, r: i32) -> i64 {
+        let sg0 = if self.sig < 1000 { 1000 } else { self.sig };
+        let r64 = r as i64;
+        self.sig += (r64.abs() - self.sig) / 16; self.sig_s += (r64.abs() - self.sig_s) / 64;
+        self.x += r64; self.a += (self.x - self.a) / 32;
+        self.cur = self.t;
+        self.ring[(self.t as usize) & (RING - 1)] = r; self.cum[(self.t as usize) & (RING - 1)] = sat(self.x);
+        self.sg = if self.sig < 1000 { 1000 } else { self.sig }; self.sgs = if self.sig_s < 1000 { 1000 } else { self.sig_s };
+        let (s5, s10, s20) = (self.wsum_raw(5), self.wsum_raw(10), self.wsum_raw(20));
+        let sg = self.sg;
+        self.f[0] = qdiv(r64, sg); self.f[1] = qdiv(self.x, sg);
+        self.f[2] = sat(s5 * 4_294_967_296 / (sg * SQRT5)); self.f[3] = sat(s10 * 4_294_967_296 / (sg * SQRT10)); self.f[4] = sat(s20 * 4_294_967_296 / (sg * SQRT20));
+        self.f[5] = qdiv(s20, self.sgs); self.f[6] = qdiv(self.sig, self.sgs); self.f[7] = qdiv(self.x - self.a, 5 * sg);
+        let left = if self.total > self.t + 1 { (self.total - self.t - 1) as i64 } else { 0 };
+        self.f[8] = sat(left * 65536 / (self.total.max(1) as i64));
+        self.t += 1;
+        sg0
+    }
+    fn at(&self, k: u32) -> i32 { self.ring[(self.cur.wrapping_sub(k) as usize) & (RING - 1)] }
+    fn cat(&self, k: u32) -> i32 { self.cum[(self.cur.wrapping_sub(k) as usize) & (RING - 1)] }
+    fn wsum_raw(&self, n: u32) -> i64 { let mut s = 0i64; let mut k = 0; while k < n { s += self.at(k) as i64; k += 1; } s }
+}
+/// One strategy's live state. Everything resets at episode start (episode-scope registers).
+#[derive(Clone)]
+pub struct Seat { pub regs: [i32; NREG], pub pos: i32, pub cash: i64, pub trade: i64, pub peak: i64, pub dir: i8, pub size: i32, pub stop: i32, pub stopped: bool, pub work: u64 }
+impl Seat {
+    pub fn new() -> Self { Seat { regs: [0; NREG], pos: 0, cash: 0, trade: 0, peak: 0, dir: 0, size: ONE, stop: 0, stopped: false, work: 0 } }
+    pub fn pnl(&self) -> i64 { self.cash + self.trade }
+    /// One tick. `code` must have passed `validate`. `r` is this tick's return, `sg0` from Market::advance (called first).
+    pub fn step(&mut self, code: &[u8], m: &Market, r: i32, sg0: i64) {
+        let u = (r as i64) * 65536 / sg0;
+        self.trade += (self.pos as i64 * u) >> 16;
+        let pnl = self.cash + self.trade; if pnl > self.peak { self.peak = pnl; }
+        let n = code[1] as usize; let mut w: u64 = 0;
+        let mut i = 0;
+        while i < n {
+            let o = HEADER + 4 * i; let (c, d, a, b) = (code[o], code[o + 1] as usize & 15, code[o + 2], code[o + 3]);
+            let ra = self.regs[a as usize & 15]; let rb = self.regs[b as usize & 15];
+            w += 1;
+            match c {
+                op::LDI => { self.regs[d] = (i16::from_le_bytes([a, b]) as i32) << 8; }
+                op::SIG => { self.regs[d] = match a { 0..=8 => m.f[a as usize], 9 => self.pos, 10 => sat(self.cash), 11 => sat(self.cash + self.trade), _ => sat(self.peak - (self.cash + self.trade)) }; }
+                op::MOV => self.regs[d] = ra,
+                op::ADD => self.regs[d] = sat(ra as i64 + rb as i64),
+                op::SUB => self.regs[d] = sat(ra as i64 - rb as i64),
+                op::MUL => { self.regs[d] = sat((ra as i64 * rb as i64) >> 16); w += 1; }
+                op::DIV => { self.regs[d] = if rb == 0 { 0 } else { sat(ra as i64 * 65536 / rb as i64) }; w += 3; }
+                op::NEG => self.regs[d] = -ra,
+                op::ABS => self.regs[d] = if ra < 0 { -ra } else { ra },
+                op::SIGN => self.regs[d] = sgn(ra),
+                op::MIN => self.regs[d] = if ra < rb { ra } else { rb },
+                op::MAX => self.regs[d] = if ra > rb { ra } else { rb },
+                op::GT => self.regs[d] = bool_q(ra > rb), op::LT => self.regs[d] = bool_q(ra < rb),
+                op::AND => self.regs[d] = bool_q(ra != 0 && rb != 0), op::OR => self.regs[d] = bool_q(ra != 0 || rb != 0),
+                op::NOT => self.regs[d] = bool_q(ra == 0),
+                op::SEL => { self.regs[d] = if self.regs[d] != 0 { ra } else { rb }; }
+                op::GTI => self.regs[d] = bool_q(ra > ((i8::from_le_bytes([b]) as i32) << 11)),
+                op::LTI => self.regs[d] = bool_q(ra < ((i8::from_le_bytes([b]) as i32) << 11)),
+                op::THR => { let t = (i8::from_le_bytes([b]) as i32) << 11; self.regs[d] = if ra >= t || ra <= -t { ra } else { 0 }; }
+                op::EMA => { let cur = self.regs[d] as i64; self.regs[d] = sat(cur + ((ra as i64 - cur) >> b)); }
+                op::HIST => { self.regs[d] = qdiv(m.at(a as u32) as i64, m.sg); w += 1; }
+                op::WSUM => { self.regs[d] = qdiv(m.wsum_raw(a as u32), m.sg); w += a as u64; }
+                op::VOLW => { let mut s = 0i64; let mut k = 0; while k < a as u32 { s += (m.at(k) as i64).abs(); k += 1; } self.regs[d] = qdiv(s, m.sgs * a as i64); w += a as u64; }
+                op::ZW => {
+                    let nn = (a as u32).max(2); let mut s = 0i64; let mut k = 0; while k < nn { s += m.cat(k) as i64; k += 1; }
+                    let mean = s / nn as i64; let mut dev = 0i64; k = 0; while k < nn { dev += (m.cat(k) as i64 - mean).abs(); k += 1; }
+                    let mad = dev / nn as i64; let den = if mad > m.sg / 4 { mad } else { m.sg / 4 };
+                    self.regs[d] = qdiv(m.cat(0) as i64 - mean, den); w += 2 * a as u64;
+                }
+                op::LONG => { if ra != 0 { self.dir = 1; } }
+                op::SHORT => { if ra != 0 { self.dir = -1; } }
+                op::FLAT => { if ra != 0 { self.dir = 0; } }
+                op::SIZE => { self.size = ra.clamp(0, ONE); }
+                op::POS => { let v = ra.clamp(-ONE, ONE); if v == 0 { self.dir = 0; } else { self.dir = if v > 0 { 1 } else { -1 }; self.size = v.abs(); } }
+                op::STOPSET => { self.stop = if ra < 0 { 0 } else { ra }; }
+                op::STOPCLR => { if ra != 0 { self.stopped = false; } }
+                _ => {}
+            }
+            i += 1;
+        }
+        self.work += w;
+        let mut target = (self.dir as i32) * self.size;
+        if self.stop > 0 && target != 0 && self.trade <= -(self.stop as i64) { self.stopped = true; }
+        if self.stopped { target = 0; }
+        let delta = (target - self.pos).abs() as i64;
+        self.cash -= (delta * COST_Q16) >> 16;
+        if target == 0 || (target > 0) != (self.pos > 0) && self.pos != 0 { self.cash += self.trade; self.trade = 0; }
+        self.pos = target;
+    }
+}
+
+
+/// Static per-tick metered work of a validated program (straight-line, so it is a constant). Mirrors exactly what `Seat::step` accumulates:
+/// 1 per op, +1 MUL, +3 DIV, +1 HIST, +n WSUM/VOLW, +2n ZW. This is the quantity compute scales with, not the op count.
+pub fn work_of(code: &[u8]) -> u32 {
+    let n = code[1] as usize; let mut w = 0u32;
+    for i in 0..n { let o = HEADER + 4 * i; let (c, a) = (code[o], u32::from(code[o + 2]));
+        w += 1 + match c { op::MUL | op::HIST => 1, op::DIV => 3, op::WSUM | op::VOLW => a, op::ZW => 2 * a, _ => 0 }; }
+    w
+}
+
+// ---- state (de)serialisation, additive: lets a program persist Market/Seat between transactions without changing any semantics ----
+fn put32(o: &mut [u8], p: &mut usize, v: i32) { o[*p..*p + 4].copy_from_slice(&v.to_le_bytes()); *p += 4; }
+fn put64(o: &mut [u8], p: &mut usize, v: i64) { o[*p..*p + 8].copy_from_slice(&v.to_le_bytes()); *p += 8; }
+fn put32u(o: &mut [u8], p: &mut usize, v: u32) { o[*p..*p + 4].copy_from_slice(&v.to_le_bytes()); *p += 4; }
+fn put64u(o: &mut [u8], p: &mut usize, v: u64) { o[*p..*p + 8].copy_from_slice(&v.to_le_bytes()); *p += 8; }
+fn get32u(o: &[u8], p: &mut usize) -> u32 { let v = u32::from_le_bytes([o[*p], o[*p + 1], o[*p + 2], o[*p + 3]]); *p += 4; v }
+fn get64u(o: &[u8], p: &mut usize) -> u64 { let mut b = [0u8; 8]; b.copy_from_slice(&o[*p..*p + 8]); *p += 8; u64::from_le_bytes(b) }
+fn get32(o: &[u8], p: &mut usize) -> i32 { let v = i32::from_le_bytes([o[*p], o[*p + 1], o[*p + 2], o[*p + 3]]); *p += 4; v }
+fn get64(o: &[u8], p: &mut usize) -> i64 { let mut b = [0u8; 8]; b.copy_from_slice(&o[*p..*p + 8]); *p += 8; i64::from_le_bytes(b) }
+impl Market {
+    pub const BYTES: usize = 4 + 4 + 8 * 4 + 4 * RING * 2 + 4 * 9 + 8 + 8 + 4;
+    pub fn save(&self, o: &mut [u8]) {
+        let mut p = 0; put32u(o, &mut p, self.t); put32u(o, &mut p, self.total);
+        put64(o, &mut p, self.sig); put64(o, &mut p, self.sig_s); put64(o, &mut p, self.x); put64(o, &mut p, self.a);
+        for v in self.ring { put32(o, &mut p, v); } for v in self.cum { put32(o, &mut p, v); } for v in self.f { put32(o, &mut p, v); }
+        put64(o, &mut p, self.sg); put64(o, &mut p, self.sgs); put32u(o, &mut p, self.cur);
+    }
+    pub fn load(o: &[u8]) -> Self {
+        let mut p = 0; let mut m = Market::new(0);
+        m.t = get32u(o, &mut p); m.total = get32u(o, &mut p); m.sig = get64(o, &mut p); m.sig_s = get64(o, &mut p); m.x = get64(o, &mut p); m.a = get64(o, &mut p);
+        for v in m.ring.iter_mut() { *v = get32(o, &mut p); } for v in m.cum.iter_mut() { *v = get32(o, &mut p); } for v in m.f.iter_mut() { *v = get32(o, &mut p); }
+        m.sg = get64(o, &mut p); m.sgs = get64(o, &mut p); m.cur = get32u(o, &mut p); m
+    }
+}
+impl Seat {
+    pub const BYTES: usize = 4 * NREG + 4 + 8 * 3 + 1 + 4 + 4 + 1 + 8;
+    pub fn save(&self, o: &mut [u8]) {
+        let mut p = 0; for v in self.regs { put32(o, &mut p, v); } put32(o, &mut p, self.pos); put64(o, &mut p, self.cash); put64(o, &mut p, self.trade); put64(o, &mut p, self.peak);
+        o[p] = self.dir.to_le_bytes()[0]; p += 1; put32(o, &mut p, self.size); put32(o, &mut p, self.stop); o[p] = self.stopped as u8; p += 1; put64u(o, &mut p, self.work);
+    }
+    pub fn load(o: &[u8]) -> Self {
+        let mut p = 0; let mut s = Seat::new(); for v in s.regs.iter_mut() { *v = get32(o, &mut p); }
+        s.pos = get32(o, &mut p); s.cash = get64(o, &mut p); s.trade = get64(o, &mut p); s.peak = get64(o, &mut p);
+        s.dir = i8::from_le_bytes([o[p]]); p += 1; s.size = get32(o, &mut p); s.stop = get32(o, &mut p); s.stopped = o[p] != 0; p += 1; s.work = get64u(o, &mut p); s
+    }
+}
+impl Default for Seat { fn default() -> Self { Self::new() } }

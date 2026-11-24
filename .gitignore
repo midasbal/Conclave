@@ -1,0 +1,37 @@
+# Secrets: keypairs live OUTSIDE the repository (see README). These are a second line of defence.
+keys/
+conclave-keys/
+*keypair*.json
+payer.json
+players.json
+.env
+.env.*
+*.pem
+
+# Rust build artifacts
+target/
+*.rs.bk
+
+# Compiled programs
+*.so
+
+# Node
+node_modules/
+
+# Generated, local only
+out/
+evidence/
+client/state.json
+
+# Local validator ledgers
+test-ledger/
+ledger/
+*.ledger/
+
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
