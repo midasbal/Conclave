@@ -22,7 +22,9 @@ export const base = new Connection(BASE_URL, "confirmed");
 /** the acting wallet: payer.json by default; CONCLAVE_SIGNER (JSON key array in the environment) or CONCLAVE_SIGNER_FILE override it, which is how the canary runs under its throwaway wallet */
 export const O = Keypair.fromSecretKey(Uint8Array.from(process.env.CONCLAVE_SIGNER ? JSON.parse(process.env.CONCLAVE_SIGNER) : process.env.CONCLAVE_SIGNER_FILE ? JSON.parse(fs.readFileSync(process.env.CONCLAVE_SIGNER_FILE, "utf8")) : readKey("payer.json")));
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
-export const rpc = async (u, m, p = []) => { for (let a = 0; a < 3; a++) { try { const r = await fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: m, params: p }) }); return JSON.parse(await r.text()); } catch (e) { if (a == 2) return { error: String(e) }; await sleep(300); } } };
+import { Endpoint } from "./endpoint.mjs"; export { Endpoint };
+const urlOf = u => typeof u === "string" ? u : u.url, hdrOf = u => typeof u === "string" ? {} : u.headers();
+export const rpc = async (u, m, p = []) => { for (let a = 0; a < 3; a++) { try { const r = await fetch(urlOf(u), { method: "POST", headers: { "content-type": "application/json", ...hdrOf(u) }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: m, params: p }) }); return JSON.parse(await r.text()); } catch (e) { if (a == 2) return { error: String(e) }; await sleep(300); } } };
 export const K = (pubkey, w = false, s = false) => ({ pubkey, isWritable: w, isSigner: s });
 export const ixp = (tag, keys, data = Buffer.alloc(0)) => new TransactionInstruction({ programId: PROGRAM, keys, data: Buffer.concat([Buffer.from([tag]), Buffer.from(data)]) });
 export const u64 = n => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; }; export const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };

@@ -48,6 +48,21 @@ jobs:
         run: |
           cargo build --profile fuzz -p conclave-conformance-tools --features cov --locked
           ./target/fuzz/cc-fuzz --seconds 120
+  server-and-auth:
+    # keyless and chain-free: real ed25519 signatures, real HMAC tokens, a local HTTP upstream; also the static scan that no credential is ever put in a URL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install client and server dependencies from their lockfiles
+        run: |
+          (cd client && npm ci --no-audit --no-fund)
+          (cd server && npm ci --no-audit --no-fund)
+      - name: Auth, gating, rate limit, key hygiene and leak-surface tests
+        run: cd server && npm test
   reproducible-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
