@@ -38,14 +38,17 @@ fn build() -> World {
     for t in all_strats.iter().take(5) { templates.push(e.seal_ix(t, t.owner)); templates.push(e.ix(1, vec![e.m(e.players[t.owner].pubkey(), true, true), e.rw(e.reg_pda(t.id)), e.ro(a(SYSTEM))], { let mut d = t.id.to_le_bytes().to_vec(); d.extend([1u8; 32]); d }));
         let mut d = vec![1u8]; d.extend(t.id.to_le_bytes()); templates.push(e.ix(2, vec![e.m(e.players[t.owner].pubkey(), true, true), e.ro(a(SYSTEM)), e.rw(e.reg_pda(t.id)), e.ro(pid), e.rw(Address::new_unique()), e.rw(Address::new_unique()), e.rw(Address::new_unique()), e.ro(a(DLP)), e.ro(Address::new_unique())], d)); }
     templates.push(e.ix(0, vec![e.m(e.payer.pubkey(), true, true), e.rw(hub), e.ro(a(SYSTEM))], 5u64.to_le_bytes().to_vec()));
+    { let pd = pda(&[pid.as_ref()], &a(LOADER)); templates.push(e.init_config_ix(pd, e.payer.pubkey())); let mut sub = vec![2u8]; sub.extend_from_slice(e.mint.as_ref());
+      for (k, d) in [(0u8, vec![]), (1, vec![]), (2, e.mint.as_ref().to_vec()), (3, e.mint.as_ref().to_vec()), (4, Address::new_unique().as_ref().to_vec())] { let mut dd = vec![k]; dd.extend(d); templates.push(e.ix(20, vec![e.m(e.payer.pubkey(), true, true), e.rw(e.config)], dd)); } let _ = sub;
+      for s in seasons.iter() { templates.push(e.ix(21, vec![e.m(e.payer.pubkey(), true, true), e.ro(e.config), e.rw(s.receipt), e.ro(s.arena)], s.sid.to_le_bytes().to_vec())); } }
     let mut ud = vec![196u8, 28, 41, 206, 48, 37, 51, 167, 2, 0, 0, 0, 4, 0, 0, 0, b'h', b'u', b'b', 0]; ud.extend([0u8; 8]); templates.push(Instruction { program_id: pid, accounts: vec![AccountMeta::new(hub, false), AccountMeta::new(Address::new_unique(), false), AccountMeta::new(e.payer.pubkey(), true), AccountMeta::new_readonly(a(SYSTEM), false)], data: ud });
     // account universe and snapshot
-    let mut keys: Vec<Address> = vec![hub, e.mint, e.payer.pubkey()]; keys.extend(e.players.iter().map(|p| p.pubkey())); let mut program_owned = vec![hub];
+    let mut keys: Vec<Address> = vec![hub, e.mint, e.payer.pubkey(), e.config]; keys.extend(e.players.iter().map(|p| p.pubkey())); let mut program_owned = vec![hub, e.config];
     for s in &seasons { keys.extend([s.arena, s.receipt, s.pool, e.ata(&s.pool)]); program_owned.extend([s.arena, s.receipt]); } for t in &all_strats { keys.extend([e.reg_pda(t.id), e.strat_pda(t.id)]); program_owned.extend([e.reg_pda(t.id), e.strat_pda(t.id)]); } for p in &e.players { keys.push(e.ata(&p.pubkey())); }
     keys.extend([pid, a(MAGIC), a(PERMISSION), a(VRF), a(ESPL), a(DLP), a(TOKEN), a(ATOKEN), a(SYSTEM), a(SLOT_HASHES), a(MAGIC_CTX)]); keys.sort(); keys.dedup();
     let snap = keys.iter().map(|k| (*k, e.svm.get_account(k))).collect(); World { e, keys, snap, templates, program_owned } }
 
-fn restore(w: &mut World) { for (k, acc) in w.snap.clone() { if let Some(a) = acc { w.e.svm.set_account(k, a).unwrap(); } } }
+fn restore(w: &mut World) { for (k, acc) in w.snap.clone() { if let Some(a) = acc { if let Err(er) = w.e.svm.set_account(k, a.clone()) { panic!("restore {} owner {} len {} lamports {}: {:?}", k, a.owner, a.data.len(), a.lamports, er); } } } }
 fn mutate(w: &World, r: &mut Rng, base: &Instruction, ids: &[Address]) -> (Instruction, Vec<usize>) {
     let mut ix = base.clone(); let rounds = 1 + r.below(3);
     for _ in 0..rounds { match r.below(9) {

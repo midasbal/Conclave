@@ -52,14 +52,17 @@ pub fn failed_to_complete(r: &Res) -> bool { matches!(r, Err(e) if matches!(&e.e
 pub fn err_string(r: &Res) -> String { match r { Ok(_) => "ok".into(), Err(e) => format!("{:?}", e.err) } }
 
 #[derive(Clone, Copy)] pub struct Params { pub window: u64, pub seedto: u64, pub grace: u64, pub mins: u8, pub bond: u64 }
-pub struct Env { pub params: Params, pub svm: LiteSVM, pub pid: Address, pub payer: Keypair, pub players: Vec<Keypair>, pub mint: Address, pub hub: Address, pub slot: u64, pub nonce: u64, pub strategies: Vec<Strat> }
+pub const LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
+pub struct Env { pub config: Address, pub params: Params, pub svm: LiteSVM, pub pid: Address, pub payer: Keypair, pub players: Vec<Keypair>, pub mint: Address, pub hub: Address, pub slot: u64, pub nonce: u64, pub strategies: Vec<Strat> }
 #[derive(Clone)] pub struct Strat { pub id: u64, pub owner: usize, pub salt: [u8; 32], pub code: Vec<u8>, pub name: String }
 
 fn conclave_so() -> Vec<u8> { std::fs::read(std::env::var("CONCLAVE_SO").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../program/target/deploy/conclave.so").to_string())).expect("build the program first: (cd program && cargo build-sbf)") }
 fn standin_so() -> Vec<u8> { std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/standins/target/deploy/conclave_svm_standins.so")).expect("build the stand-ins first: (cd tests/svm/standins && cargo build-sbf)") }
 
 impl Env {
-    pub fn new(nplayers: usize) -> Env {
+    pub fn new(nplayers: usize) -> Env { Env::new_with(nplayers, true) }
+    /// configure=false leaves the config account uncreated so InitConfig itself can be tested
+    pub fn new_with(nplayers: usize, configure: bool) -> Env {
         let mut svm = LiteSVM::new().with_sigverify(false).with_blockhash_check(false);
         let mut rent = solana_rent::Rent::default(); rent.lamports_per_byte = 0; svm.set_sysvar(&rent); // rent-exempt minimum 0: ER ephemeral accounts hold no lamports
         let pid = Address::new_unique(); svm.add_program(pid, &conclave_so()).unwrap();
@@ -67,11 +70,22 @@ impl Env {
         let payer = Keypair::new(); svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
         let players: Vec<Keypair> = (0..nplayers).map(|_| Keypair::new()).collect(); for p in &players { svm.airdrop(&p.pubkey(), 10_000_000_000).unwrap(); }
         let hub = pda(&[b"hub"], &pid); svm.warp_to_slot(10);
-        let mut e = Env { params: Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }, svm, pid, payer, players, mint: Address::new_unique(), hub, slot: 10, nonce: 0, strategies: vec![] };
+        let mut e = Env { config: pda(&[b"config"], &pid), params: Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }, svm, pid, payer, players, mint: Address::new_unique(), hub, slot: 10, nonce: 0, strategies: vec![] };
         e.create_mint(); e.mint_to_players(1_000_000);
         e.ok(&[e.ix(0, vec![e.m(e.payer.pubkey(), true, true), e.m(hub, false, true), e.ro(a(SYSTEM))], u64le(1_000_000).to_vec())], &[], "InitHub");
+        if configure { e.init_config(); let m = e.mint; e.admin_ok(2, m.as_ref()); }
         e
     }
+    /// LiteSVM already keeps the program's real ProgramData account (the ELF) at the loader's PDA, with no upgrade authority. The real InitConfig checks that account's
+    /// Some(upgrade authority) field, so the harness sets that one field in place (layout: tag 3, slot, option tag, authority) and leaves the ELF untouched.
+    pub fn programdata_fixture(&mut self, authority: &Address) -> Address { let pd = pda(&[self.pid.as_ref()], &a(LOADER)); let mut acc = self.svm.get_account(&pd).expect("LiteSVM ProgramData"); assert_eq!(u32::from_le_bytes(acc.data[0..4].try_into().unwrap()), 3);
+        acc.data[12] = 1; acc.data[13..45].copy_from_slice(authority.as_ref()); self.svm.set_account(pd, acc).unwrap(); pd }
+    pub fn init_config_ix(&self, pd: Address, signer: Address) -> Instruction { self.ix(19, vec![self.m(signer, true, true), self.rw(self.config), self.ro(a(SYSTEM)), self.ro(pd)], vec![]) }
+    pub fn init_config(&mut self) { let pd = self.programdata_fixture(&self.payer.pubkey()); let ix = self.init_config_ix(pd, self.payer.pubkey()); self.ok(&[ix], &[], "InitConfig"); }
+    pub fn admin_ix(&self, signer: Address, sub: u8, payload: &[u8]) -> Instruction { let mut d = vec![sub]; d.extend_from_slice(payload); self.ix(20, vec![self.m(signer, true, signer == self.payer.pubkey()), self.rw(self.config)], d) }
+    pub fn admin(&mut self, sub: u8, payload: &[u8]) -> Res { let ix = self.admin_ix(self.payer.pubkey(), sub, payload); self.send(&[ix], &[]) }
+    pub fn admin_by(&mut self, who: &Keypair, sub: u8, payload: &[u8]) -> Res { let ix = self.admin_ix(who.pubkey(), sub, payload); self.send(&[ix], &[who]) }
+    pub fn admin_ok(&mut self, sub: u8, payload: &[u8]) { let r = self.admin(sub, payload); assert!(r.is_ok(), "Admin {} failed: {}", sub, err_string(&r)); }
     // ---- instruction building ----
     pub fn m(&self, k: Address, signer: bool, writable: bool) -> AccountMeta { if writable { AccountMeta::new(k, signer) } else { AccountMeta::new_readonly(k, signer) } }
     pub fn ro(&self, k: Address) -> AccountMeta { AccountMeta::new_readonly(k, false) }
@@ -147,11 +161,11 @@ impl Env {
         let ix = self.ix(13, accts, s.sid.to_le_bytes().to_vec()); self.send(&[ix], &[]) }
     pub fn create_season_ix(&self, s: &Season, neps: u32, spt: u32, fee: u64, maxs: u8, flags: u8, division: u8) -> Instruction {
         let mut d = s.sid.to_le_bytes().to_vec(); d.extend(neps.to_le_bytes()); d.extend(spt.to_le_bytes()); d.extend(fee.to_le_bytes()); d.extend_from_slice(self.mint.as_ref()); d.extend([maxs, flags, division]); let p = self.params; d.extend(p.window.to_le_bytes()); d.extend(p.seedto.to_le_bytes()); d.extend(p.grace.to_le_bytes()); d.push(p.mins);
-        self.ix(5, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt)], d) }
+        self.ix(5, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt), self.ro(self.config)], d) }
     pub fn create_season(&mut self, s: &mut Season, neps: u32, fee: u64, maxs: u8, finals: bool, division: u8) -> Res { self.provision_if_new(s.arena, arena_size(maxs as usize)); if self.svm.get_account(&s.receipt).is_none() { let r = self.init_receipt(s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r)); } s.maxs = maxs as usize; s.neps = neps; s.fee = fee;
         let ix = self.create_season_ix(s, neps, 1, fee, maxs, if finals { 2 } else { 0 }, division); self.send(&[ix], &[]) }
     pub fn enter_ix(&self, s: &Season, st: &Strat, signer: usize) -> Instruction { let ow = self.players[signer].pubkey(); let owner_of_strat = self.players[st.owner].pubkey();
-        let _ = owner_of_strat; self.ix(6, vec![self.m(ow, true, false), self.ro(self.strat_pda(st.id)), self.rw(s.arena), self.rw(self.ata(&ow)), self.rw(self.ata(&s.pool)), self.ro(a(TOKEN))], vec![]) }
+        let _ = owner_of_strat; self.ix(6, vec![self.m(ow, true, false), self.ro(self.strat_pda(st.id)), self.rw(s.arena), self.rw(self.ata(&ow)), self.rw(self.ata(&s.pool)), self.ro(a(TOKEN)), self.ro(self.config)], vec![]) }
     pub fn enter(&mut self, s: &mut Season, st: &Strat) -> Res { let ix = self.enter_ix(s, st, st.owner); let kp = self.player(st.owner); let r = self.send(&[ix], &[&kp]); if r.is_ok() { s.entries.push(st.clone()); } r }
     pub fn lock(&mut self, s: &Season) -> Res { let ix = self.ix(7, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena)], vec![]); self.send(&[ix], &[]) }
     /// lock signed by someone other than the creator
@@ -183,6 +197,7 @@ impl Env {
     pub fn publish_ix(&self, s: &Season, i: usize, id: u64) -> Instruction { self.ix(11, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.rw(self.strat_pda(id)), self.rw(self.reg_pda(id)), self.rw(s.receipt)], vec![i as u8]) }
     pub fn publish(&mut self, s: &Season, i: usize) -> Res { let ix = self.publish_ix(s, i, s.entries[i].id); self.send(&[ix], &[]) }
     pub fn commit(&mut self, accts: &[Address]) -> Res { let mut m = vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX))]; for k in accts { m.push(self.rw(*k)); } let ix = self.ix(12, m, vec![]); self.send(&[ix], &[]) }
+    pub fn commit_undelegate_ix_for(&self, s: &Season) -> Instruction { self.ix(12, vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX)), self.rw(s.receipt)], vec![1]) }
     pub fn commit_undelegate(&mut self, accts: &[Address]) -> Res { let mut m = vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX))]; for k in accts { m.push(self.rw(*k)); } let ix = self.ix(12, m, vec![1]); self.send(&[ix], &[]) }
     pub fn cleanup_ix(&self, s: &Season) -> Instruction { self.ix(15, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt)], vec![]) }
     pub fn cleanup(&mut self, s: &Season) -> Res { let ix = self.cleanup_ix(s); self.send(&[ix], &[]) }

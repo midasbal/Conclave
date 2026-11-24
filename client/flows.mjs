@@ -1,6 +1,9 @@
 import * as L from "./lib.mjs"; import fs from "fs";
 const { K, ixp, u64, u32, O, PublicKey, SystemProgram } = L;
 export const ATOKEN = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+/** access guards: the config PDA (pause, stake-mint allowlist, authority) lives in the rollup after delegation */
+export const CONFIG = L.pda([Buffer.from("config")]);
+export const PROGRAMDATA = PublicKey.findProgramAddressSync([L.PROGRAM.toBuffer()], new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111"))[0];
 export async function ctx() { const st = fs.existsSync(L.ROOT + "/client/state.json") ? JSON.parse(fs.readFileSync(L.ROOT + "/client/state.json")) : {}; const players = process.env.CONCLAVE_SOLO ? [O] : L.players(); const validator = new PublicKey((await L.rpc(L.TEE, "getIdentity")).result.identity);
   const URL = `${L.TEE}?token=${await L.tokenFor(L.TEE, O)}`; const ptok = []; for (const p of players) ptok.push(`${L.TEE}?token=${await L.tokenFor(L.TEE, p)}`);
   return { st, mint: process.env.CONCLAVE_MINT ? new PublicKey(process.env.CONCLAVE_MINT) : st.mint ? new PublicKey(st.mint) : null, players, validator, URL, ptok, codes: process.env.CONCLAVE_SOLO ? {} : L.loadPool(), hub: L.hubPda(), ata(o) { return L.getAssociatedTokenAddressSync(this.mint, o, true); }, save() { fs.writeFileSync(L.ROOT + "/client/state.json", JSON.stringify(this.st, null, 1)); } }; }
@@ -21,8 +24,8 @@ export async function initPool(c, sid) { const pool = L.poolPda(sid), pe = L.eat
   return L.sendBase([ixp(13, [K(O.publicKey, true, true), K(pe, true), K(pool), K(c.mint), K(SystemProgram.programId), K(L.ESPL), K(buf, true), K(L.pda([Buffer.from("delegation"), pe.toBuffer()], L.DLP), true), K(L.pda([Buffer.from("delegation-metadata"), pe.toBuffer()], L.DLP), true), K(L.DLP), K(c.validator), K(c.ata(pool), true), K(ATOKEN), K(L.TOKEN)], u64(sid))], [O]); }
 /** clock parameters are in rollup slots: window = entry window, seedTimeout = slots after Lock before anyone may cancel, grace = slots after Settle before an unpublished entry stops blocking Cleanup */
 export async function createSeason(c, sid, { neps, spt = 1, fee = 0, maxs = 20, finals = false, division = 2, window = 600, seedTimeout = 600, grace = 600, minEntrants = 1 }) { const arena = L.arenaPda(sid);
-  return L.sendTee(c.URL, [ixp(5, [K(O.publicKey, true, true), K(c.hub, true), K(arena, true), K(L.permissionPdaFromAccount(arena), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.receiptPda(sid), true)], Buffer.concat([u64(sid), u32(neps), u32(spt), u64(fee), c.mint.toBuffer(), Buffer.from([maxs, finals ? 2 : 0, division]), u64(window), u64(seedTimeout), u64(grace), Buffer.from([minEntrants])]))], [O]); }
-export const enterIx = (c, sid, o, id, ro = false) => { const p = c.players[o]; return ixp(6, [K(p.publicKey, false, true), K(L.stratPda(id)), K(L.arenaPda(sid), true), K(c.ata(p.publicKey), !ro), K(c.ata(L.poolPda(sid)), !ro), K(L.TOKEN)]); };
+  return L.sendTee(c.URL, [ixp(5, [K(O.publicKey, true, true), K(c.hub, true), K(arena, true), K(L.permissionPdaFromAccount(arena), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.receiptPda(sid), true), K(CONFIG)], Buffer.concat([u64(sid), u32(neps), u32(spt), u64(fee), c.mint.toBuffer(), Buffer.from([maxs, finals ? 2 : 0, division]), u64(window), u64(seedTimeout), u64(grace), Buffer.from([minEntrants])]))], [O]); }
+export const enterIx = (c, sid, o, id, ro = false) => { const p = c.players[o]; return ixp(6, [K(p.publicKey, false, true), K(L.stratPda(id)), K(L.arenaPda(sid), true), K(c.ata(p.publicKey), !ro), K(c.ata(L.poolPda(sid)), !ro), K(L.TOKEN), K(CONFIG)]); };
 export async function simErr(c, ixs, signers, cu = 1_400_000) { const tx = new L.Transaction().add(L.ComputeBudgetProgram.setComputeUnitLimit({ units: cu }), ...ixs); tx.feePayer = O.publicKey; tx.recentBlockhash = (await L.rpc(c.URL, "getLatestBlockhash")).result.value.blockhash; tx.sign(...signers); const r = (await L.rpc(c.URL, "simulateTransaction", [tx.serialize().toString("base64"), { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true }])).result?.value; return r && !r.err ? null : JSON.stringify(r?.err); }
 /** condition-based readiness: poll a simulated Enter until the pool token account is usable */
 export async function awaitPoolReady(c, sid, o, id, timeout = 90) { const t0 = Date.now(); for (;;) { const e = await simErr(c, [enterIx(c, sid, o, id)], [O, c.players[o]]); if (!e) return (Date.now() - t0) / 1000; if ((Date.now() - t0) / 1000 > timeout) throw new Error("pool not ready: " + e); await L.sleep(500); } }
@@ -50,3 +53,13 @@ export async function ownerRec(c, o, id) { const d = await L.readAcct(c.ptok[o],
 export async function bal(c, o) { const x = await L.readAcct(c.ptok[o], c.ata(c.players[o].publicKey)); return x ? Number(x.readBigUInt64LE(64)) : null; }
 // while a receipt is delegated its base owner is the delegation program, so it is identified by its magic, not its owner
 export async function readReceiptBase(sid, minPub) { for (let t = 0; t < 50; t++) { const b = await L.base.getAccountInfo(L.receiptPda(sid)); if (b && b.data.readUInt32LE(0) === 0x54435052 && b.data[6] >= minPub) return b.data; await L.sleep(1500); } return null; }
+
+/** InitConfig (base): only the program's upgrade authority can create the config, and it becomes the config authority */
+export const initConfigIx = () => ixp(19, [K(O.publicKey, true, true), K(CONFIG, true), K(SystemProgram.programId), K(PROGRAMDATA)]);
+export const delegateConfig = async c => L.sendBase([delegIx(c, O.publicKey, CONFIG, 3, 0n)], [O]);
+/** Admin (authority only, in the rollup): 0 pause, 1 unpause, 2 allow mint, 3 disallow mint, 4 set authority */
+export const adminIx = (sub, payload = Buffer.alloc(0)) => ixp(20, [K(O.publicKey, true, true), K(CONFIG, true)], Buffer.concat([Buffer.from([sub]), payload]));
+/** RecoverBond (authority only, in the rollup): closes the books on an orphaned receipt so ReleaseBond pays the recorded creator. Moves no lamports. */
+export const recoverBondIx = sid => ixp(21, [K(O.publicKey, true, true), K(CONFIG), K(L.receiptPda(sid), true), K(L.arenaPda(sid))], u64(sid));
+/** the config as the rollup sees it */
+export async function readConfig(c) { const d = await L.readAcct(c.URL, CONFIG); if (!d) return null; const n = d[5]; return { paused: d[4] !== 0, authority: new PublicKey(d.subarray(8, 40)), mints: Array.from({ length: n }, (_, i) => new PublicKey(d.subarray(64 + i * 32, 96 + i * 32))) }; }

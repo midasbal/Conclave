@@ -16,6 +16,7 @@ entrypoint!(process);
 const CB_DISC: [u8; 8] = [200, 1, 2, 3, 4, 5, 6, 7];
 const UNDELEGATE_DISC: [u8; 8] = [196, 28, 41, 206, 48, 37, 51, 167];
 const ESPL: Pubkey = solana_program::pubkey!("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2");
+const UPGRADEABLE_LOADER: Pubkey = solana_program::pubkey!("BPFLoaderUpgradeab1e11111111111111111111111");
 const TOKEN: Pubkey = solana_program::pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ATOKEN: Pubkey = solana_program::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 /// domain separation for the two hash commitments
@@ -24,6 +25,8 @@ const DOM_SCORE: &[u8] = b"CNCL-SCORE-v1";
 
 // ---- layouts ----
 pub const M_ARENA: u32 = 0x4152_4E41; pub const M_STRAT: u32 = 0x5354_5254; pub const M_REG: u32 = 0x5245_4753; pub const M_HUB: u32 = 0x4855_4221; pub const M_RCPT: u32 = 0x5443_5052;
+// config (PDA ["config"], delegated to the rollup so pause and allowlist changes act on the very next transaction): 0 magic | 4 paused u8 | 5 mint count u8 | 8 authority[32] | 64 allowed mints[8 x 32]
+pub const M_CFG: u32 = 0x4746_4E43; pub const C_PAUSED: usize = 4; pub const C_NMINTS: usize = 5; pub const C_AUTH: usize = 8; pub const C_MINTS: usize = 64; pub const MAX_MINTS: usize = 8; pub const CFG_SIZE: usize = C_MINTS + MAX_MINTS * 32;
 pub const CODE_MAX: usize = 4 + 4 * MAX_OPS;
 // strategy (ephemeral, sealed, PDA ["strat", id]): 0 magic | 4 len u16 | 8 owner | 40 id | 48 commitment | 80 last_season+1 | 88 last_rank u32 | 92 last_n u32 | 96 last_pnl i64 | 104 salt[32] | 136 code
 pub const S_OWNER: usize = 8; pub const S_ID: usize = 40; pub const S_COMMIT: usize = 48; pub const S_LSEASON: usize = 80; pub const S_LRANK: usize = 88; pub const S_LN: usize = 92; pub const S_LPNL: usize = 96; pub const S_SALT: usize = 104; pub const S_CODE: usize = 136;
@@ -87,6 +90,10 @@ fn check_pins(d: &[u8]) -> ProgramResult { if d[A_PINS..A_PINS + PINS_LEN] != pi
 fn check_receipt(rc: &AccountInfo, pid: &Pubkey, season: &[u8]) -> ProgramResult {
     if rc.owner != pid || rc.try_data_len()? < RC_SIZE || rd32(&rc.try_borrow_data()?, 0) != M_RCPT || Pubkey::find_program_address(&[b"receipt", season], pid).0 != *rc.key { return Err(ProgramError::Custom(9020)); } Ok(())
 }
+/// the one config account: this program's PDA, magic and full size. Anything else is refused (9063)
+fn check_config(c: &AccountInfo, pid: &Pubkey) -> ProgramResult { if c.owner != pid || c.try_data_len()? < CFG_SIZE || rd32(&c.try_borrow_data()?, 0) != M_CFG || Pubkey::find_program_address(&[b"config"], pid).0 != *c.key { return Err(ProgramError::Custom(9063)); } Ok(()) }
+fn cfg_authority(c: &AccountInfo, who: &AccountInfo) -> ProgramResult { if !who.is_signer { return Err(ProgramError::MissingRequiredSignature); } if &c.try_borrow_data()?[C_AUTH..C_AUTH + 32] != who.key.as_ref() { return Err(ProgramError::Custom(9062)); } Ok(()) }
+fn cfg_paused(c: &AccountInfo) -> Result<bool, ProgramError> { Ok(c.try_borrow_data()?[C_PAUSED] != 0) }
 /// a season receipt the program can trust: owner, size, magic and the PDA of this exact season
 fn rcpt_ok(rc: &AccountInfo, pid: &Pubkey, season: &[u8]) -> bool { rc.owner == pid && rc.try_data_len().map(|l| l >= RC_SIZE).unwrap_or(false) && rc.try_borrow_data().map(|d| rd32(&d, 0) == M_RCPT).unwrap_or(false) && Pubkey::find_program_address(&[b"receipt", season], pid).0 == *rc.key }
 /// SPL token account balance; anything that is not a token account is an error, never a zero
@@ -141,6 +148,7 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
                 0 => { if Pubkey::find_program_address(&[b"hub"], pid).0 != *pda.key { return Err(bad!()); } delegate_account(acc, &[b"hub"], cfg) }
                 1 => { if Pubkey::find_program_address(&[b"reg", &rest[1..9]], pid).0 != *pda.key { return Err(bad!()); } check_reg(pda, pid)?; { let r = pda.try_borrow_data()?; if &r[R_OWNER..R_OWNER + 32] != payer.key.as_ref() || r[R_ID..R_ID + 8] != rest[1..9] { return Err(bad!()); } } delegate_account(acc, &[b"reg", &rest[1..9]], cfg) }
                 2 => { if Pubkey::find_program_address(&[b"receipt", &rest[1..9]], pid).0 != *pda.key { return Err(bad!()); } if pda.owner != pid || pda.try_data_len()? < RC_SIZE || rd32(&pda.try_borrow_data()?, 0) != M_RCPT { return Err(bad!()); } delegate_account(acc, &[b"receipt", &rest[1..9]], cfg) }
+                3 => { if Pubkey::find_program_address(&[b"config"], pid).0 != *pda.key { return Err(bad!()); } check_config(pda, pid)?; cfg_authority(pda, payer)?; delegate_account(acc, &[b"config"], cfg) }
                 _ => Err(bad!()),
             }
         }
@@ -168,13 +176,16 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         // data: season u64, neps u32, spt u32, fee u64, mint[32], maxs u8, flags u8, division u8, window u64 (entry window, slots), seed_timeout u64 (slots after lock), publish_grace u64 (slots after settle), min_entrants u8
         // The receipt must be fresh and carry the creator's bond (lamports posted at InitReceipt); a receipt opens exactly one arena, so a season id can never be created twice against one bond.
         5 => {
-            let (auth, hub, arena, perm, vault, magic, pp, rc) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            let (auth, hub, arena, perm, vault, magic, pp, rc, cfgacc) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
             if !auth.is_signer || rest.len() < 84 { return Err(ProgramError::MissingRequiredSignature); }
             let sid = &rest[0..8]; let maxs = rest[56] as usize; let division = rest[58] as usize; let neps_in = ru32(rest, 8)?; if maxs == 0 || maxs > MAX_SLOTS || division >= DIVISIONS.len() || neps_in == 0 || neps_in > MAX_EPISODES { return Err(bad!()); }
             let (window, seedto, grace, mins) = (ru64(rest, 59)?, ru64(rest, 67)?, ru64(rest, 75)?, rest[83]);
             if window == 0 || window > MAX_WINDOW || seedto == 0 || seedto > MAX_WINDOW || grace == 0 || grace > MAX_WINDOW || mins == 0 || usize::from(mins) > maxs { return Err(ProgramError::Custom(9035)); }
             let (ap, abump) = Pubkey::find_program_address(&[b"arena", sid], pid); if ap != *arena.key { return Err(bad!()); }
             let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if hp != *hub.key { return Err(bad!()); }
+            // access guards: not while paused, and only an allowlisted stake mint (rules out mints with freeze authorities, transfer hooks or other surprises)
+            check_config(cfgacc, pid)?; if cfg_paused(cfgacc)? { return Err(ProgramError::Custom(9060)); }
+            { let c = cfgacc.try_borrow_data()?; let n = usize::from(c[C_NMINTS]).min(MAX_MINTS); if !(0..n).any(|i| c[C_MINTS + i * 32..C_MINTS + i * 32 + 32] == rest[24..56]) { return Err(ProgramError::Custom(9061)); } }
             check_receipt(rc, pid, sid)?; if !rc.is_writable { return Err(bad!()); }
             { let r = rc.try_borrow_data()?; if r[RC_STATE] != 0 { return Err(ProgramError::Custom(9051)); } if &r[RC_CREATOR..RC_CREATOR + 32] != auth.key.as_ref() { return Err(ProgramError::Custom(9052)); }
               let bond = rd64(&r, RC_BOND); if bond < BOND_MIN { return Err(ProgramError::Custom(9050)); } if rc.lamports() < bond { return Err(ProgramError::Custom(9053)); } }
@@ -194,7 +205,8 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         }
         // 6 Enter (TEE): [owner(s), strat, arena(w), owner_ata(w), pool_ata(w), token_program]
         6 => {
-            let (owner, strat, arena, oe, pe, tp) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            let (owner, strat, arena, oe, pe, tp, cfgacc) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            check_config(cfgacc, pid)?; if cfg_paused(cfgacc)? { return Err(ProgramError::Custom(9060)); } // paused: no new money enters; everything that unwinds a season stays open
             check_arena(arena, pid)?; check_strat(strat, pid)?;
             let s = strat.try_borrow_data()?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
             if !owner.is_signer || &s[S_OWNER..S_OWNER + 32] != owner.key.as_ref() || d[A_FLAGS] & F_LOCKED != 0 { return Err(ProgramError::MissingRequiredSignature); }
@@ -406,6 +418,42 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
             if rc.owner != pid || rc.try_data_len()? < RC_SIZE { return Err(ProgramError::Custom(9054)); }
             let amt = { let r = rc.try_borrow_data()?; if rd32(&r, 0) != M_RCPT || r[RC_STATE] != 2 || Pubkey::find_program_address(&[b"receipt", &r[RC_SEASON..RC_SEASON + 8]], pid).0 != *rc.key || &r[RC_CREATOR..RC_CREATOR + 32] != creator.key.as_ref() { return Err(ProgramError::Custom(9054)); } rd64(&r, RC_RELEASE) };
             move_lamports(rc, creator, amt)?; wr64(&mut rc.try_borrow_mut_data()?, RC_RELEASE, 0); Ok(())
+        }
+        // 19 InitConfig (base): [authority(s,w), config(w), system, program_data]. Only the program's upgrade authority can create the config, and it becomes the config authority (movable later with Admin 4, e.g. to a multisig)
+        19 => {
+            let (auth, cfgacc, sys, pdata) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            let (cp, cbump) = Pubkey::find_program_address(&[b"config"], pid); if cp != *cfgacc.key || !auth.is_signer { return Err(bad!()); }
+            if Pubkey::find_program_address(&[pid.as_ref()], &UPGRADEABLE_LOADER).0 != *pdata.key || pdata.owner != &UPGRADEABLE_LOADER { return Err(ProgramError::Custom(9062)); }
+            { let d = pdata.try_borrow_data()?; if d.len() < 45 || rd32(&d, 0) != 3 || d[12] != 1 || &d[13..45] != auth.key.as_ref() { return Err(ProgramError::Custom(9062)); } }
+            invoke_signed(&system_instruction::create_account(auth.key, cfgacc.key, Rent::get()?.minimum_balance(CFG_SIZE).max(1), CFG_SIZE as u64, pid), &[auth.clone(), cfgacc.clone(), sys.clone()], &[&[b"config", &[cbump]]])?;
+            let mut c = cfgacc.try_borrow_mut_data()?; c[0..4].copy_from_slice(&M_CFG.to_le_bytes()); c[C_AUTH..C_AUTH + 32].copy_from_slice(auth.key.as_ref()); Ok(())
+        }
+        // 20 Admin (authority only; run in the rollup against the delegated config): [authority(s), config(w)]; data: 0 pause | 1 unpause | 2 allow mint[32] | 3 disallow mint[32] | 4 set authority[32]
+        20 => {
+            let (auth, cfgacc) = (next_account_info(it)?, next_account_info(it)?); check_config(cfgacc, pid)?; cfg_authority(cfgacc, auth)?; if !cfgacc.is_writable { return Err(bad!()); }
+            need(1)?; let mut c = cfgacc.try_borrow_mut_data()?;
+            match rest[0] {
+                0 => { c[C_PAUSED] = 1; Ok(()) }
+                1 => { c[C_PAUSED] = 0; Ok(()) }
+                2 => { let m: [u8; 32] = arr::<32>(rest, 1)?; let n = usize::from(c[C_NMINTS]).min(MAX_MINTS); if (0..n).any(|i| c[C_MINTS + i * 32..C_MINTS + i * 32 + 32] == m) { return Ok(()); } if n >= MAX_MINTS { return Err(ProgramError::Custom(9064)); }
+                    c[C_MINTS + n * 32..C_MINTS + n * 32 + 32].copy_from_slice(&m); c[C_NMINTS] = (n + 1) as u8; Ok(()) }
+                3 => { let m: [u8; 32] = arr::<32>(rest, 1)?; let n = usize::from(c[C_NMINTS]).min(MAX_MINTS); let i = (0..n).find(|&i| c[C_MINTS + i * 32..C_MINTS + i * 32 + 32] == m).ok_or(bad!())?;
+                    let last = (n - 1) * 32 + C_MINTS; let tmp: [u8; 32] = arr::<32>(&c, last)?; c[C_MINTS + i * 32..C_MINTS + i * 32 + 32].copy_from_slice(&tmp); c[last..last + 32].fill(0); c[C_NMINTS] = (n - 1) as u8; Ok(()) }
+                4 => { let m: [u8; 32] = arr::<32>(rest, 1)?; if m == [0u8; 32] { return Err(bad!()); } c[C_AUTH..C_AUTH + 32].copy_from_slice(&m); Ok(()) }
+                _ => Err(ProgramError::InvalidInstructionData),
+            }
+        }
+        // 21 RecoverBond (authority only, in the rollup): [authority(s), config, receipt(w), arena]; data: season u64.
+        // For a season whose bond has no release path (receipt not closed, season written or cancelled, arena gone from the rollup) it moves the receipt to the closed state with the whole bond releasable.
+        // It moves no lamports itself: the existing ReleaseBond on base then pays the creator recorded on the receipt, so the authority can never receive anything. It refuses any live, fresh or already closed receipt.
+        21 => {
+            let (auth, cfgacc, rc, arena) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            check_config(cfgacc, pid)?; cfg_authority(cfgacc, auth)?; need(8)?; let sid = &rest[0..8];
+            if Pubkey::find_program_address(&[b"arena", sid], pid).0 != *arena.key || arena.try_data_len()? != 0 || !rcpt_ok(rc, pid, sid) || !rc.is_writable { return Err(ProgramError::Custom(9070)); }
+            let mut r = rc.try_borrow_mut_data()?;
+            let written = r[RC_NS] != 0 || r[RC_KIND] == 2; // Settle or Cancel wrote this season's header: a fresh or merely opened receipt is not orphaned
+            if r[RC_STATE] == 2 || !written || r[RC_SEASON..RC_SEASON + 8] != *sid { return Err(ProgramError::Custom(9070)); }
+            let rel = rd64(&r, RC_BOND).min(rc.lamports()); wr64(&mut r, RC_RELEASE, rel); wr64(&mut r, RC_FORFEIT, 0); r[RC_STATE] = 2; Ok(())
         }
         _ => Err(ProgramError::InvalidInstructionData),
     }
