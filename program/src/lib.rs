@@ -33,7 +33,9 @@ pub const R_OWNER: usize = 8; pub const R_ID: usize = 40; pub const R_COMMIT: us
 pub const REG_SIZE: usize = 128;
 // season receipt (base, delegated while the season runs, committed at the end, PDA ["receipt", season])
 pub const RC_KIND: usize = 4; pub const RC_NS: usize = 5; pub const RC_PUB: usize = 6; pub const RC_DIV: usize = 7; pub const RC_SEASON: usize = 8; pub const RC_PARENT: usize = 16; pub const RC_RULESET: usize = 24; pub const RC_VERSION: usize = 26; pub const RC_GEN: usize = 27;
-pub const RC_PACKS: usize = 28; pub const RC_NEPS: usize = 32; pub const RC_SEEDA: usize = 40; pub const RC_SEEDB: usize = 48; pub const RC_PINS: usize = 56; pub const RC_ENT: usize = 128; pub const RC_ESZ: usize = 80;
+pub const RC_PACKS: usize = 28; pub const RC_NEPS: usize = 32; pub const RC_SEEDA: usize = 40; pub const RC_SEEDB: usize = 48; pub const RC_PINS: usize = 56; pub const RC_ENT: usize = 192; pub const RC_ESZ: usize = 80;
+// money records on the receipt: 104 creator[32] | 136 bond u64 (lamports held above rent, posted at InitReceipt) | 144 state u8 (0 fresh, 1 season opened, 2 closed) | 145 reason u8 | 152 refunded u64 (fees refunded, or the finals reserve redirected) | 160 hub rent drawn | 168 hub rent reclaimed | 176 bond forfeited to the hub | 184 bond releasable to the creator
+pub const RC_CREATOR: usize = 104; pub const RC_BOND: usize = 136; pub const RC_STATE: usize = 144; pub const RC_REASON: usize = 145; pub const RC_REFUNDED: usize = 152; pub const RC_RENT: usize = 160; pub const RC_RECLAIMED: usize = 168; pub const RC_FORFEIT: usize = 176; pub const RC_RELEASE: usize = 184;
 // entry: 0 id u64 | 8 code commitment | 40 score commitment | 72 rank u32 | 76 wins u16
 pub const RC_SIZE: usize = RC_ENT + 20 * RC_ESZ;
 // arena header
@@ -42,6 +44,12 @@ pub const A_CUREP: usize = 88; pub const A_CURTICK: usize = 92; pub const A_STAR
 pub const A_MKT: usize = 160; pub const A_RET: usize = A_MKT + 352;
 pub const A_PARENT: usize = 1112; pub const A_RESERVE: usize = 1120; pub const A_F2: usize = 1128; pub const A_PUBN: usize = 1129;
 pub const A_PINS: usize = 1152; pub const A_DIV: usize = 1200; pub const HDR: usize = 1280;
+// season clock and money guards: 1208 created slot | 1216 entry window (slots) | 1224 seed timeout after lock | 1232 lock slot | 1240 settle slot | 1248 publish grace | 1256 hub rent drawn at creation | 1264 min entrants | 1265 cancel reason
+pub const A_CREATED: usize = 1208; pub const A_WINDOW: usize = 1216; pub const A_SEEDTO: usize = 1224; pub const A_LOCKAT: usize = 1232; pub const A_SETTLEDAT: usize = 1240; pub const A_PUBGRACE: usize = 1248; pub const A_RENT: usize = 1256; pub const A_MINS: usize = 1264; pub const A_REASON: usize = 1265;
+pub const F2_CANCELLED: u8 = 8; pub const F2_REFUNDED: u8 = 16;
+pub const REASON_UNDERMIN: u8 = 1; pub const REASON_SEEDTO: u8 = 2; pub const REASON_CREATOR: u8 = 3; pub const REASON_FINALS: u8 = 4;
+/// creation bond in lamports (held in the season receipt): refunded to the creator at cleanup, 25% forfeited to the hub when the creator abandons the season
+pub const BOND_MIN: u64 = 1_000_000; pub const FORFEIT_PCT: u64 = 25; pub const MAX_WINDOW: u64 = 200_000_000;
 // slot: 0 owner | 32 id u64 | 40 len u16 | 42 wins u16 | 44 rank u32 | 48 total i64 | 56 ep_last i64 | 64 seat(112) | 176 code(260)
 pub const SL_OWNER: usize = 0; pub const SL_ID: usize = 32; pub const SL_LEN: usize = 40; pub const SL_WINS: usize = 42; pub const SL_RANK: usize = 44; pub const SL_TOTAL: usize = 48; pub const SL_EPLAST: usize = 56; pub const SL_SEAT: usize = 64; pub const SL_CODE: usize = 176; pub const SLOT: usize = 440;
 pub const MAX_EPISODES: u32 = 100_000;
@@ -49,7 +57,7 @@ pub const F2_FINALS: u8 = 1; pub const F2_HASFIN: u8 = 2; pub const F2_FINSTARTE
 pub const F_LOCKED: u8 = 1; pub const F_REQ: u8 = 2; pub const F_SEEDED: u8 = 4; pub const F_DONE: u8 = 8; pub const F_SETTLED: u8 = 16;
 pub fn arena_size(maxs: usize) -> usize { HDR + maxs * SLOT }
 // compile-time layout guarantees the VM relies on: Market::load/Seat::load/save index fixed-size slices, so these regions must be large enough (a violation would be a build error, not a runtime abort)
-const _: () = assert!(SL_SEAT + Seat::BYTES <= SL_CODE && A_MKT + Market::BYTES <= A_RET && A_RET + 4 * world::WORLD_T <= A_PARENT && SL_CODE + CODE_MAX <= SLOT && A_PINS + PINS_LEN <= A_DIV && HDR == 1280 && HDR + MAX_SLOTS * SLOT <= 10_240);
+const _: () = assert!(SL_SEAT + Seat::BYTES <= SL_CODE && A_MKT + Market::BYTES <= A_RET && A_RET + 4 * world::WORLD_T <= A_PARENT && SL_CODE + CODE_MAX <= SLOT && A_PINS + PINS_LEN <= A_DIV && HDR == 1280 && HDR + MAX_SLOTS * SLOT <= 10_240 && A_DIV < A_CREATED && A_REASON < HDR && RC_RELEASE + 8 <= RC_ENT && RC_PINS + PINS_LEN <= RC_CREATOR);
 // metering model (compute units), calibrated on SBF: per tick TICK_BASE + sum over seats (SEAT_BASE + SEAT_PER_WORK * work), times SAFETY_PCT; episode start adds GEN_COST; each call adds a load/save tail
 const GEN_COST: u64 = 330_000; const TAIL_BASE: u64 = 15_000; const TAIL_PER_SEAT: u64 = 2_200; const TICK_BASE: u64 = 4_600; const SEAT_BASE: u64 = 700; const SEAT_PER_WORK: u64 = 90; const SAFETY_PCT: u64 = 115;
 
@@ -79,6 +87,13 @@ fn check_pins(d: &[u8]) -> ProgramResult { if d[A_PINS..A_PINS + PINS_LEN] != pi
 fn check_receipt(rc: &AccountInfo, pid: &Pubkey, season: &[u8]) -> ProgramResult {
     if rc.owner != pid || rc.try_data_len()? < RC_SIZE || rd32(&rc.try_borrow_data()?, 0) != M_RCPT || Pubkey::find_program_address(&[b"receipt", season], pid).0 != *rc.key { return Err(ProgramError::Custom(9020)); } Ok(())
 }
+/// a season receipt the program can trust: owner, size, magic and the PDA of this exact season
+fn rcpt_ok(rc: &AccountInfo, pid: &Pubkey, season: &[u8]) -> bool { rc.owner == pid && rc.try_data_len().map(|l| l >= RC_SIZE).unwrap_or(false) && rc.try_borrow_data().map(|d| rd32(&d, 0) == M_RCPT).unwrap_or(false) && Pubkey::find_program_address(&[b"receipt", season], pid).0 == *rc.key }
+/// SPL token account balance; anything that is not a token account is an error, never a zero
+fn token_balance(a: &AccountInfo) -> Result<u64, ProgramError> { if *a.owner != TOKEN || a.try_data_len()? < 72 { return Err(ProgramError::Custom(9041)); } Ok(rd64(&a.try_borrow_data()?, 64)) }
+/// move lamports between two program-owned accounts (the receipt bond and the hub): checked, never below zero
+fn move_lamports(from: &AccountInfo, to: &AccountInfo, amt: u64) -> ProgramResult { if amt == 0 { return Ok(()); }
+    let f = from.lamports().checked_sub(amt).ok_or(ProgramError::InsufficientFunds)?; let t = to.lamports().checked_add(amt).ok_or(ProgramError::ArithmeticOverflow)?; **from.try_borrow_mut_lamports()? = f; **to.try_borrow_mut_lamports()? = t; Ok(()) }
 /// eSPL bookkeeping record (what gets delegated)
 fn espl_eata(owner: &Pubkey, mint: &Pubkey) -> Pubkey { Pubkey::find_program_address(&[owner.as_ref(), mint.as_ref()], &ESPL).0 }
 /// standard ATA address: this is the token account the ER transfers operate on
@@ -149,22 +164,33 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
             CreateEphemeralPermissionCpi { payer: hub.clone(), permissioned_account: strat.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(),
                 args: EphemeralMembersArgs { is_private: true, members: owner_member(owner.key) } }.invoke_signed(&[hs, ss])
         }
-        // 5 CreateSeason (TEE): [authority(s), hub(w), arena(w), permission(w), vault(w), magic, permission_program]; data: season u64, neps u32, spt u32, fee u64, mint[32], maxs u8, flags u8, division u8
+        // 5 CreateSeason (TEE): [authority(s), hub(w), arena(w), permission(w), vault(w), magic, permission_program, receipt(w)]
+        // data: season u64, neps u32, spt u32, fee u64, mint[32], maxs u8, flags u8, division u8, window u64 (entry window, slots), seed_timeout u64 (slots after lock), publish_grace u64 (slots after settle), min_entrants u8
+        // The receipt must be fresh and carry the creator's bond (lamports posted at InitReceipt); a receipt opens exactly one arena, so a season id can never be created twice against one bond.
         5 => {
-            let (auth, hub, arena, perm, vault, magic, pp) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
-            if !auth.is_signer || rest.len() < 59 { return Err(ProgramError::MissingRequiredSignature); }
+            let (auth, hub, arena, perm, vault, magic, pp, rc) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            if !auth.is_signer || rest.len() < 84 { return Err(ProgramError::MissingRequiredSignature); }
             let sid = &rest[0..8]; let maxs = rest[56] as usize; let division = rest[58] as usize; let neps_in = ru32(rest, 8)?; if maxs == 0 || maxs > MAX_SLOTS || division >= DIVISIONS.len() || neps_in == 0 || neps_in > MAX_EPISODES { return Err(bad!()); }
+            let (window, seedto, grace, mins) = (ru64(rest, 59)?, ru64(rest, 67)?, ru64(rest, 75)?, rest[83]);
+            if window == 0 || window > MAX_WINDOW || seedto == 0 || seedto > MAX_WINDOW || grace == 0 || grace > MAX_WINDOW || mins == 0 || usize::from(mins) > maxs { return Err(ProgramError::Custom(9035)); }
             let (ap, abump) = Pubkey::find_program_address(&[b"arena", sid], pid); if ap != *arena.key { return Err(bad!()); }
             let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if hp != *hub.key { return Err(bad!()); }
-            let hs: &[&[u8]] = &[b"hub", &[hbump]]; let asd: &[&[u8]] = &[b"arena", sid, &[abump]];
+            check_receipt(rc, pid, sid)?; if !rc.is_writable { return Err(bad!()); }
+            { let r = rc.try_borrow_data()?; if r[RC_STATE] != 0 { return Err(ProgramError::Custom(9051)); } if &r[RC_CREATOR..RC_CREATOR + 32] != auth.key.as_ref() { return Err(ProgramError::Custom(9052)); }
+              let bond = rd64(&r, RC_BOND); if bond < BOND_MIN { return Err(ProgramError::Custom(9050)); } if rc.lamports() < bond { return Err(ProgramError::Custom(9053)); } }
+            let hs: &[&[u8]] = &[b"hub", &[hbump]]; let asd: &[&[u8]] = &[b"arena", sid, &[abump]]; let slot = Clock::get()?.slot; let hub0 = hub.lamports();
             EphemeralAccount::new(hub, arena, vault).with_signer_seeds(&[hs, asd]).create(arena_size(maxs) as u32)?;
             if arena.try_data_len()? < arena_size(maxs) { return Err(ProgramError::AccountDataTooSmall); }
             { let mut d = arena.try_borrow_mut_data()?; d[0..4].copy_from_slice(&M_ARENA.to_le_bytes()); d[A_MAXS] = maxs as u8; d[A_AUTH..A_AUTH + 32].copy_from_slice(auth.key.as_ref()); d[A_SEASON..A_SEASON + 8].copy_from_slice(sid);
               wr32(&mut d, A_NEPS, ru32(rest, 8)?); wr32(&mut d, A_SPT, ru32(rest, 12)?); wr64(&mut d, A_FEE, ru64(rest, 16)?); d[A_MINT..A_MINT + 32].copy_from_slice(&rest[24..56]); d[A_BUMP] = abump;
-              d[A_F2] = rest[57] & F2_HASFIN; d[A_DIV] = division as u8; d[A_PINS..A_PINS + PINS_LEN].copy_from_slice(&pins_bytes()); }
+              d[A_F2] = rest[57] & F2_HASFIN; d[A_DIV] = division as u8; d[A_PINS..A_PINS + PINS_LEN].copy_from_slice(&pins_bytes());
+              wr64(&mut d, A_CREATED, slot); wr64(&mut d, A_WINDOW, window); wr64(&mut d, A_SEEDTO, seedto); wr64(&mut d, A_PUBGRACE, grace); d[A_MINS] = mins; }
             // private, members = [] : nobody (not even the authority) can read the arena
             CreateEphemeralPermissionCpi { payer: hub.clone(), permissioned_account: arena.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(),
-                args: EphemeralMembersArgs { is_private: true, members: vec![] } }.invoke_signed(&[hs, asd])
+                args: EphemeralMembersArgs { is_private: true, members: vec![] } }.invoke_signed(&[hs, asd])?;
+            // what this arena (and its permission) drew from the shared hub, measured; reconciled against the refund and the bond at Cleanup
+            let rent = hub0.saturating_sub(hub.lamports()); wr64(&mut arena.try_borrow_mut_data()?, A_RENT, rent);
+            let mut r = rc.try_borrow_mut_data()?; r[RC_STATE] = 1; wr64(&mut r, RC_RENT, rent); Ok(())
         }
         // 6 Enter (TEE): [owner(s), strat, arena(w), owner_ata(w), pool_ata(w), token_program]
         6 => {
@@ -172,6 +198,7 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
             check_arena(arena, pid)?; check_strat(strat, pid)?;
             let s = strat.try_borrow_data()?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
             if !owner.is_signer || &s[S_OWNER..S_OWNER + 32] != owner.key.as_ref() || d[A_FLAGS] & F_LOCKED != 0 { return Err(ProgramError::MissingRequiredSignature); }
+            if Clock::get()?.slot >= rd64(&d, A_CREATED).saturating_add(rd64(&d, A_WINDOW)) { return Err(ProgramError::Custom(9030)); } // the entry window is closed
             let (sp, _) = Pubkey::find_program_address(&[b"strat", &s[S_ID..S_ID + 8]], pid); if sp != *strat.key { return Err(bad!()); }
             let ns = d[A_NS] as usize; if ns >= d[A_MAXS] as usize { return Err(bad!()); }
             let l = usize::from(u16::from_le_bytes([s[4], s[5]])); if l > CODE_MAX { return Err(bad!()); } let code = &s[S_CODE..S_CODE + l];
@@ -185,14 +212,19 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
             d[o..o + SLOT].fill(0); d[o + SL_OWNER..o + SL_OWNER + 32].copy_from_slice(&s[S_OWNER..S_OWNER + 32]); d[o + SL_ID..o + SL_ID + 8].copy_from_slice(&s[S_ID..S_ID + 8]); d[o + SL_LEN..o + SL_LEN + 2].copy_from_slice(&(l as u16).to_le_bytes());
             d[o + SL_CODE..o + SL_CODE + l].copy_from_slice(code); d[A_NS] = d[A_NS].checked_add(1).ok_or(bad!())?; Ok(())
         }
-        // 7 Lock (TEE): [authority(s), arena(w)]
+        // 7 Lock (TEE): [signer(s), arena(w)]. The creator may lock at any time; ANYONE may lock once the entry window has elapsed, so an absent creator cannot strand a season.
+        // A field below the minimum at lock is cancelled instead (refunds follow via Cancel); the creator cannot cancel early this way, only after the window.
         7 => { let (auth, arena) = (next_account_info(it)?, next_account_info(it)?); check_arena(arena, pid)?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
-            if !auth.is_signer || &d[A_AUTH..A_AUTH + 32] != auth.key.as_ref() || d[A_NS] == 0 { return Err(bad!()); } d[A_FLAGS] |= F_LOCKED; Ok(()) }
+            if !auth.is_signer || d[A_FLAGS] & F_LOCKED != 0 { return Err(bad!()); }
+            let slot = Clock::get()?.slot; let elapsed = slot >= rd64(&d, A_CREATED).saturating_add(rd64(&d, A_WINDOW)); let creator = &d[A_AUTH..A_AUTH + 32] == auth.key.as_ref();
+            if !creator && !elapsed { return Err(ProgramError::Custom(9032)); }
+            if d[A_NS] < d[A_MINS].max(1) { if !elapsed { return Err(ProgramError::Custom(9031)); } d[A_F2] |= F2_CANCELLED; d[A_REASON] = REASON_UNDERMIN; }
+            d[A_FLAGS] |= F_LOCKED; wr64(&mut d, A_LOCKAT, slot); Ok(()) }
         // 8 RequestSeed (permissionless after lock): [payer(s,w), arena(w), identity, queue(w), system, slot_hashes, vrf_program]
         8 => {
             let (payer, arena, identity, queue, sys, slots, vrf) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
             check_arena(arena, pid)?;
-            { let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?; if d[A_FLAGS] & F_LOCKED == 0 || d[A_FLAGS] & F_REQ != 0 { return Err(bad!()); } d[A_FLAGS] |= F_REQ; }
+            { let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?; if d[A_FLAGS] & F_LOCKED == 0 || d[A_FLAGS] & F_REQ != 0 || d[A_F2] & F2_CANCELLED != 0 { return Err(bad!()); } d[A_FLAGS] |= F_REQ; }
             let (idpda, bump) = Pubkey::find_program_address(&[b"identity"], pid); if idpda != *identity.key { return Err(bad!()); }
             let params = RequestRandomnessParams { payer: payer.key.compat(), oracle_queue: queue.key.compat(), callback_program_id: pid.compat(), callback_discriminator: CB_DISC.to_vec(), caller_seed: [7u8; 32],
                 accounts_metas: Some(vec![ephemeral_rollups_sdk::vrf::types::SerializableAccountMeta { pubkey: arena.key.compat(), is_signer: false, is_writable: true }]), callback_args: None };
@@ -201,11 +233,13 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         }
         // 9 Advance (permissionless, clock-gated, idempotent, work-metered): [arena(w)]; data: max_ticks u16, budget_k u16 (the transaction's compute limit in thousands; the program decides how many ticks that budget buys)
         9 => { need(2)?; let arena = next_account_info(it)?; check_arena(arena, pid)?; let budget = if rest.len() >= 4 { u64::from(u16::from_le_bytes([rest[2], rest[3]])) * 1000 } else { 200_000 }; advance(arena, u64::from(u16::from_le_bytes([rest[0], rest[1]])), budget) }
-        // 10 Settle (permissionless): [crank(s), arena(w), receipt(w), pool_pda, pool_ata(w), token_program, entrant_atas(w)...]
+        // 10 Settle (permissionless): [crank(s), arena(w), receipt(w), pool_pda, pool_ata(w), token_program, entrant_atas(w)... (slot order), then optional (strat(w), reg(w)) pairs for entries 0, 1, 2, ...]
+        // Money guards, all before any token moves: the pool bookkeeping must equal fee x entrants exactly, the pool token account must hold at least what is owed (a donation to the pool cannot block settlement, a shortfall refuses it),
+        // and after paying the sum of payouts must equal the pot to the unit. Every entry whose strat and registry accounts are supplied is published inline; the rest stay publishable and cannot block Cleanup past the publish grace.
         10 => {
             let (_crank, arena, receipt, pool, pe, tp) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
             check_arena(arena, pid)?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
-            if d[A_FLAGS] & F_DONE == 0 || d[A_FLAGS] & F_SETTLED != 0 { return Err(bad!()); }
+            if d[A_FLAGS] & F_DONE == 0 || d[A_FLAGS] & F_SETTLED != 0 || d[A_F2] & F2_CANCELLED != 0 { return Err(bad!()); }
             let ns = d[A_NS] as usize; let fin = d[A_F2] & F2_FINALS != 0; let mint = pk(&d, A_MINT);
             check_receipt(receipt, pid, &d[A_SEASON..A_SEASON + 8])?; { if receipt.try_borrow_data()?[RC_NS] != 0 { return Err(ProgramError::Custom(9021)); } }
             let sid = if fin { d[A_PARENT..A_PARENT + 8].to_vec() } else { d[A_SEASON..A_SEASON + 8].to_vec() }; // finals pay out of the PARENT season's pool PDA
@@ -219,41 +253,39 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
               let pins = &d[A_PINS..A_PINS + PINS_LEN]; r[RC_RULESET..RC_RULESET + 2].copy_from_slice(&pins[0..2]); r[RC_VERSION] = pins[2]; r[RC_GEN] = pins[3]; r[RC_PACKS] = packs[0] as u8; r[RC_PACKS + 1] = packs[1] as u8;
               wr32(&mut r, RC_NEPS, rd32(&d, A_NEPS)); wr64(&mut r, RC_SEEDA, sa); wr64(&mut r, RC_SEEDB, sb); r[RC_PINS..RC_PINS + PINS_LEN].copy_from_slice(pins);
               for i in 0..ns { let e = RC_ENT + i * RC_ESZ; let o = HDR + i * SLOT; let id: [u8; 8] = arr::<8>(&d, o + SL_ID)?; r[e..e + 8].copy_from_slice(&id); let rk = rd32(&d, o + SL_RANK); wr32(&mut r, e + 72, rk); r[e + 76..e + 78].copy_from_slice(&d[o + SL_WINS..o + SL_WINS + 2]); } }
-            let gross = rd64(&d, A_POOL);
+            let gross = rd64(&d, A_POOL); let fee = rd64(&d, A_FEE);
+            if !fin && gross != fee.checked_mul(ns as u64).ok_or(bad!())? { return Err(ProgramError::Custom(9040)); } // the pool bookkeeping is exactly what the entrants paid
             let (pot, shares): (u64, &[u64]) = if fin { (rd64(&d, A_RESERVE), &[100]) } else {
                 let pay = if d[A_F2] & F2_HASFIN != 0 { gross - u64::try_from(u128::from(gross) * u128::from(FINALS_BPS) / 100).unwrap_or(gross) } else { gross }; wr64(&mut d, A_RESERVE, gross - pay);
                 (pay, match ns { 1 => &[100], 2 => &[60, 40], _ => &[50, 30, 20] }) };
             let (pp, pbump) = Pubkey::find_program_address(&[b"pool", &sid], pid); if pp != *pool.key || *pe.key != ata(&pp, &mint) { return Err(bad!()); }
+            // solvency: the pool must hold at least the pot plus whatever it still owes the finals (>= and not ==: anyone can donate to a pool address, and that must not be able to block a season)
+            let owed = if fin { pot } else { gross }; if token_balance(pe)? < owed { return Err(ProgramError::Custom(9041)); }
             // winners are located INSIDE the program: the caller passes every entrant's token account in slot order and learns nothing about the ranking
             let atas: Vec<&AccountInfo> = it.collect(); if atas.len() < ns { return Err(bad!()); }
             let mut paid = 0u64; let np = shares.len().min(ns);
             for k in 0..np { let i = order[k]; let w = atas[i]; let owner = pk(&d, HDR + i * SLOT + SL_OWNER);
                 if *w.key != ata(&owner, &mint) { return Err(bad!()); } let amt = if k == np - 1 { pot.checked_sub(paid).ok_or(bad!())? } else { u64::try_from(u128::from(pot) * u128::from(shares[k]) / 100).map_err(|_| bad!())? };
                 if amt > 0 { token_transfer(pe, w, pool, tp, amt, &[&[b"pool", &sid, &[pbump]]])?; } paid = paid.checked_add(amt).ok_or(bad!())?; }
-            d[A_FLAGS] |= F_SETTLED; Ok(())
+            if paid != pot { return Err(ProgramError::Custom(9042)); }
+            let extra = &atas[ns..]; for j in 0..(extra.len() / 2).min(ns) { publish_entry(&mut d, j, extra[2 * j], extra[2 * j + 1], receipt, pid)?; }
+            d[A_FLAGS] |= F_SETTLED; wr64(&mut d, A_SETTLEDAT, Clock::get()?.slot); Ok(())
         }
         // 11 Publish (permissionless after settle): [crank(s), arena(w), strat(w), reg(w), receipt(w)]; data: slot u8
         11 => {
             let (_c, arena, strat, reg, receipt) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
             check_arena(arena, pid)?; let mut d = arena.try_borrow_mut_data()?; if d[A_FLAGS] & F_SETTLED == 0 { return Err(bad!()); }
-            need(1)?; let i = usize::from(rest[0]); if i >= usize::from(d[A_NS]) { return Err(bad!()); } let o = HDR + i * SLOT; let id: [u8; 8] = arr::<8>(&d, o + SL_ID)?;
-            check_strat(strat, pid)?; check_reg(reg, pid)?;
-            if Pubkey::find_program_address(&[b"strat", &id], pid).0 != *strat.key || Pubkey::find_program_address(&[b"reg", &id], pid).0 != *reg.key { return Err(bad!()); }
-            check_receipt(receipt, pid, &d[A_SEASON..A_SEASON + 8])?;
-            let (rank, total, ns, season, neps) = (rd32(&d, o + SL_RANK), rdi64(&d, o + SL_TOTAL), u32::from(d[A_NS]), rd64(&d, A_SEASON), rd32(&d, A_NEPS)); let mark = season.saturating_add(1); let wins = [d[o + SL_WINS], d[o + SL_WINS + 1]]; let fin = d[A_F2] & F2_FINALS != 0;
-            let salt: [u8; 32]; let commit: [u8; 32];
-            { let mut s = strat.try_borrow_mut_data()?; if rd64(&s, S_LSEASON) == mark { return Err(bad!()); } salt = arr::<32>(&s, S_SALT)?; commit = arr::<32>(&s, S_COMMIT)?;
-              wr64(&mut s, S_LSEASON, mark); wr32(&mut s, S_LRANK, rank); wr32(&mut s, S_LN, ns); s[S_LPNL..S_LPNL + 8].copy_from_slice(&total.to_le_bytes()); }
-            if !fin { let mut r = reg.try_borrow_mut_data()?; let (se, en, b, t) = (rd32(&r, R_SEASONS).saturating_add(1), rd32(&r, R_ENTRIES).saturating_add(1), rd32(&r, R_BEST).min(rank), rdi64(&r, R_TOTAL).saturating_add(total)); wr32(&mut r, R_SEASONS, se); wr32(&mut r, R_ENTRIES, en); wr32(&mut r, R_BEST, b);
-              r[R_TOTAL..R_TOTAL + 8].copy_from_slice(&t.to_le_bytes()); wr64(&mut r, R_LSEASON, season); wr32(&mut r, R_LRANK, rank); }
-            // score commitment: salted with the entrant's secret, so an outsider who re-simulates presets from the revealed seed cannot match it
-            let score = hashv(&[DOM_SCORE, &salt, &season.to_le_bytes(), &id, &total.to_le_bytes(), &wins, &neps.to_le_bytes()]).to_bytes();
-            { let mut r = receipt.try_borrow_mut_data()?; let e = RC_ENT + i * RC_ESZ; if r[e..e + 8] != id { return Err(ProgramError::Custom(9022)); } r[e + 8..e + 40].copy_from_slice(&commit); r[e + 40..e + 72].copy_from_slice(&score); r[RC_PUB] = r[RC_PUB].checked_add(1).ok_or(bad!())?; }
-            d[A_PUBN] = d[A_PUBN].checked_add(1).ok_or(bad!())?; Ok(())
+            need(1)?; let i = usize::from(rest[0]); if i >= usize::from(d[A_NS]) { return Err(bad!()); }
+            publish_entry(&mut d, i, strat, reg, receipt, pid)
         }
         // 12 Commit (TEE): [payer(s,w), magic, magic_ctx, accounts(w)...]  commits delegated registries and receipts to base
         12 => { let (payer, magic, ctx) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?); let regs: Vec<AccountInfo> = it.cloned().collect();
-            MagicIntentBundleBuilder::new(payer.clone(), ctx.clone(), magic.clone()).commit(&regs).build_and_invoke() }
+            let b = MagicIntentBundleBuilder::new(payer.clone(), ctx.clone(), magic.clone());
+            // data [1]: commit AND undelegate (used on a closed season's receipt so the bond can be released on base); no data: commit only
+            if rest.first() == Some(&1) {
+                // undelegating is only ever allowed for receipts of closed seasons; anyone could otherwise pull a live season's receipt out of the rollup
+                for r in &regs { if r.owner != pid || r.try_data_len()? < RC_SIZE { return Err(ProgramError::Custom(9055)); } let d = r.try_borrow_data()?; if rd32(&d, 0) != M_RCPT || d[RC_STATE] != 2 { return Err(ProgramError::Custom(9055)); } }
+                b.commit_and_undelegate(&regs).build_and_invoke() } else { b.commit(&regs).build_and_invoke() } }
         // 13 InitPool (base): [payer(s,w), eata(w), pool_pda, mint, system, espl, buffer(w), record(w), metadata(w), dlp, validator, pool_ata(w), ata_program, token_program]; data: season u64
         13 => {
             need(8)?; let (payer, ea, pool, mint, sys, espl) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
@@ -273,44 +305,107 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
         // 14 StartFinals (permissionless, after settle): [crank(s), parent(w), hub(w), finals(w), permission(w), vault(w), magic, permission_program]; data: finals_sid u64, k u8, neps u32, spt u32
         // copies the top-k (by parent rank) sealed strategies INSIDE the program into a fresh private arena that gets its own VRF seed; ranking there is by episodes won (best-of-N), then total PnL
         14 => {
-            need(17)?; let (crank, parent, hub, fin, perm, vault, magic, pp) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            need(17)?; let (crank, parent, hub, fin, perm, vault, magic, pp, rcf) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
             if !crank.is_signer { return Err(ProgramError::MissingRequiredSignature); } check_arena(parent, pid)?;
             let fsid = &rest[0..8]; let neps = ru32(rest, 9)?; let spt = ru32(rest, 13)?; if neps == 0 || neps % 2 == 0 || neps > MAX_EPISODES { return Err(bad!()); }
             let k = { let d = parent.try_borrow_data()?; check_pins(&d)?; if d[A_FLAGS] & F_SETTLED == 0 || d[A_F2] & F2_HASFIN == 0 || d[A_F2] & F2_FINSTARTED != 0 { return Err(bad!()); } usize::from(rest[8]).min(usize::from(d[A_NS])).max(1) };
             let (ap, abump) = Pubkey::find_program_address(&[b"arena", fsid], pid); if ap != *fin.key { return Err(bad!()); }
             let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if hp != *hub.key { return Err(bad!()); }
             let hs: &[&[u8]] = &[b"hub", &[hbump]]; let asd: &[&[u8]] = &[b"arena", fsid, &[abump]];
+            // the finals arena draws hub rent too, so it needs its own bonded receipt
+            check_receipt(rcf, pid, fsid)?; if !rcf.is_writable { return Err(bad!()); }
+            { let r = rcf.try_borrow_data()?; if r[RC_STATE] != 0 { return Err(ProgramError::Custom(9051)); } let bond = rd64(&r, RC_BOND); if bond < BOND_MIN { return Err(ProgramError::Custom(9050)); } if rcf.lamports() < bond { return Err(ProgramError::Custom(9053)); } }
+            let slot = Clock::get()?.slot; let hub0 = hub.lamports();
             EphemeralAccount::new(hub, fin, vault).with_signer_seeds(&[hs, asd]).create(arena_size(k) as u32)?;
             if fin.try_data_len()? < arena_size(k) { return Err(ProgramError::AccountDataTooSmall); }
             { let mut p = parent.try_borrow_mut_data()?; let mut d = fin.try_borrow_mut_data()?;
               d[0..4].copy_from_slice(&M_ARENA.to_le_bytes()); d[A_MAXS] = k as u8; d[A_NS] = k as u8; d[A_AUTH..A_AUTH + 32].copy_from_slice(&p[A_AUTH..A_AUTH + 32]); d[A_SEASON..A_SEASON + 8].copy_from_slice(fsid);
-              wr32(&mut d, A_NEPS, neps); wr32(&mut d, A_SPT, spt); d[A_MINT..A_MINT + 32].copy_from_slice(&p[A_MINT..A_MINT + 32]); d[A_BUMP] = abump; d[A_FLAGS] = F_LOCKED; d[A_F2] = F2_FINALS; d[A_DIV] = p[A_DIV];
+              wr32(&mut d, A_NEPS, neps); wr32(&mut d, A_SPT, spt); d[A_MINT..A_MINT + 32].copy_from_slice(&p[A_MINT..A_MINT + 32]); d[A_BUMP] = abump; d[A_FLAGS] = F_LOCKED; d[A_F2] = F2_FINALS; d[A_DIV] = p[A_DIV]; wr64(&mut d, A_CREATED, slot); wr64(&mut d, A_WINDOW, 1); wr64(&mut d, A_LOCKAT, slot); wr64(&mut d, A_SEEDTO, rd64(&p, A_SEEDTO)); wr64(&mut d, A_PUBGRACE, rd64(&p, A_PUBGRACE)); d[A_MINS] = 1; wr64(&mut d, A_FEE, 0);
               let pins: [u8; PINS_LEN] = arr::<PINS_LEN>(&p, A_PINS)?; d[A_PINS..A_PINS + PINS_LEN].copy_from_slice(&pins);
               let psid: [u8; 8] = arr::<8>(&p, A_SEASON)?; d[A_PARENT..A_PARENT + 8].copy_from_slice(&psid); let res = rd64(&p, A_RESERVE); wr64(&mut d, A_RESERVE, res);
               let pn = p[A_NS] as usize; let mut filled = 0;
               // finalist slots keep parent ENTRY order (public information once ranks are published), so a cranker can address them without learning anything private
               for i in 0..pn { let o = HDR + i * SLOT; let r = rd32(&p, o + SL_RANK); if r >= 1 && r as usize <= k { let n = filled * SLOT + HDR; let l = u16::from_le_bytes([p[o + SL_LEN], p[o + SL_LEN + 1]]) as usize;
-                  d[n + SL_OWNER..n + SL_OWNER + 40].copy_from_slice(&p[o + SL_OWNER..o + SL_OWNER + 40]); d[n + SL_LEN..n + SL_LEN + 2].copy_from_slice(&(l as u16).to_le_bytes()); d[n + SL_CODE..n + SL_CODE + l].copy_from_slice(&p[o + SL_CODE..o + SL_CODE + l]); filled += 1; } }
+                  d[n + SL_OWNER..n + SL_OWNER + 40].copy_from_slice(&p[o + SL_OWNER..o + SL_OWNER + 40]); wr32(&mut d, n + SL_RANK, r); /* parent rank, used only if the finals are voided */ d[n + SL_LEN..n + SL_LEN + 2].copy_from_slice(&(l as u16).to_le_bytes()); d[n + SL_CODE..n + SL_CODE + l].copy_from_slice(&p[o + SL_CODE..o + SL_CODE + l]); filled += 1; } }
               if filled != k { return Err(bad!()); } p[A_F2] |= F2_FINSTARTED; }
             CreateEphemeralPermissionCpi { payer: hub.clone(), permissioned_account: fin.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(),
-                args: EphemeralMembersArgs { is_private: true, members: vec![] } }.invoke_signed(&[hs, asd])
+                args: EphemeralMembersArgs { is_private: true, members: vec![] } }.invoke_signed(&[hs, asd])?;
+            let rent = hub0.saturating_sub(hub.lamports()); wr64(&mut fin.try_borrow_mut_data()?, A_RENT, rent); let mut r = rcf.try_borrow_mut_data()?; r[RC_STATE] = 1; wr64(&mut r, RC_RENT, rent); Ok(())
         }
-        // 15 Cleanup (permissionless): [crank(s), hub(w), arena(w), permission(w), vault(w), magic, permission_program] closes the ephemeral arena + its permission, refunding rent to the hub sponsor
+        // 15 Cleanup (permissionless): [crank(s), hub(w), arena(w), permission(w), vault(w), magic, permission_program, receipt(w)] closes the ephemeral arena + its permission, refunding rent to the hub sponsor.
+        // Allowed when the season is settled and published (or the publish grace has elapsed), or when it was cancelled and refunded. The hub is then reconciled against the receipt bond: whatever the arena drew and the close did not return is
+        // made up from the bond, 25% of the bond is forfeited to the hub when the creator abandoned the season, and the rest becomes releasable to the creator (ReleaseBond on base after the receipt is committed and undelegated).
         15 => {
             let (crank, hub, arena, perm, vault, magic, pp) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            let rc = it.next();
             if !crank.is_signer { return Err(ProgramError::MissingRequiredSignature); } check_arena(arena, pid)?;
-            let (sid, abump) = { let d = arena.try_borrow_data()?; if d[A_FLAGS] & F_SETTLED == 0 || d[A_PUBN] < d[A_NS] { return Err(bad!()); } if d[A_F2] & F2_HASFIN != 0 && d[A_F2] & F2_FINSTARTED == 0 { return Err(bad!()); } (d[A_SEASON..A_SEASON + 8].to_vec(), d[A_BUMP]) };
+            let (sid, abump, cancelled, reason, rent) = { let d = arena.try_borrow_data()?; let cancelled = d[A_F2] & F2_CANCELLED != 0;
+                if cancelled { if d[A_F2] & F2_REFUNDED == 0 { return Err(bad!()); } }
+                else { if d[A_FLAGS] & F_SETTLED == 0 { return Err(bad!()); }
+                    if d[A_PUBN] < d[A_NS] && Clock::get()?.slot < rd64(&d, A_SETTLEDAT).saturating_add(rd64(&d, A_PUBGRACE)) { return Err(bad!()); }
+                    if d[A_F2] & F2_HASFIN != 0 && d[A_F2] & F2_FINSTARTED == 0 { return Err(bad!()); } }
+                (d[A_SEASON..A_SEASON + 8].to_vec(), d[A_BUMP], cancelled, d[A_REASON], rd64(&d, A_RENT)) };
             let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if hp != *hub.key { return Err(bad!()); }
-            let hs: &[&[u8]] = &[b"hub", &[hbump]]; let asd: &[&[u8]] = &[b"arena", &sid, &[abump]];
+            let hs: &[&[u8]] = &[b"hub", &[hbump]]; let asd: &[&[u8]] = &[b"arena", &sid, &[abump]]; let hub0 = hub.lamports();
             ephemeral_rollups_sdk::access_control::instructions::CloseEphemeralPermissionCpi { payer: hub.clone(), authority: arena.clone(), permissioned_account: arena.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(), authority_is_signer: false }.invoke_signed(&[hs, asd])?;
-            EphemeralAccount::new(hub, arena, vault).with_signer_seeds(&[hs]).close()
+            EphemeralAccount::new(hub, arena, vault).with_signer_seeds(&[hs]).close()?;
+            let reclaimed = hub.lamports().saturating_sub(hub0);
+            // reconcile with the bond (a receipt that is absent, not writable or not in the opened state is a pre-bond season: nothing to reconcile)
+            if let Some(rc) = rc { if rc.is_writable && rcpt_ok(rc, pid, &sid) { let mut r = rc.try_borrow_mut_data()?;
+                if r[RC_STATE] == 1 { let bond = rd64(&r, RC_BOND); let topup = rent.saturating_sub(reclaimed).min(bond);
+                    let abandoned = cancelled && (reason == REASON_UNDERMIN || reason == REASON_CREATOR); let forfeit = if abandoned { (bond / 100 * FORFEIT_PCT).min(bond - topup) } else { 0 };
+                    move_lamports(rc, hub, (topup + forfeit).min(rc.lamports()))?; wr64(&mut r, RC_RECLAIMED, reclaimed); wr64(&mut r, RC_FORFEIT, forfeit); wr64(&mut r, RC_RELEASE, bond - topup - forfeit); wr64(&mut r, RC_RENT, rent); r[RC_STATE] = 2; } } }
+            Ok(())
         }
-        // 16 InitReceipt (base): [payer(s,w), receipt(w), system]; data: season u64. The receipt is a durable, committable record on base
+        // 16 InitReceipt (base): [payer(s,w), receipt(w), system]; data: season u64, bond u64. The receipt is a durable, committable record on base and holds the creator's bond (lamports above rent), released at cleanup
         16 => {
-            need(8)?; let (payer, rc, sys) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?); let sid = &rest[0..8];
+            need(16)?; let (payer, rc, sys) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?); let sid = &rest[0..8]; let bond = ru64(rest, 8)?;
             let (pda, bump) = Pubkey::find_program_address(&[b"receipt", sid], pid); if pda != *rc.key || !payer.is_signer { return Err(bad!()); }
-            invoke_signed(&system_instruction::create_account(payer.key, rc.key, Rent::get()?.minimum_balance(RC_SIZE).saturating_add(2_000_000), RC_SIZE as u64, pid), &[payer.clone(), rc.clone(), sys.clone()], &[&[b"receipt", sid, &[bump]]])?;
-            rc.try_borrow_mut_data()?[0..4].copy_from_slice(&M_RCPT.to_le_bytes()); Ok(())
+            if bond < BOND_MIN { return Err(ProgramError::Custom(9050)); }
+            invoke_signed(&system_instruction::create_account(payer.key, rc.key, Rent::get()?.minimum_balance(RC_SIZE).checked_add(bond).ok_or(bad!())?, RC_SIZE as u64, pid), &[payer.clone(), rc.clone(), sys.clone()], &[&[b"receipt", sid, &[bump]]])?;
+            let mut r = rc.try_borrow_mut_data()?; r[0..4].copy_from_slice(&M_RCPT.to_le_bytes()); r[RC_CREATOR..RC_CREATOR + 32].copy_from_slice(payer.key.as_ref()); wr64(&mut r, RC_BOND, bond); Ok(())
+        }
+        // 17 Cancel (TEE, permissionless where the clock allows): [signer(s), arena(w), pool_pda, pool_ata(w), token_program, receipt(w), entrant_atas(w)... in slot order]
+        // An arena can be cancelled (a) by its creator while unlocked, (b) by anyone once it is locked and the seed has not arrived within the seed timeout, or (c) it is already cancelled by an under-minimum Lock.
+        // Cancelling refunds every entry fee exactly (pool -> each entrant's token account); a voided finals arena pays the finals reserve to the parent's champion. Refunds happen once (F2_REFUNDED) and the pool is never debited beyond what was paid in.
+        17 => {
+            let (crank, arena, pool, pe, tp, rc) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            if !crank.is_signer { return Err(ProgramError::MissingRequiredSignature); } check_arena(arena, pid)?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
+            if d[A_F2] & F2_REFUNDED != 0 { return Err(ProgramError::Custom(9034)); }
+            let fin = d[A_F2] & F2_FINALS != 0;
+            if d[A_F2] & F2_CANCELLED == 0 {
+                let locked = d[A_FLAGS] & F_LOCKED != 0; let creator = &d[A_AUTH..A_AUTH + 32] == crank.key.as_ref();
+                if d[A_FLAGS] & (F_SEEDED | F_DONE | F_SETTLED) != 0 { return Err(ProgramError::Custom(9033)); }
+                let reason = if !locked { if !creator || fin { return Err(ProgramError::Custom(9033)); } REASON_CREATOR }
+                    else { if Clock::get()?.slot < rd64(&d, A_LOCKAT).saturating_add(rd64(&d, A_SEEDTO)) { return Err(ProgramError::Custom(9033)); } if fin { REASON_FINALS } else { REASON_SEEDTO } };
+                d[A_FLAGS] |= F_LOCKED; d[A_F2] |= F2_CANCELLED; d[A_REASON] = reason; }
+            let ns = d[A_NS] as usize; let fee = rd64(&d, A_FEE); let mint = pk(&d, A_MINT);
+            let sid: Vec<u8> = if fin { d[A_PARENT..A_PARENT + 8].to_vec() } else { d[A_SEASON..A_SEASON + 8].to_vec() };
+            // (slot, amount) pairs to pay out of the pool
+            let mut pays: Vec<(usize, u64)> = vec![];
+            if fin { let res = rd64(&d, A_RESERVE); if res > 0 { let champ = (0..ns).find(|&i| rd32(&d, HDR + i * SLOT + SL_RANK) == 1).ok_or(bad!())?; pays.push((champ, res)); } }
+            else if fee > 0 { if rd64(&d, A_POOL) != fee.checked_mul(ns as u64).ok_or(bad!())? { return Err(ProgramError::Custom(9040)); } for i in 0..ns { pays.push((i, fee)); } }
+            let total = pays.iter().try_fold(0u64, |acc, (_, x)| acc.checked_add(*x)).ok_or(bad!())?;
+            if total > 0 {
+                let (pp, pbump) = Pubkey::find_program_address(&[b"pool", &sid], pid); if pp != *pool.key || *pe.key != ata(&pp, &mint) { return Err(bad!()); }
+                if token_balance(pe)? < total { return Err(ProgramError::Custom(9041)); }
+                let atas: Vec<&AccountInfo> = it.collect(); if atas.len() < ns { return Err(bad!()); }
+                for (i, amt) in &pays { let w = atas[*i]; let owner = pk(&d, HDR + *i * SLOT + SL_OWNER); if *w.key != ata(&owner, &mint) { return Err(bad!()); } token_transfer(pe, w, pool, tp, *amt, &[&[b"pool", &sid, &[pbump]]])?; } }
+            if !fin { wr64(&mut d, A_POOL, 0); } else { wr64(&mut d, A_RESERVE, 0); }
+            d[A_F2] |= F2_REFUNDED;
+            // public record of the cancellation on the receipt (best effort: refunds never depend on the receipt)
+            let season: Vec<u8> = d[A_SEASON..A_SEASON + 8].to_vec();
+            if rc.is_writable && rcpt_ok(rc, pid, &season) { let mut r = rc.try_borrow_mut_data()?; r[RC_KIND] = 2; r[RC_NS] = ns as u8; r[RC_DIV] = d[A_DIV]; r[RC_SEASON..RC_SEASON + 8].copy_from_slice(&season); r[RC_REASON] = d[A_REASON]; wr64(&mut r, RC_REFUNDED, total);
+                let pins = &d[A_PINS..A_PINS + PINS_LEN]; r[RC_RULESET..RC_RULESET + 2].copy_from_slice(&pins[0..2]); r[RC_VERSION] = pins[2]; r[RC_GEN] = pins[3]; r[RC_PINS..RC_PINS + PINS_LEN].copy_from_slice(pins);
+                for i in 0..ns { let e = RC_ENT + i * RC_ESZ; let id: [u8; 8] = arr::<8>(&d, HDR + i * SLOT + SL_ID)?; r[e..e + 8].copy_from_slice(&id); } }
+            Ok(())
+        }
+        // 18 ReleaseBond (base, permissionless): [anyone(s), receipt(w), creator(w)]: pays the creator the releasable part of the bond once the season is closed and the receipt is back on base (undelegated), exactly once
+        18 => {
+            let (_c, rc, creator) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+            if rc.owner != pid || rc.try_data_len()? < RC_SIZE { return Err(ProgramError::Custom(9054)); }
+            let amt = { let r = rc.try_borrow_data()?; if rd32(&r, 0) != M_RCPT || r[RC_STATE] != 2 || Pubkey::find_program_address(&[b"receipt", &r[RC_SEASON..RC_SEASON + 8]], pid).0 != *rc.key || &r[RC_CREATOR..RC_CREATOR + 32] != creator.key.as_ref() { return Err(ProgramError::Custom(9054)); } rd64(&r, RC_RELEASE) };
+            move_lamports(rc, creator, amt)?; wr64(&mut rc.try_borrow_mut_data()?, RC_RELEASE, 0); Ok(())
         }
         _ => Err(ProgramError::InvalidInstructionData),
     }
@@ -358,12 +453,30 @@ fn advance(arena: &AccountInfo, max: u64, budget: u64) -> ProgramResult {
     Ok(())
 }
 
+/// One entry's result: the owner's private record, the registry career stats, and the receipt's code and score commitments (salted with the entrant's secret, so an outsider who re-simulates presets from the revealed seed cannot match it).
+/// Used by Publish and by Settle's inline publish; each entry publishes at most once per season (the strategy account carries the mark).
+fn publish_entry(d: &mut [u8], i: usize, strat: &AccountInfo, reg: &AccountInfo, receipt: &AccountInfo, pid: &Pubkey) -> ProgramResult {
+    let o = HDR + i * SLOT; let id: [u8; 8] = arr::<8>(d, o + SL_ID)?;
+    check_strat(strat, pid)?; check_reg(reg, pid)?;
+    if Pubkey::find_program_address(&[b"strat", &id], pid).0 != *strat.key || Pubkey::find_program_address(&[b"reg", &id], pid).0 != *reg.key { return Err(bad!()); }
+    check_receipt(receipt, pid, &d[A_SEASON..A_SEASON + 8])?;
+    let (rank, total, ns, season, neps) = (rd32(d, o + SL_RANK), rdi64(d, o + SL_TOTAL), u32::from(d[A_NS]), rd64(d, A_SEASON), rd32(d, A_NEPS)); let mark = season.saturating_add(1); let wins = [d[o + SL_WINS], d[o + SL_WINS + 1]]; let fin = d[A_F2] & F2_FINALS != 0;
+    let salt: [u8; 32]; let commit: [u8; 32];
+    { let mut s = strat.try_borrow_mut_data()?; if rd64(&s, S_LSEASON) == mark { return Err(bad!()); } salt = arr::<32>(&s, S_SALT)?; commit = arr::<32>(&s, S_COMMIT)?;
+      wr64(&mut s, S_LSEASON, mark); wr32(&mut s, S_LRANK, rank); wr32(&mut s, S_LN, ns); s[S_LPNL..S_LPNL + 8].copy_from_slice(&total.to_le_bytes()); }
+    if !fin { let mut r = reg.try_borrow_mut_data()?; let (se, en, b, t) = (rd32(&r, R_SEASONS).saturating_add(1), rd32(&r, R_ENTRIES).saturating_add(1), rd32(&r, R_BEST).min(rank), rdi64(&r, R_TOTAL).saturating_add(total)); wr32(&mut r, R_SEASONS, se); wr32(&mut r, R_ENTRIES, en); wr32(&mut r, R_BEST, b);
+      r[R_TOTAL..R_TOTAL + 8].copy_from_slice(&t.to_le_bytes()); wr64(&mut r, R_LSEASON, season); wr32(&mut r, R_LRANK, rank); }
+    let score = hashv(&[DOM_SCORE, &salt, &season.to_le_bytes(), &id, &total.to_le_bytes(), &wins, &neps.to_le_bytes()]).to_bytes();
+    { let mut r = receipt.try_borrow_mut_data()?; let e = RC_ENT + i * RC_ESZ; if r[e..e + 8] != id { return Err(ProgramError::Custom(9022)); } r[e + 8..e + 40].copy_from_slice(&commit); r[e + 40..e + 72].copy_from_slice(&score); r[RC_PUB] = r[RC_PUB].checked_add(1).ok_or(bad!())?; }
+    d[A_PUBN] = d[A_PUBN].checked_add(1).ok_or(bad!())?; Ok(())
+}
+
 fn vrf_callback(pid: &Pubkey, accts: &[AccountInfo], rest: &[u8]) -> ProgramResult {
     let it = &mut accts.iter(); let (identity, arena) = (next_account_info(it)?, next_account_info(it)?);
     let expect = Pubkey::find_program_address(&[b"identity", pid.as_ref()], &VRF_PROGRAM_ID.modern()).0;
     if !identity.is_signer || *identity.key != expect { return Err(ProgramError::MissingRequiredSignature); }
     check_arena(arena, pid)?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
-    if d[A_FLAGS] & F_REQ == 0 || d[A_FLAGS] & F_SEEDED != 0 || rest.len() < 32 { return Err(bad!()); }
+    if d[A_FLAGS] & F_REQ == 0 || d[A_FLAGS] & F_SEEDED != 0 || d[A_F2] & F2_CANCELLED != 0 || rest.len() < 32 { return Err(bad!()); }
     d[A_SEED..A_SEED + 32].copy_from_slice(&rest[..32]); d[A_FLAGS] |= F_SEEDED; wr64(&mut d, A_START, Clock::get()?.slot);
     Market::new(world::WORLD_T as u32).save(&mut d[A_MKT..A_MKT + Market::BYTES]);
     let ns = d[A_NS] as usize; for i in 0..ns { Seat::new().save(&mut d[HDR + i * SLOT + SL_SEAT..HDR + i * SLOT + SL_SEAT + Seat::BYTES]); }

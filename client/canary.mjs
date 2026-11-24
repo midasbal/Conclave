@@ -62,5 +62,10 @@ check("code commitments in the receipt equal the registry and the owner's salted
 const cl = await L.sendTee(c.URL, [F.cleanupIx(c, sid)], [O]); check("Cleanup", !cl.err, cl.sig + (cl.err ? " " + JSON.stringify(cl.err) : ""));
 // Cleanup refunds the arena (about 418k lamports). The three sealed strategy accounts stay in the rollup by design, so the hub ends lower by their rent only (observed 19,744 each).
 const hub1 = await F.hubLamports(c); check("sponsor hub: arena rent refunded, loss limited to the 3 strategy accounts (at most 21,000 lamports each)", hub1 !== null && hub0 - hub1 >= 0 && hub0 - hub1 <= 3 * 21_000, `${hub0} -> ${hub1} (${hub1 - hub0})`);
+// ---- E. the creator bond comes back: undelegate the closed receipt, release on base, exact amount
+{ const cu = await L.sendTee(c.URL, [F.commitUndelegateIx([L.receiptPda(sid)])], [O]); check("Commit+undelegate the closed receipt", !cu.err, cu.sig + (cu.err ? " " + JSON.stringify(cu.err) : ""));
+  let acc = null; for (let t = 0; t < 60; t++) { acc = await L.base.getAccountInfo(L.receiptPda(sid)); if (acc && acc.owner.equals(L.PROGRAM) && acc.data[144] === 2) break; await L.sleep(1500); }
+  if (check("receipt back on base in state closed", !!acc && acc.owner.equals(L.PROGRAM))) { const RR = L.parseReceipt(acc.data); const l0 = acc.lamports; const rel = await L.sendBase([F.releaseBondIx(sid, O.publicKey)], [O]); const l1 = await L.base.getBalance(L.receiptPda(sid));
+    check("bond released exactly: nothing forfeited, arena rent drawn equals reclaimed", BigInt(l0 - l1) === RR.release && RR.forfeit === 0n && RR.release === RR.bond && RR.rentDrawn === RR.rentReclaimed && RR.rentDrawn > 0n, `${rel} bond ${RR.bond} drawn ${RR.rentDrawn} reclaimed ${RR.rentReclaimed} released ${l0 - l1}`); } }
 function summary() { const bad = checks.filter(x => !x.ok); L.base.getBalance(O.publicKey).then(b => { log(`== CANARY ${bad.length ? "FAILED: " + bad.map(x => x.name).join("; ") : "PASSED"} (${checks.length - bad.length}/${checks.length} checks) | wallet spent ${((bal0 - b) / 1e9).toFixed(5)} SOL, now ${(b / 1e9).toFixed(4)}`); process.exit(bad.length ? 1 : 0); }); }
 summary();

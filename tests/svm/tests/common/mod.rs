@@ -28,10 +28,14 @@ pub fn pda(seeds: &[&[u8]], pid: &Address) -> Address { Address::find_program_ad
 pub fn u64le(v: u64) -> [u8; 8] { v.to_le_bytes() }
 
 // ---- layouts (mirror of program/src/lib.rs; the tests assert against these, they are not imported so a layout change must be made here on purpose) ----
-pub const HDR: usize = 1280; pub const SLOT: usize = 440; pub const STRAT_SIZE: usize = 136 + 260; pub const REG_SIZE: usize = 128; pub const RC_SIZE: usize = 128 + 20 * 80;
+pub const HDR: usize = 1280; pub const SLOT: usize = 440; pub const STRAT_SIZE: usize = 136 + 260; pub const REG_SIZE: usize = 128; pub const RC_ENT: usize = 192; pub const RC_SIZE: usize = RC_ENT + 20 * 80;
 pub fn arena_size(maxs: usize) -> usize { HDR + maxs * SLOT }
 pub mod ar { pub const FLAGS: usize = 4; pub const NS: usize = 5; pub const SEASON: usize = 40; pub const SEED: usize = 48; pub const NEPS: usize = 80; pub const CUREP: usize = 88; pub const CURTICK: usize = 92; pub const START: usize = 96; pub const POOL: usize = 112; pub const TICKS: usize = 152; pub const RESERVE: usize = 1120; pub const F2: usize = 1128; pub const PUBN: usize = 1129; pub const PINS: usize = 1152; pub const DIV: usize = 1200;
     pub const SL_OWNER: usize = 0; pub const SL_ID: usize = 32; pub const SL_WINS: usize = 42; pub const SL_RANK: usize = 44; pub const SL_TOTAL: usize = 48; pub const SL_SEAT: usize = 64; }
+pub mod arx { pub const CREATED: usize = 1208; pub const WINDOW: usize = 1216; pub const SEEDTO: usize = 1224; pub const LOCKAT: usize = 1232; pub const SETTLEDAT: usize = 1240; pub const PUBGRACE: usize = 1248; pub const RENT: usize = 1256; pub const MINS: usize = 1264; pub const REASON: usize = 1265; pub const FEE: usize = 104; pub const AUTH: usize = 8; }
+pub mod rc { pub const KIND: usize = 4; pub const NS: usize = 5; pub const PUB: usize = 6; pub const SEASON: usize = 8; pub const CREATOR: usize = 104; pub const BOND: usize = 136; pub const STATE: usize = 144; pub const REASON: usize = 145; pub const REFUNDED: usize = 152; pub const RENT: usize = 160; pub const RECLAIMED: usize = 168; pub const FORFEIT: usize = 176; pub const RELEASE: usize = 184; }
+pub const F2_FINALS: u8 = 1; pub const F2_HASFIN: u8 = 2; pub const F2_FINSTARTED: u8 = 4; pub const F2_CANCELLED: u8 = 8; pub const F2_REFUNDED: u8 = 16;
+pub const BOND: u64 = 2_000_000;
 pub const F_LOCKED: u8 = 1; pub const F_REQ: u8 = 2; pub const F_SEEDED: u8 = 4; pub const F_DONE: u8 = 8; pub const F_SETTLED: u8 = 16;
 pub fn rd64(d: &[u8], o: usize) -> u64 { u64::from_le_bytes(d[o..o + 8].try_into().unwrap()) }
 pub fn rdi64(d: &[u8], o: usize) -> i64 { rd64(d, o) as i64 }
@@ -47,7 +51,8 @@ pub fn custom(r: &Res) -> Option<u32> { match r { Err(e) => match &e.err { solan
 pub fn failed_to_complete(r: &Res) -> bool { matches!(r, Err(e) if matches!(&e.err, solana_transaction_error::TransactionError::InstructionError(_, solana_instruction::error::InstructionError::ProgramFailedToComplete))) }
 pub fn err_string(r: &Res) -> String { match r { Ok(_) => "ok".into(), Err(e) => format!("{:?}", e.err) } }
 
-pub struct Env { pub svm: LiteSVM, pub pid: Address, pub payer: Keypair, pub players: Vec<Keypair>, pub mint: Address, pub hub: Address, pub slot: u64, pub nonce: u64, pub strategies: Vec<Strat> }
+#[derive(Clone, Copy)] pub struct Params { pub window: u64, pub seedto: u64, pub grace: u64, pub mins: u8, pub bond: u64 }
+pub struct Env { pub params: Params, pub svm: LiteSVM, pub pid: Address, pub payer: Keypair, pub players: Vec<Keypair>, pub mint: Address, pub hub: Address, pub slot: u64, pub nonce: u64, pub strategies: Vec<Strat> }
 #[derive(Clone)] pub struct Strat { pub id: u64, pub owner: usize, pub salt: [u8; 32], pub code: Vec<u8>, pub name: String }
 
 fn conclave_so() -> Vec<u8> { std::fs::read(std::env::var("CONCLAVE_SO").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../program/target/deploy/conclave.so").to_string())).expect("build the program first: (cd program && cargo build-sbf)") }
@@ -62,7 +67,7 @@ impl Env {
         let payer = Keypair::new(); svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
         let players: Vec<Keypair> = (0..nplayers).map(|_| Keypair::new()).collect(); for p in &players { svm.airdrop(&p.pubkey(), 10_000_000_000).unwrap(); }
         let hub = pda(&[b"hub"], &pid); svm.warp_to_slot(10);
-        let mut e = Env { svm, pid, payer, players, mint: Address::new_unique(), hub, slot: 10, nonce: 0, strategies: vec![] };
+        let mut e = Env { params: Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }, svm, pid, payer, players, mint: Address::new_unique(), hub, slot: 10, nonce: 0, strategies: vec![] };
         e.create_mint(); e.mint_to_players(1_000_000);
         e.ok(&[e.ix(0, vec![e.m(e.payer.pubkey(), true, true), e.m(hub, false, true), e.ro(a(SYSTEM))], u64le(1_000_000).to_vec())], &[], "InitHub");
         e
@@ -135,20 +140,22 @@ pub const CB_DISC: [u8; 8] = [200, 1, 2, 3, 4, 5, 6, 7];
 #[derive(Clone)] pub struct Season { pub sid: u64, pub arena: Address, pub receipt: Address, pub pool: Address, pub maxs: usize, pub entries: Vec<Strat>, pub seed: [u8; 32], pub neps: u32, pub fee: u64 }
 impl Env {
     pub fn season(&self, sid: u64) -> Season { Season { sid, arena: self.arena_pda(sid), receipt: self.receipt_pda(sid), pool: self.pool_pda(sid), maxs: 20, entries: vec![], seed: [0; 32], neps: 0, fee: 0 } }
-    pub fn init_receipt(&mut self, s: &Season) -> Res { self.provision_if_new_base(s.receipt); let ix = self.ix(16, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.receipt), self.ro(a(SYSTEM))], s.sid.to_le_bytes().to_vec()); self.send(&[ix], &[]) }
-    fn provision_if_new_base(&mut self, _k: Address) {}
+    pub fn init_receipt(&mut self, s: &Season) -> Res { let b = self.params.bond; self.init_receipt_bond(s, b) }
+    pub fn init_receipt_bond(&mut self, s: &Season, bond: u64) -> Res { let mut d = s.sid.to_le_bytes().to_vec(); d.extend(bond.to_le_bytes()); let ix = self.ix(16, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.receipt), self.ro(a(SYSTEM))], d); self.send(&[ix], &[]) }
     pub fn init_pool(&mut self, s: &Season) -> Res {
         let eata = pda(&[s.pool.as_ref(), self.mint.as_ref()], &a(ESPL)); let accts = vec![self.m(self.payer.pubkey(), true, true), self.rw(eata), self.ro(s.pool), self.ro(self.mint), self.ro(a(SYSTEM)), self.ro(a(ESPL)), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(DLP)), self.ro(Address::new_unique()), self.rw(self.ata(&s.pool)), self.ro(a(ATOKEN)), self.ro(a(TOKEN))];
         let ix = self.ix(13, accts, s.sid.to_le_bytes().to_vec()); self.send(&[ix], &[]) }
     pub fn create_season_ix(&self, s: &Season, neps: u32, spt: u32, fee: u64, maxs: u8, flags: u8, division: u8) -> Instruction {
-        let mut d = s.sid.to_le_bytes().to_vec(); d.extend(neps.to_le_bytes()); d.extend(spt.to_le_bytes()); d.extend(fee.to_le_bytes()); d.extend_from_slice(self.mint.as_ref()); d.extend([maxs, flags, division]);
-        self.ix(5, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION))], d) }
-    pub fn create_season(&mut self, s: &mut Season, neps: u32, fee: u64, maxs: u8, finals: bool, division: u8) -> Res { self.provision_if_new(s.arena, arena_size(maxs as usize)); s.maxs = maxs as usize; s.neps = neps; s.fee = fee;
+        let mut d = s.sid.to_le_bytes().to_vec(); d.extend(neps.to_le_bytes()); d.extend(spt.to_le_bytes()); d.extend(fee.to_le_bytes()); d.extend_from_slice(self.mint.as_ref()); d.extend([maxs, flags, division]); let p = self.params; d.extend(p.window.to_le_bytes()); d.extend(p.seedto.to_le_bytes()); d.extend(p.grace.to_le_bytes()); d.push(p.mins);
+        self.ix(5, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt)], d) }
+    pub fn create_season(&mut self, s: &mut Season, neps: u32, fee: u64, maxs: u8, finals: bool, division: u8) -> Res { self.provision_if_new(s.arena, arena_size(maxs as usize)); if self.svm.get_account(&s.receipt).is_none() { let r = self.init_receipt(s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r)); } s.maxs = maxs as usize; s.neps = neps; s.fee = fee;
         let ix = self.create_season_ix(s, neps, 1, fee, maxs, if finals { 2 } else { 0 }, division); self.send(&[ix], &[]) }
     pub fn enter_ix(&self, s: &Season, st: &Strat, signer: usize) -> Instruction { let ow = self.players[signer].pubkey(); let owner_of_strat = self.players[st.owner].pubkey();
         let _ = owner_of_strat; self.ix(6, vec![self.m(ow, true, false), self.ro(self.strat_pda(st.id)), self.rw(s.arena), self.rw(self.ata(&ow)), self.rw(self.ata(&s.pool)), self.ro(a(TOKEN))], vec![]) }
     pub fn enter(&mut self, s: &mut Season, st: &Strat) -> Res { let ix = self.enter_ix(s, st, st.owner); let kp = self.player(st.owner); let r = self.send(&[ix], &[&kp]); if r.is_ok() { s.entries.push(st.clone()); } r }
     pub fn lock(&mut self, s: &Season) -> Res { let ix = self.ix(7, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena)], vec![]); self.send(&[ix], &[]) }
+    /// lock signed by someone other than the creator
+    pub fn lock_by(&mut self, s: &Season, who: usize) -> Res { let kp = self.player(who); let ix = self.ix(7, vec![self.m(kp.pubkey(), true, false), self.rw(s.arena)], vec![]); self.send(&[ix], &[&kp]) }
     pub fn request_seed(&mut self, s: &Season) -> Res { let identity = pda(&[b"identity"], &self.pid); let ix = self.ix(8, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.ro(identity), self.rw(Address::new_unique()), self.ro(a(SYSTEM)), self.ro(a(SLOT_HASHES)), self.ro(a(VRF))], vec![]); self.send(&[ix], &[]) }
     /// plays the VRF oracle: the real one calls back with the identity PDA of the VRF program as signer
     pub fn deliver_seed(&mut self, s: &mut Season, seed: [u8; 32]) -> Res { let identity = pda(&[b"identity", self.pid.as_ref()], &a(VRF)); let mut d = CB_DISC.to_vec(); d.extend_from_slice(&seed);
@@ -163,14 +170,25 @@ impl Env {
     pub fn settle_ix(&self, s: &Season, pool_sid_pool: Address, entries: &[Strat]) -> Instruction {
         let mut accts = vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.rw(s.receipt), self.ro(pool_sid_pool), self.rw(self.ata(&pool_sid_pool)), self.ro(a(TOKEN))]; for e in entries { accts.push(self.rw(self.ata(&self.players[e.owner].pubkey()))); } self.ix(10, accts, vec![]) }
     pub fn settle(&mut self, s: &Season) -> Res { let ix = self.settle_ix(s, s.pool, &s.entries); self.send(&[ix], &[]) }
+    /// Settle that also publishes the first `n` entries inline (strat + registry pairs appended)
+    pub fn settle_ix_publishing(&self, s: &Season, n: usize) -> Instruction { let mut ix = self.settle_ix(s, s.pool, &s.entries); for e in s.entries.iter().take(n) { ix.accounts.push(self.rw(self.strat_pda(e.id))); ix.accounts.push(self.rw(self.reg_pda(e.id))); } ix }
+    pub fn settle_publishing(&mut self, s: &Season, n: usize) -> Res { let ix = self.settle_ix_publishing(s, n); self.send(&[ix], &[]) }
+    pub fn cancel_ix(&self, s: &Season, signer: Address, pool_sid_pool: Address, entries: &[Strat]) -> Instruction { let mut accts = vec![self.m(signer, true, signer == self.payer.pubkey()), self.rw(s.arena), self.ro(pool_sid_pool), self.rw(self.ata(&pool_sid_pool)), self.ro(a(TOKEN)), self.rw(s.receipt)]; for e in entries { accts.push(self.rw(self.ata(&self.players[e.owner].pubkey()))); } self.ix(17, accts, vec![]) }
+    /// Cancel signed by the payer (who is the creator in these tests)
+    pub fn cancel(&mut self, s: &Season) -> Res { let ix = self.cancel_ix(s, self.payer.pubkey(), s.pool, &s.entries); self.send(&[ix], &[]) }
+    pub fn cancel_by(&mut self, s: &Season, who: usize) -> Res { let kp = self.player(who); let ix = self.cancel_ix(s, kp.pubkey(), s.pool, &s.entries); self.send(&[ix], &[&kp]) }
+    pub fn release_bond_ix(&self, s: &Season, creator: Address) -> Instruction { self.ix(18, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.receipt), self.rw(creator)], vec![]) }
+    pub fn release_bond(&mut self, s: &Season) -> Res { let ix = self.release_bond_ix(s, self.payer.pubkey()); self.send(&[ix], &[]) }
+    pub fn lamports(&self, k: &Address) -> u64 { self.svm.get_account(k).map(|x| x.lamports).unwrap_or(0) }
     pub fn publish_ix(&self, s: &Season, i: usize, id: u64) -> Instruction { self.ix(11, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.rw(self.strat_pda(id)), self.rw(self.reg_pda(id)), self.rw(s.receipt)], vec![i as u8]) }
     pub fn publish(&mut self, s: &Season, i: usize) -> Res { let ix = self.publish_ix(s, i, s.entries[i].id); self.send(&[ix], &[]) }
     pub fn commit(&mut self, accts: &[Address]) -> Res { let mut m = vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX))]; for k in accts { m.push(self.rw(*k)); } let ix = self.ix(12, m, vec![]); self.send(&[ix], &[]) }
-    pub fn cleanup_ix(&self, s: &Season) -> Instruction { self.ix(15, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION))], vec![]) }
+    pub fn commit_undelegate(&mut self, accts: &[Address]) -> Res { let mut m = vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX))]; for k in accts { m.push(self.rw(*k)); } let ix = self.ix(12, m, vec![1]); self.send(&[ix], &[]) }
+    pub fn cleanup_ix(&self, s: &Season) -> Instruction { self.ix(15, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt)], vec![]) }
     pub fn cleanup(&mut self, s: &Season) -> Res { let ix = self.cleanup_ix(s); self.send(&[ix], &[]) }
-    pub fn start_finals(&mut self, parent: &Season, fsid: u64, k: u8, neps: u32) -> (Res, Season) { let mut f = self.season(fsid); f.neps = neps; let kk = (k as usize).min(parent.entries.len()).max(1); f.maxs = kk; self.provision_if_new(f.arena, arena_size(kk));
+    pub fn start_finals(&mut self, parent: &Season, fsid: u64, k: u8, neps: u32) -> (Res, Season) { let mut f = self.season(fsid); if self.svm.get_account(&f.receipt).is_none() { let r = self.init_receipt(&f); assert!(r.is_ok(), "InitReceipt finals {}", err_string(&r)); } f.neps = neps; let kk = (k as usize).min(parent.entries.len()).max(1); f.maxs = kk; self.provision_if_new(f.arena, arena_size(kk));
         let mut d = fsid.to_le_bytes().to_vec(); d.push(k); d.extend(neps.to_le_bytes()); d.extend(1u32.to_le_bytes());
-        let ix = self.ix(14, vec![self.m(self.payer.pubkey(), true, true), self.rw(parent.arena), self.rw(self.hub), self.rw(f.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION))], d); (self.send(&[ix], &[]), f) }
+        let ix = self.ix(14, vec![self.m(self.payer.pubkey(), true, true), self.rw(parent.arena), self.rw(self.hub), self.rw(f.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(f.receipt)], d); (self.send(&[ix], &[]), f) }
     /// register + seal one strategy per name for owners round-robin, then create, enter and lock a full season; returns it seeded and fully run if `run`
     pub fn full_season(&mut self, sid: u64, names: &[&str], neps: u32, fee: u64, finals: bool, division: u8, seed_byte: u8, run: bool) -> Season {
         let mut s = self.season(sid); let r = self.init_pool(&s); assert!(r.is_ok(), "InitPool {}", err_string(&r)); let r = self.init_receipt(&s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r));

@@ -20,7 +20,7 @@ fn build() -> World {
     let mk = |e: &mut Env, sid: u64, upto: u8| -> Season { let mut s = e.season(sid); e.init_pool(&s).unwrap(); e.init_receipt(&s).unwrap(); e.create_season(&mut s, 3, 10, 6, true, 2).unwrap(); for i in 0..4 { let t = e.register_and_seal(i, names[i], code_of(names[i])); e.enter(&mut s, &t).unwrap(); }
         if upto >= 1 { e.lock(&s).unwrap(); e.request_seed(&s).unwrap(); } if upto >= 2 { e.deliver_seed(&mut s, [sid as u8; 32]).unwrap(); e.warp(1_000_000); e.fresh_blockhash(); e.advance(&s, 650, 650_000).unwrap(); } if upto >= 3 { e.drive(&s, 1400, 1_400_000); } if upto >= 4 { e.settle(&s).unwrap(); e.publish(&s, 0).unwrap(); e.publish(&s, 2).unwrap(); } s };
     for (i, up) in [1u8, 2, 3, 4].iter().enumerate() { seasons.push(mk(&mut e, 9010 + i as u64, *up)); }
-    let mut s6 = mk(&mut e, 9020, 4); for i in [1usize, 3] { e.publish(&s6, i).unwrap(); } let (r, f) = e.start_finals(&s6, 9021, 3, 3); r.unwrap(); e.init_receipt(&f).unwrap(); seasons.push(s6.clone()); seasons.push(f.clone()); s6.entries.truncate(4);
+    let mut s6 = mk(&mut e, 9020, 4); for i in [1usize, 3] { e.publish(&s6, i).unwrap(); } let (r, f) = e.start_finals(&s6, 9021, 3, 3); r.unwrap(); seasons.push(s6.clone()); seasons.push(f.clone()); s6.entries.truncate(4);
     // template instructions, one family per tag and stage
     let all_strats: Vec<Strat> = e.strategies.clone(); let hub = e.hub; let pid = e.pid;
     for s in &seasons {
@@ -30,7 +30,9 @@ fn build() -> World {
         templates.push(e.ix(14, vec![e.m(e.payer.pubkey(), true, true), e.rw(s.arena), e.rw(hub), e.rw(e.arena_pda(s.sid + 500)), e.rw(Address::new_unique()), e.rw(Address::new_unique()), e.ro(a(MAGIC)), e.ro(a(PERMISSION))], { let mut d = (s.sid + 500).to_le_bytes().to_vec(); d.extend([3u8, 3, 0, 0, 0, 1, 0, 0, 0]); d }));
         templates.push(e.create_season_ix(s, 5, 1, 7, 6, 2, 1)); for t in all_strats.iter().take(3) { templates.push(e.enter_ix(s, t, t.owner)); }
         templates.push(e.ix(13, vec![e.m(e.payer.pubkey(), true, true), e.rw(Address::new_unique()), e.ro(s.pool), e.ro(e.mint), e.ro(a(SYSTEM)), e.ro(a(ESPL)), e.rw(Address::new_unique()), e.rw(Address::new_unique()), e.rw(Address::new_unique()), e.ro(a(DLP)), e.ro(Address::new_unique()), e.rw(e.ata(&s.pool)), e.ro(a(ATOKEN)), e.ro(a(TOKEN))], s.sid.to_le_bytes().to_vec()));
-        templates.push(e.ix(16, vec![e.m(e.payer.pubkey(), true, true), e.rw(s.receipt), e.ro(a(SYSTEM))], s.sid.to_le_bytes().to_vec()));
+        templates.push(e.ix(16, vec![e.m(e.payer.pubkey(), true, true), e.rw(s.receipt), e.ro(a(SYSTEM))], { let mut d = s.sid.to_le_bytes().to_vec(); d.extend(2_000_000u64.to_le_bytes()); d }));
+        templates.push(e.cancel_ix(s, e.payer.pubkey(), s.pool, &all_strats[..4.min(all_strats.len())].to_vec())); templates.push(e.release_bond_ix(s, e.payer.pubkey())); templates.push(e.settle_ix_publishing(s, 4.min(all_strats.len())));
+        { let mut m = vec![e.m(e.payer.pubkey(), true, true), e.ro(a(MAGIC)), e.rw(a(MAGIC_CTX)), e.rw(s.receipt)]; for t in all_strats.iter().take(2) { m.push(e.rw(e.reg_pda(t.id))); } templates.push(e.ix(12, m, vec![1])); }
         let mut cm = vec![e.m(e.payer.pubkey(), true, true), e.ro(a(MAGIC)), e.rw(a(MAGIC_CTX)), e.rw(s.receipt)]; for t in all_strats.iter().take(3) { cm.push(e.rw(e.reg_pda(t.id))); } templates.push(e.ix(12, cm, vec![]));
         let id = pda(&[b"identity", pid.as_ref()], &a(VRF)); let mut d = CB_DISC.to_vec(); d.extend([7u8; 32]); templates.push(Instruction { program_id: pid, accounts: vec![AccountMeta::new_readonly(id, true), AccountMeta::new(s.arena, false)], data: d }); }
     for t in all_strats.iter().take(5) { templates.push(e.seal_ix(t, t.owner)); templates.push(e.ix(1, vec![e.m(e.players[t.owner].pubkey(), true, true), e.rw(e.reg_pda(t.id)), e.ro(a(SYSTEM))], { let mut d = t.id.to_le_bytes().to_vec(); d.extend([1u8; 32]); d }));

@@ -24,7 +24,7 @@ fn order(totals: &[i64]) -> Vec<usize> { let mut o: Vec<usize> = (0..totals.len(
     let r = e.data(&s.receipt); assert_eq!(rd32(&r, 0), 0x5443_5052); assert_eq!(r[4], 0, "ensemble kind"); assert_eq!(r[5], 5); assert_eq!(r[6], 5, "all five published"); assert_eq!(rd64(&r, 8), 1001);
     assert_eq!(u16::from_le_bytes([r[24], r[25]]), 2); assert_eq!(r[26], 2); assert_eq!(r[27], 2); assert_eq!(rd32(&r, 32), 6); let (sa, sb) = conclave_vm::world::season_words(&s.seed); assert_eq!(rd64(&r, 40), sa); assert_eq!(rd64(&r, 48), sb);
     let packs = conclave_vm::world::season_packs(sa, sb); assert_eq!((r[28] as usize, r[29] as usize), (packs[0], packs[1])); assert!(r[56..104] == conclave_vm::pins_bytes()[..]);
-    for i in 0..5 { let st = &s.entries[i]; let en = 128 + i * 80; assert_eq!(rd64(&r, en), st.id); let reg = e.data(&e.reg_pda(st.id)); assert!(r[en + 8..en + 40] == reg[48..80], "code commitment equals the registry"); assert!(r[en + 8..en + 40] == code_commit(&st.salt, &st.code));
+    for i in 0..5 { let st = &s.entries[i]; let en = RC_ENT + i * 80; assert_eq!(rd64(&r, en), st.id); let reg = e.data(&e.reg_pda(st.id)); assert!(r[en + 8..en + 40] == reg[48..80], "code commitment equals the registry"); assert!(r[en + 8..en + 40] == code_commit(&st.salt, &st.code));
         assert_eq!(rd32(&r, en + 72), ord.iter().position(|&x| x == i).unwrap() as u32 + 1, "rank"); let sc = score_commit(&st.salt, 1001, st.id, host_tot[i], 0, 6); assert!(r[en + 40..en + 72] == sc, "score commitment recomputed from the salt"); }
     // sealed record of each owner carries its rank and score; the registry carries the track record
     for i in 0..5 { let sd = e.data(&e.strat_pda(s.entries[i].id)); assert_eq!(rd64(&sd, 80), 1002, "season+1 marker"); assert_eq!(rd32(&sd, 88), ord.iter().position(|&x| x == i).unwrap() as u32 + 1); assert_eq!(rdi64(&sd, 96), host_tot[i]); let rg = e.data(&e.reg_pda(s.entries[i].id)); assert_eq!(rd32(&rg, 80), 1); assert_eq!(rdi64(&rg, 88), host_tot[i]); }
@@ -33,7 +33,7 @@ fn order(totals: &[i64]) -> Vec<usize> { let mut o: Vec<usize> = (0..totals.len(
     // ---- finals: top 3 replayed best-of-3 in a fresh seeded arena with its own receipt
     let (r1, mut f) = e.start_finals(&s, 2002, 3, 3); assert!(r1.is_ok(), "StartFinals {}", err_string(&r1));
     f.entries = s.entries.iter().enumerate().filter(|(i, _)| ord.iter().position(|x| x == i).unwrap() < 3).map(|(_, x)| x.clone()).collect(); assert_eq!(f.entries.len(), 3);
-    assert!(e.init_receipt(&f).is_ok()); assert!(e.request_seed(&f).is_ok()); let mut seed = [0u8; 32]; for (i, b) in seed.iter_mut().enumerate() { *b = (i as u8).wrapping_mul(11) ^ 0xC3; } assert!(e.deliver_seed(&mut f, seed).is_ok());
+    assert!(e.request_seed(&f).is_ok()); let mut seed = [0u8; 32]; for (i, b) in seed.iter_mut().enumerate() { *b = (i as u8).wrapping_mul(11) ^ 0xC3; } assert!(e.deliver_seed(&mut f, seed).is_ok());
     e.drive(&f, 1400, 1_400_000); let (ftot, fwins) = replay(&f, &f.entries); for i in 0..3 { assert_eq!(e.total(&f, i), ftot[i]); assert_eq!(e.wins(&f, i), fwins[i] as u16); }
     let champ_before: Vec<u64> = f.entries.iter().map(|x| e.balance(&e.players[x.owner].pubkey())).collect();
     let rs = { let ix = e.settle_ix(&f, s.pool, &f.entries); e.send(&[ix], &[]) }; assert!(rs.is_ok(), "finals Settle {}", err_string(&rs));
