@@ -639,6 +639,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "conclave-author"
+version = "0.1.0"
+dependencies = [
+ "conclave-vm",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "conclave-conformance"
 version = "0.1.0"
 dependencies = [
@@ -665,6 +673,7 @@ dependencies = [
 name = "conclave-svm-tests"
 version = "0.1.0"
 dependencies = [
+ "conclave-author",
  "conclave-conformance-tools",
  "conclave-lab",
  "conclave-vm",

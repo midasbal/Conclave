@@ -21,6 +21,7 @@ sha2 = "0.10"
 conclave-vm = { path = "../../crates/conclave-vm" }
 conclave-lab = { path = "../../crates/conclave-lab" }
 conclave-conformance-tools = { path = "../../crates/conclave-conformance-tools" }
+conclave-author = { path = "../../crates/conclave-author" }
 [profile.test]
 opt-level = 2
 overflow-checks = true
