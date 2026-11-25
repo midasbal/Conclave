@@ -21,6 +21,9 @@ export async function load(file = WASM_PATH) {
       const inp = new Uint8Array(22 + code.length); inp.set(new Uint8Array(h.buffer), 0); inp.set(code, 22); const n = X.ca_simulate(put(inp), inp.length); const s = out(n); if (s.startsWith("ERROR")) throw new Error(s); return text || raw ? s : JSON.parse(s); },
     /** final PnL (Q16.16, BigInt) of one episode, seeded exactly like the conformance TRACE vector */
     trace: (code, pack, sa, sb, ep) => { const p = put(code); const a = BigInt(sa), b = BigInt(sb); return X.ca_trace(p, code.length, pack, Number(a & 0xffffffffn), Number(a >> 32n), Number(b & 0xffffffffn), Number(b >> 32n), ep); },
+    /** one season of several strategies together, the chain's own loop: [{packs, totals: BigInt[]}] (Q16.16) for season seed words sa, sb */
+    season: (codes, sa, sb, neps) => { const parts = [Buffer.alloc(21)]; const h = parts[0]; h.writeBigUInt64LE(BigInt(sa), 0); h.writeBigUInt64LE(BigInt(sb), 8); h.writeUInt32LE(neps, 16); h[20] = codes.length; for (const c of codes) { const l = Buffer.alloc(2); l.writeUInt16LE(c.length); parts.push(l, Buffer.from(c)); }
+      const inp = Buffer.concat(parts); const s = out(X.ca_season(put(inp), inp.length)); if (s.startsWith("ERROR")) throw new Error(s); const j = JSON.parse(s); return { packs: j.packs, totals: j.totals.map(BigInt) }; },
     hexToBytes, raw: X,
   };
 }

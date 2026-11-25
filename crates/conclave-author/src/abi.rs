@@ -36,3 +36,15 @@ fn set(v: Vec<u8>) -> usize { OUT.with(|o| { let mut b = o.borrow_mut(); *b = v;
 /// One episode through the same seeding the conformance TRACE vector uses (pack, season seed words, episode index): final PnL (Q16.16), or i64::MIN for invalid bytecode.
 #[no_mangle] pub unsafe extern "C" fn ca_trace(ptr: *const u8, len: usize, pack: u32, sa_lo: u32, sa_hi: u32, sb_lo: u32, sb_hi: u32, ep: u32) -> i64 { let code = std::slice::from_raw_parts(ptr, len); if conclave_vm::validate(code).is_err() { return i64::MIN; }
     let (sa, sb) = ((u64::from(sa_hi) << 32) | u64::from(sa_lo), (u64::from(sb_hi) << 32) | u64::from(sb_lo)); crate::sim::episode(code, pack as usize, conclave_vm::world::episode_seed(sa, sb, u64::from(ep))).pnl }
+/// # Safety
+/// `ptr` must point to `len` readable bytes.
+/// One season of several strategies together, exactly the chain's loop (shared market, one seat each): input [sa u64][sb u64][neps u32][n u8] then n x ([u16 len][bytecode]).
+/// Output JSON {"packs":[p0,p1],"totals":["Q16.16 season total as a decimal string", ...]} in input order.
+#[no_mangle] pub unsafe extern "C" fn ca_season(ptr: *const u8, len: usize) -> usize {
+    let b = std::slice::from_raw_parts(ptr, len); if b.len() < 21 { return set(b"ERROR short input".to_vec()); }
+    let (sa, sb, neps, n) = (u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]), u64::from_le_bytes([b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]]), u32::from_le_bytes([b[16], b[17], b[18], b[19]]), usize::from(b[20]));
+    if neps == 0 || neps > 1000 || n == 0 { return set(b"ERROR bad season".to_vec()); }
+    let mut progs: Vec<&[u8]> = vec![]; let mut o = 21; for _ in 0..n { if o + 2 > b.len() { return set(b"ERROR truncated".to_vec()); } let l = usize::from(u16::from_le_bytes([b[o], b[o + 1]])); o += 2; if o + l > b.len() { return set(b"ERROR truncated".to_vec()); } let p = &b[o..o + l]; o += l; if conclave_vm::validate(p).is_err() { return set(b"ERROR bytecode does not validate".to_vec()); } progs.push(p); }
+    let packs = conclave_vm::world::season_packs(sa, sb); let t = crate::sim::field_totals(&progs, sa, sb, neps);
+    set(crate::json::J::obj(vec![("packs", crate::json::J::arr(vec![crate::json::J::n(packs[0] as f64), crate::json::J::n(packs[1] as f64)])), ("totals", crate::json::J::arr(t.iter().map(|v| crate::json::J::s(&v.to_string())).collect()))]).to_string().into_bytes())
+}

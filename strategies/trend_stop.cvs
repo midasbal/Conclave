@@ -1,0 +1,16 @@
+conclave-strategy 1 ruleset 2
+name "Short trend with a stop"
+author "example"
+note "Follow the 10-tick trend with a 3 vol-unit stop, re-armed on a flip."
+
+state prev
+x   = sig T10
+x   = thr x 0.125
+s   = sign x
+lvl = const 3
+stopset lvl
+chg = sub s prev
+chg = abs chg
+stopclr chg
+prev = mov s
+pos s

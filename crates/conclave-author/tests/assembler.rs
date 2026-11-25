@@ -10,7 +10,7 @@ fn strategies() -> Vec<(String, String)> { let dir = std::path::Path::new(env!("
     v.into_iter().map(|p| (p.file_stem().unwrap().to_string_lossy().to_string(), std::fs::read_to_string(p).unwrap())).collect() }
 
 #[test] fn every_example_assembles_and_lands_in_the_expected_division() {
-    let want = [("at_the_cap", 64, 64), ("breakout_with_stop", 40, 64), ("calm_trend", 6, 16), ("ema_cross", 7, 16), ("mean_reversion", 31, 32), ("momentum", 4, 16)];
+    let want = [("at_the_cap", 64, 64), ("breakout_with_stop", 40, 64), ("calm_trend", 6, 16), ("ema_cross", 7, 16), ("mean_reversion", 31, 32), ("momentum", 4, 16), ("quick_fade", 23, 32), ("trend_stop", 10, 16)];
     let all = strategies(); assert_eq!(all.len(), want.len(), "the examples and this table must agree");
     for ((n, src), (wn, work, div)) in all.iter().zip(want) { assert_eq!(n, wn); let a = assemble(src); assert!(a.is_ok(), "{}: {:?}", n, a.errors); assert!(a.warnings.is_empty(), "{} should be warning-free: {:?}", n, a.warnings); assert_eq!(a.work, work, "{}", n); assert_eq!(a.division, Some(div), "{}", n); let c = a.code.unwrap(); assert_eq!(validate(&c).unwrap(), a.ops.len()); assert_eq!(work_of(&c), work); } }
 

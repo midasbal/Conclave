@@ -17,7 +17,7 @@ test("the salted commitment matches an independent implementation, the program's
   const other = Buffer.from(salt); other[0] ^= 1; assert.notEqual(art.codeCommit(other, code).toString("hex"), art.codeCommit(salt, code).toString("hex")); assert.notEqual(art.codeCommit(salt, Buffer.concat([code, Buffer.from([0])])).toString("hex"), art.codeCommit(salt, code).toString("hex")); });
 
 test("every example builds an artifact whose work, division and hashes are recomputed independently", () => {
-  const want = { at_the_cap: [64, 64, 2], breakout_with_stop: [40, 64, 2], calm_trend: [6, 16, 0], ema_cross: [7, 16, 0], mean_reversion: [31, 32, 1], momentum: [4, 16, 0] };
+  const want = { at_the_cap: [64, 64, 2], breakout_with_stop: [40, 64, 2], calm_trend: [6, 16, 0], ema_cross: [7, 16, 0], mean_reversion: [31, 32, 1], momentum: [4, 16, 0], quick_fade: [23, 32, 1], trend_stop: [10, 16, 0] };
   for (const n of names) { const a = art.buildArtifact(srcOf(n), A); assert.deepEqual([a.work, a.division, a.division_index], want[n], n); assert.equal(a.ruleset, 2); assert.equal(a.format, 1); assert.equal(art.DIVISIONS[a.division_index], a.division);
     assert.equal(crypto.createHash("sha256").update(a.code).digest("hex"), a.code_sha256); assert.equal(a.code.length, 4 + 4 * a.code[1]); } });
 test("an over-cap or malformed source builds no artifact", () => { const over = "conclave-strategy 1 ruleset 2\nz = zw 32\nw = wsum 12\n" + "x = sig T5\n".repeat(12) + "pos x\n"; assert.throws(() => art.buildArtifact(over, A), /does not assemble[\s\S]*over the cap of 64/); assert.throws(() => art.buildArtifact("nonsense", A), /does not assemble/); assert.throws(() => art.buildArtifact("conclave-strategy 1 ruleset 3\nnop\n", A), /ruleset 3/); });

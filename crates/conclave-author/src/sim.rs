@@ -78,7 +78,7 @@ fn summarise(label: &str, run: &Run, base: u64, worlds: u32, code_seed: u64) -> 
 #[derive(Clone, Debug)] pub struct Gap { pub capped_ticks_per_10k: f64, pub worst_tick: f64, pub big_ticks_share: f64, pub big_mean: f64, pub normal_mean: f64 }
 #[derive(Clone, Debug)] pub struct Report {
     pub work: u32, pub division: Option<u32>, pub ops: usize, pub code_hash: String, pub cfg: Config, pub dev: Ensemble, pub holdout: Ensemble, pub dev_vs_holdout_z: f64, pub halves: (f64, f64),
-    pub best_world: f64, pub luck_gap_pct: f64, pub packs: Vec<PackRow>, pub regimes: Option<Vec<RegimeRow>>, pub gap: Gap, pub turnover_per_tick: f64, pub cost_share: f64, pub held_share: f64, pub field: Option<FieldRow>, pub single: Option<Single>, pub flags: Vec<String>, pub labels_ok: bool,
+    pub best_world: f64, pub luck_gap_pct: f64, pub packs: Vec<PackRow>, pub regimes: Option<Vec<RegimeRow>>, pub gap: Gap, pub turnover_per_tick: f64, pub cost_share: f64, pub held_share: f64, pub field: Option<FieldRow>, pub single: Option<Single>, pub flags: Vec<String>, pub labels_ok: bool, pub dev_totals: Vec<f64>,
 }
 
 fn parse_field() -> Vec<&'static [u8]> { let b = FIELD; if b.len() < 2 { return vec![]; } let n = usize::from(u16::from_le_bytes([b[0], b[1]])); let mut off = 2; let mut v = vec![]; for _ in 0..n { if off + 2 > b.len() { break; } let l = usize::from(u16::from_le_bytes([b[off], b[off + 1]])); off += 2; if off + l > b.len() { break; } v.push(&b[off..off + l]); off += l; } v }
@@ -128,7 +128,8 @@ pub fn simulate(code: &[u8], cfg: &Config) -> Report {
     if gap.big_mean < 0.0 && gap.normal_mean > 0.0 && gap.big_ticks_share > 0.0 { flags.push(format!("gives back on big-move ticks ({:+.3} per tick on |move| >= 4 vol-units vs {:+.4} otherwise)", gap.big_mean, gap.normal_mean)); }
     if held_share < 0.1 { flags.push(format!("in a position only {} of the time: the result rests on very few decisions", pc(held_share))); }
     if work > WORK_CAP { flags.push("over the work cap: this would be refused on chain".into()); }
-    Report { work, division: crate::source::division_for(work), ops: usize::from(code.get(1).copied().unwrap_or(0)), code_hash, cfg: cfg.clone(), dev, holdout, dev_vs_holdout_z: dz, halves: (mean(&ev), mean(&od)), best_world: best, luck_gap_pct: luck, packs, regimes, gap, turnover_per_tick: turnover, cost_share: if gross > 0.0 { cost / gross } else { 0.0 }, held_share, field, single, flags, labels_ok }
+    let dev_totals = st.clone();
+    Report { work, division: crate::source::division_for(work), ops: usize::from(code.get(1).copied().unwrap_or(0)), code_hash, cfg: cfg.clone(), dev, holdout, dev_vs_holdout_z: dz, halves: (mean(&ev), mean(&od)), best_world: best, luck_gap_pct: luck, packs, regimes, gap, turnover_per_tick: turnover, cost_share: if gross > 0.0 { cost / gross } else { 0.0 }, held_share, field, single, flags, labels_ok, dev_totals }
 }
 
 fn f(x: f64) -> String { format!("{:+.2}", x) }
@@ -165,6 +166,6 @@ impl Report {
             ("turnover_per_tick", J::n(self.turnover_per_tick)), ("cost_share_of_gross", J::n(self.cost_share)), ("held_share", J::n(self.held_share)),
             ("field", match &self.field { Some(x) => J::obj(vec![("size", J::n(x.size as f64)), ("median_rank", J::n(x.median_rank)), ("p25_rank", J::n(x.p25_rank)), ("p75_rank", J::n(x.p75_rank)), ("top_tenth_share", J::n(x.top_tenth_share)), ("top_half_share", J::n(x.beats_median_share))]), None => J::Null }),
             ("single_seed", match &self.single { Some(s) => J::obj(vec![("world", J::n(f64::from(s.world))), ("total", J::n(s.total)), ("percentile", J::n(s.percentile)), ("ensemble_median", J::n(s.ensemble_median)), ("warning", J::s("one draw from the distribution, not evidence of skill"))]), None => J::Null }),
-            ("fragility", J::arr(self.flags.iter().map(|x| J::s(x)).collect())), ("regime_labels_verified", J::Bool(self.labels_ok))]).to_string()
+            ("fragility", J::arr(self.flags.iter().map(|x| J::s(x)).collect())), ("regime_labels_verified", J::Bool(self.labels_ok)), ("dev_season_totals", J::arr(self.dev_totals.iter().map(|x| J::n(*x)).collect()))]).to_string()
     }
 }

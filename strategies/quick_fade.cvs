@@ -1,0 +1,10 @@
+conclave-strategy 1 ruleset 2
+name "Quick fade"
+author "example"
+note "Fade an 8-tick z-score that has stretched past 1.5."
+
+z = zw 8             # 11 + 8 = 19 work units
+z = thr z 1.5
+z = neg z
+z = sign z
+pos z

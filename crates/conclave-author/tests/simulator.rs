@@ -81,3 +81,14 @@ fn small() -> sim::Config { sim::Config { worlds: 12, episodes: 6, pack_eps: 30,
     let es = world::episode_seed(5, 6, 1); let direct = sim::episode(&code, 2, es).pnl; assert_eq!(unsafe { abi::ca_episode(code.as_ptr(), code.len(), 2, es as u32, (es >> 32) as u32) }, direct);
     assert_eq!(unsafe { abi::ca_episode([9u8, 0, 0, 0].as_ptr(), 4, 0, 1, 0) }, i64::MIN, "invalid bytecode is refused, not run"); let bad = [1u8, 0, 0, 0, 0]; let n = unsafe { abi::ca_simulate(bad.as_ptr(), bad.len()) }; assert!(unsafe { std::slice::from_raw_parts(abi::ca_out(), n) }.starts_with(b"ERROR"));
     let h = hex(&code); assert_eq!(h.len(), code.len() * 2); }
+
+#[test] fn the_season_export_is_the_chains_loop_and_the_report_carries_the_dev_totals() {
+    let all = strategies(); let codes: Vec<&[u8]> = all.iter().map(|(_, c)| c.as_slice()).collect(); let (sa, sb, neps) = (0xABCD_EF01u64, 31337u64, 7u32);
+    let mut inp = vec![]; inp.extend(sa.to_le_bytes()); inp.extend(sb.to_le_bytes()); inp.extend(neps.to_le_bytes()); inp.push(codes.len() as u8); for c in &codes { inp.extend((c.len() as u16).to_le_bytes()); inp.extend(*c); }
+    let n = unsafe { abi::ca_season(inp.as_ptr(), inp.len()) }; let j = String::from_utf8(unsafe { std::slice::from_raw_parts(abi::ca_out(), n) }.to_vec()).unwrap();
+    let want = conclave_lab::run::run_season(&codes, sa, sb, u64::from(neps)); for (i, w) in want.iter().enumerate() { assert!(j.contains(&format!("\"{}\"", w)), "strategy {} total {} missing from {}", i, w, j); }
+    let out = run_vector(&v_season(sa, sb, neps as u8, 150, &codes)); for i in 0..codes.len() { let t = i64::from_le_bytes(out[2 + 16 + 8 * i..2 + 24 + 8 * i].try_into().unwrap()); assert_eq!(t, want[i]); }
+    let packs = world::season_packs(sa, sb); assert!(j.starts_with(&format!("{{\"packs\":[{},{}]", packs[0], packs[1])));
+    let bad = [0u8; 10]; let n = unsafe { abi::ca_season(bad.as_ptr(), bad.len()) }; assert!(unsafe { std::slice::from_raw_parts(abi::ca_out(), n) }.starts_with(b"ERROR"));
+    // the report's dev totals are the ensemble's season totals, in world order
+    let code = &all[0].1; let r = sim::simulate(code, &small()); let run = sim::run_ensemble(code, sim::DEV_BASE, 12, 6); assert_eq!(r.dev_totals.len(), 12); for (a, b) in r.dev_totals.iter().zip(run.totals.iter()) { assert_eq!(*a, *b as f64 / 65536.0); } assert!(r.to_json().contains("\"dev_season_totals\":[")); }
