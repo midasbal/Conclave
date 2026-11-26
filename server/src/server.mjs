@@ -1,12 +1,12 @@
 // HTTP front: open routes (public, coarse), the auth routes, and the gated player routes. Credentials only ever arrive in the Authorization header or a POST body.
-import http from "node:http"; import bs58 from "bs58"; import { PublicKey } from "@solana/web3.js"; import { AuthError } from "./auth.mjs"; import { createLimiter } from "./ratelimit.mjs"; import { coarseReceipt } from "./receipt.mjs";
+import http from "node:http"; import bs58 from "bs58"; import { PublicKey } from "@solana/web3.js"; import { AuthError } from "./auth.mjs"; import { createLimiter } from "./ratelimit.mjs"; import { coarseReceipt, coarseClaims } from "./receipt.mjs";
 
 const PUBLIC_METHODS = new Set(["getSlot", "getLatestBlockhash", "getAccountInfo", "getMultipleAccounts"]);
 const PLAYER_METHODS = new Set([...PUBLIC_METHODS, "getBalance", "getProgramAccounts", "getSignaturesForAddress", "getSignatureStatuses", "getTransaction", "simulateTransaction", "sendTransaction"]);
 const CREDENTIAL_PARAMS = /^(token|access_token|id_token|auth|authorization|jwt|session|sig|signature|key|api[-_]?key|apikey|secret|bearer)$/i;
 const MAX_BODY = 64 * 1024;
 
-export function createApp({ auth, upstream, programId, origins = [], limits = {}, trustProxy = false, now = () => Date.now() / 1000, log = () => {}, fetchImpl = fetch, upstreamTimeoutMs = 10000 }) {
+export function createApp({ auth, upstream, rollupUpstream = null, programId, origins = [], limits = {}, trustProxy = false, now = () => Date.now() / 1000, log = () => {}, fetchImpl = fetch, upstreamTimeoutMs = 10000 }) {
   if (!upstream) throw new Error("upstream RPC url required (it may contain the provider key; it is only ever used server-side)");
   const L = { auth: limits.auth ?? 20, open: limits.open ?? 60, player: limits.player ?? 120 };
   const lim = { auth: createLimiter({ capacity: L.auth, perMinute: L.auth, now }), open: createLimiter({ capacity: L.open, perMinute: L.open, now }), player: createLimiter({ capacity: L.player, perMinute: L.player, now }) };
@@ -14,8 +14,8 @@ export function createApp({ auth, upstream, programId, origins = [], limits = {}
   const ok = (res, status, body, extra = {}) => { const s = JSON.stringify(body); res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(s), ...extra }); res.end(s); };
   const fail = (res, status, error, extra = {}) => ok(res, status, { error }, extra);
   async function readJson(req) { const chunks = []; let n = 0; for await (const c of req) { n += c.length; if (n > MAX_BODY) throw new AuthError("body_too_large", 413); chunks.push(c); } if (!n) return {}; try { const j = JSON.parse(Buffer.concat(chunks).toString("utf8")); if (j === null || typeof j !== "object" || Array.isArray(j)) throw 0; return j; } catch { throw new AuthError("bad_json", 400); } }
-  async function callUpstream(method, params) {
-    try { const r = await fetchImpl(upstream, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(upstreamTimeoutMs) }); return await r.json(); }
+  async function callUpstream(method, params, url = upstream) {
+    try { const r = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(upstreamTimeoutMs) }); return await r.json(); }
     catch { throw new AuthError("upstream_unavailable", 502); } // the error never names the upstream URL: it may carry the key
   }
   async function proxyRpc(res, body, allowed, extraCheck) {
@@ -52,6 +52,9 @@ export function createApp({ auth, upstream, programId, origins = [], limits = {}
       if (path.startsWith("/public/")) { who = ip; if (!limit("open", ip)) return;
         const m = /^\/public\/receipt\/(\d{1,20})$/.exec(path); if (m && req.method === "GET") { const rc = PublicKey.findProgramAddressSync([Buffer.from("receipt"), (() => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(m[1])); return b; })()], program)[0];
           const out = await callUpstream("getAccountInfo", [rc.toBase58(), { encoding: "base64" }]); const v = out.result?.value; const r = v ? coarseReceipt(Buffer.from(v.data[0], "base64")) : null; return r ? ok(res, 200, r) : fail(res, 404, "no_receipt"); }
+        // the claims account lives only in the rollup (it is public, so no credential is used); once every claim is paid it can be closed, and the receipt remains the record
+        const k = /^\/public\/claims\/(\d{1,20})$/.exec(path); if (k && req.method === "GET") { if (!rollupUpstream) return fail(res, 404, "no_rollup_upstream"); const acct = PublicKey.findProgramAddressSync([Buffer.from("claims"), (() => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(k[1])); return b; })()], program)[0];
+          const out = await callUpstream("getAccountInfo", [acct.toBase58(), { encoding: "base64" }], rollupUpstream); const v = out.result?.value; const r = v ? coarseClaims(Buffer.from(v.data[0], "base64")) : null; return r ? ok(res, 200, r) : fail(res, 404, "no_claims_account"); }
         if (path === "/public/rpc" && req.method === "POST") return await proxyRpc(res, await readJson(req), PUBLIC_METHODS);
         return fail(res, 404, "not_found"); }
       // ---- gated: player-scoped. Identity comes from the token and nowhere else.

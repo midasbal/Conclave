@@ -1,0 +1,19 @@
+// Public account layouts (mirror of program/src/lib.rs), pure functions over bytes: shared by the client flows, the season checks and the server.
+export const FINALS_EPISODES = 15;
+export const FINALS_STATUS = ["none", "played", "voided"];
+export const REASONS = ["", "under_minimum", "seed_timeout", "creator", "finals_seed_timeout", "finals_deadline", "finals_too_few_qualifiers", "season_deadline"];
+export const RC_SIZE = 224 + 20 * 80;
+/** season receipt. kind 0 settled, 2 cancelled. Each entry carries its frozen season rank and its final rank */
+export function parseReceipt(d) {
+  const n = d[5]; const out = { kind: d[4], ns: n, published: d[6], division: d[7], season: d.readBigUInt64LE(8), ruleset: d.readUInt16LE(24), vmVersion: d[26], genVersion: d[27], packs: [d[28], d[29]], neps: d.readUInt32LE(32), seedA: d.readBigUInt64LE(40), seedB: d.readBigUInt64LE(48), pins: d.subarray(56, 104),
+    creator: d.subarray(104, 136), bond: d.readBigUInt64LE(136), state: d[144], reason: d[145], refunded: d.readBigUInt64LE(152), rentDrawn: d.readBigUInt64LE(160), rentReclaimed: d.readBigUInt64LE(168), forfeit: d.readBigUInt64LE(176), release: d.readBigUInt64LE(184),
+    finals: { seedA: d.readBigUInt64LE(192), seedB: d.readBigUInt64LE(200), packs: [d[208], d[209]], status: d[210], qualifiers: d[211], neps: d.readUInt32LE(212) }, owed: d.readBigUInt64LE(216), entries: [] };
+  for (let i = 0; i < n; i++) { const e = 224 + i * 80; out.entries.push({ id: d.readBigUInt64LE(e), commit: d.subarray(e + 8, e + 40), score: d.subarray(e + 40, e + 72), rank: d.readUInt32LE(e + 72), seasonRank: d.readUInt16LE(e + 76), published: d[e + 78] === 1, finalist: d[e + 79] === 1 }); }
+  return out; }
+/** the money fields (104..192) sit at the same offsets in receipts written by the previous build, which are shorter */
+export function parseReceiptMoney(d) { return { creator: d.subarray(104, 136), bond: d.readBigUInt64LE(136), state: d[144], reason: d[145], rentDrawn: d.readBigUInt64LE(160), rentReclaimed: d.readBigUInt64LE(168), forfeit: d.readBigUInt64LE(176), release: d.readBigUInt64LE(184) }; }
+export const M_CLAIMS = 0x534d4c43;
+/** claims account: what each entry is owed and whether it has been paid (an entry owed nothing is born done) */
+export function parseClaims(d) { if (!d || d.length < 72 || d.readUInt32LE(0) !== M_CLAIMS) return null; const n = Math.min(d[5], Math.floor((d.length - 72) / 48));
+  const out = { recorded: d[4] === 1, n, kind: d[7] === 2 ? "refund" : d[7] === 1 ? "payout" : "none", season: d.readBigUInt64LE(8), mint: d.subarray(16, 48), owed: d.readBigUInt64LE(48), claimed: d.readBigUInt64LE(56), entries: [] };
+  for (let i = 0; i < n; i++) { const e = 72 + i * 48; out.entries.push({ slot: i, owner: d.subarray(e, e + 32), owed: d.readBigUInt64LE(e + 32), done: d[e + 40] === 1 }); } return out; }

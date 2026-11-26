@@ -13,10 +13,10 @@ else if (cmd === "disallow") await tee(F.adminIx(3, new L.PublicKey(arg).toBuffe
 else if (cmd === "pause") await tee(F.adminIx(0), "pause");
 else if (cmd === "unpause") await tee(F.adminIx(1), "unpause");
 else if (cmd === "set-authority") await tee(F.adminIx(4, new L.PublicKey(arg).toBuffer()), `set authority ${arg}`);
-else if (cmd === "recover") { const sid = BigInt(arg); const before = await L.base.getAccountInfo(L.receiptPda(sid)); const R0 = L.parseReceipt(before.data); log(`receipt before: owner ${before.owner.toBase58()} state ${R0.state} bond ${R0.bond} release ${R0.release} creator ${new L.PublicKey(R0.creator).toBase58()} lamports ${before.lamports}`);
+else if (cmd === "recover") { const sid = BigInt(arg); const before = await L.base.getAccountInfo(L.receiptPda(sid)); const R0 = L.parseReceiptMoney(before.data); /* money fields only: works on both receipt sizes */ log(`receipt before: owner ${before.owner.toBase58()} state ${R0.state} bond ${R0.bond} release ${R0.release} creator ${new L.PublicKey(R0.creator).toBase58()} lamports ${before.lamports}`);
   const r = await tee(F.recoverBondIx(sid), `RecoverBond season ${sid}`); if (r.err) process.exit(1);
   const cu = await tee(F.commitUndelegateIx([L.receiptPda(sid)]), "commit+undelegate the recovered receipt"); let a; for (let t = 0; t < 60; t++) { a = await L.base.getAccountInfo(L.receiptPda(sid)); if (a && a.owner.equals(L.PROGRAM) && a.data[144] === 2) break; await L.sleep(1500); }
-  const R = L.parseReceipt(a.data); const creator = new L.PublicKey(R.creator); const bal = k => L.base.getBalance(k); const [c0, p0, l0] = [await bal(creator), await bal(O.publicKey), a.lamports];
+  const R = L.parseReceiptMoney(a.data); const creator = new L.PublicKey(R.creator); const bal = k => L.base.getBalance(k); const [c0, p0, l0] = [await bal(creator), await bal(O.publicKey), a.lamports];
   log(`on base: state ${R.state} release ${R.release} creator ${creator.toBase58()} authority ${O.publicKey.toBase58()} (same wallet: ${creator.equals(O.publicKey)})`);
   const rel = await L.sendBase([F.releaseBondIx(sid, creator)], [O]); const [c1, p1, l1] = [await bal(creator), await bal(O.publicKey), await L.base.getBalance(L.receiptPda(sid))];
   log(`SIG base ReleaseBond: ${rel} | receipt ${l0} -> ${l1} (moved ${l0 - l1}) | creator ${c0} -> ${c1} (${c1 - c0 >= 0 ? "+" : ""}${c1 - c0}) | authority ${p0} -> ${p1}`); }

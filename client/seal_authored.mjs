@@ -59,7 +59,7 @@ if (divCheck) {
     await F.initReceipt(c, sid); const cs = await F.createSeason(c, sid, { neps: 2, fee: 0, division: idx, window: 60_000, seedTimeout: 30_000 }); if (cs.err) { check(`CreateSeason for division index ${idx}`, false, JSON.stringify(cs.err)); continue; } log(`SIG TEE CreateSeason (division index ${idx}): ${cs.sig}`);
     const sim = await F.simErr(c, [F.enterIx(c, sid, owner, reg.id, true)], [O, p]); const fits = artifact.work <= [16, 32, 64][idx];
     check(`Enter simulated against a division-${[16, 32, 64][idx]} arena: ${fits ? "accepted" : "refused with 9005"}`, fits ? sim === null : (sim || "").includes("9005"), `simulation result ${sim === null ? "ok" : sim}`);
-    const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, [], O.publicKey, sid, false)], [O]); const cl = await L.sendTee(c.URL, [F.cleanupIx(c, sid)], [O]); log(`SIG TEE Cancel (nothing entered): ${cx.sig} ${cx.err ? JSON.stringify(cx.err) : "ok"} ; SIG TEE Cleanup: ${cl.sig} ${cl.err ? JSON.stringify(cl.err) : "ok"}`);
+    const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid)], [O]); await L.sendTee(c.URL, [F.closeClaimsIx(c, sid)], [O]); const cl = await L.sendTee(c.URL, [F.cleanupIx(c, sid)], [O]); log(`SIG TEE Cancel (nothing entered): ${cx.sig} ${cx.err ? JSON.stringify(cx.err) : "ok"} ; SIG TEE Cleanup: ${cl.sig} ${cl.err ? JSON.stringify(cl.err) : "ok"}`);
     const cu = await L.sendTee(c.URL, [F.commitUndelegateIx([L.receiptPda(sid)])], [O]); let a; for (let t = 0; t < 60; t++) { a = await L.base.getAccountInfo(L.receiptPda(sid)); if (a && a.owner.equals(L.PROGRAM) && a.data[144] === 2) break; await L.sleep(1500); } if (a) log(`SIG base ReleaseBond: ${await L.sendBase([F.releaseBondIx(sid, O.publicKey)], [O])}`); }
 }
 

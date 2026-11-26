@@ -26,7 +26,7 @@ pub fn run_season(progs: &[&[u8]], sa: u64, sb: u64, neps: u64) -> Vec<i64> {
     tot
 }
 
-/// Finals reference: per-strategy season totals AND number of episodes won (best-of-N), mirroring the on-chain finals tally (ties -> lowest slot).
+/// Per-strategy season totals plus the number of episodes each won (ties -> lowest slot). The wins tally is a lab statistic only: the program ranks by totals, in both phases.
 pub fn run_season_wins(progs: &[&[u8]], sa: u64, sb: u64, neps: u64) -> (Vec<i64>, Vec<u32>) {
     let mut tot = vec![0i64; progs.len()]; let mut wins = vec![0u32; progs.len()]; let sp = world::season_packs(sa, sb);
     for ep in 0..neps { let es = world::episode_seed(sa, sb, ep); let mut r = [0i32; WORLD_T]; world::gen_episode(world::pack_for_season(&sp, es), es, &mut r);

@@ -22,28 +22,36 @@ pub const DLP: &str = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh";
 pub const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 pub const ATOKEN: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 pub const SYSTEM: &str = "11111111111111111111111111111111";
+pub const VRF_QUEUE: &str = "5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc";
 pub const SLOT_HASHES: &str = "SysvarS1otHashes111111111111111111111111111";
 pub fn a(s: &str) -> Address { Address::from_str(s).unwrap() }
 pub fn pda(seeds: &[&[u8]], pid: &Address) -> Address { Address::find_program_address(seeds, pid).0 }
 pub fn u64le(v: u64) -> [u8; 8] { v.to_le_bytes() }
 
 // ---- layouts (mirror of program/src/lib.rs; the tests assert against these, they are not imported so a layout change must be made here on purpose) ----
-pub const HDR: usize = 1280; pub const SLOT: usize = 440; pub const STRAT_SIZE: usize = 136 + 260; pub const REG_SIZE: usize = 128; pub const RC_ENT: usize = 192; pub const RC_SIZE: usize = RC_ENT + 20 * 80;
+pub const HDR: usize = 1280; pub const SLOT: usize = 440; pub const STRAT_MIN_SIZE: usize = 136 + 260; pub const STRAT_SIZE: usize = STRAT_MIN_SIZE + 8; pub const S_LFINALS: usize = 396; pub const REG_SIZE: usize = 128; pub const RC_ENT: usize = 224; pub const RC_MONEY_SIZE: usize = 192 + 20 * 80; pub const RC_SIZE: usize = RC_ENT + 20 * 80;
 pub fn arena_size(maxs: usize) -> usize { HDR + maxs * SLOT }
-pub mod ar { pub const FLAGS: usize = 4; pub const NS: usize = 5; pub const SEASON: usize = 40; pub const SEED: usize = 48; pub const NEPS: usize = 80; pub const CUREP: usize = 88; pub const CURTICK: usize = 92; pub const START: usize = 96; pub const POOL: usize = 112; pub const TICKS: usize = 152; pub const RESERVE: usize = 1120; pub const F2: usize = 1128; pub const PUBN: usize = 1129; pub const PINS: usize = 1152; pub const DIV: usize = 1200;
-    pub const SL_OWNER: usize = 0; pub const SL_ID: usize = 32; pub const SL_WINS: usize = 42; pub const SL_RANK: usize = 44; pub const SL_TOTAL: usize = 48; pub const SL_SEAT: usize = 64; }
+pub mod ar { pub const FLAGS: usize = 4; pub const NS: usize = 5; pub const SEASON: usize = 40; pub const SEED: usize = 48; pub const NEPS: usize = 80; pub const CUREP: usize = 88; pub const CURTICK: usize = 92; pub const START: usize = 96; pub const POOL: usize = 112; pub const TICKS: usize = 152; pub const FSEED: usize = 1112; pub const F2: usize = 1144; pub const PUBN: usize = 1145; pub const SDONEAT: usize = 1272; pub const PINS: usize = 1152; pub const DIV: usize = 1200;
+    pub const SL_OWNER: usize = 0; pub const SL_ID: usize = 32; pub const SL_SRANK: usize = 42; pub const SL_BITS: usize = 43; pub const SL_RANK: usize = 44; pub const SL_TOTAL: usize = 48; pub const SL_FTOTAL: usize = 56; pub const SL_SEAT: usize = 64; }
 pub mod arx { pub const CREATED: usize = 1208; pub const WINDOW: usize = 1216; pub const SEEDTO: usize = 1224; pub const LOCKAT: usize = 1232; pub const SETTLEDAT: usize = 1240; pub const PUBGRACE: usize = 1248; pub const RENT: usize = 1256; pub const MINS: usize = 1264; pub const REASON: usize = 1265; pub const FEE: usize = 104; pub const AUTH: usize = 8; }
-pub mod rc { pub const KIND: usize = 4; pub const NS: usize = 5; pub const PUB: usize = 6; pub const SEASON: usize = 8; pub const CREATOR: usize = 104; pub const BOND: usize = 136; pub const STATE: usize = 144; pub const REASON: usize = 145; pub const REFUNDED: usize = 152; pub const RENT: usize = 160; pub const RECLAIMED: usize = 168; pub const FORFEIT: usize = 176; pub const RELEASE: usize = 184; }
-pub const F2_FINALS: u8 = 1; pub const F2_HASFIN: u8 = 2; pub const F2_FINSTARTED: u8 = 4; pub const F2_CANCELLED: u8 = 8; pub const F2_REFUNDED: u8 = 16;
+pub mod rc { pub const KIND: usize = 4; pub const NS: usize = 5; pub const PUB: usize = 6; pub const SEASON: usize = 8; pub const CREATOR: usize = 104; pub const BOND: usize = 136; pub const STATE: usize = 144; pub const REASON: usize = 145; pub const REFUNDED: usize = 152; pub const FSEEDA: usize = 192; pub const FSEEDB: usize = 200; pub const FPACKS: usize = 208; pub const FSTATUS: usize = 210; pub const FQUAL: usize = 211; pub const FNEPS: usize = 212; pub const OWED: usize = 216; pub const E_FRANK: usize = 72; pub const E_SRANK: usize = 76; pub const E_PUBLISHED: usize = 78; pub const E_FINALIST: usize = 79; pub const RENT: usize = 160; pub const RECLAIMED: usize = 168; pub const FORFEIT: usize = 176; pub const RELEASE: usize = 184; }
+pub const F2_HASFIN: u8 = 2; pub const F2_CANCELLED: u8 = 8; pub const F2_REFUNDED: u8 = 16; pub const F2_THINFIELD: u8 = 32; pub const B_FINALIST: u8 = 1; pub const B_PUBLISHED: u8 = 2;
+pub const FS_NONE: u8 = 0; pub const FS_PLAYED: u8 = 1; pub const FS_VOIDED: u8 = 2;
+// ---- program constants (mirrored on purpose) ----
+pub const MAX_EPISODES: u32 = 100; pub const MAX_SPT: u32 = 100; pub const MAX_RUN_SLOTS: u64 = 720_000; pub const MAX_SEEDTO: u64 = 1_000_000; pub const MAX_ENTRY_WINDOW: u64 = 25_000_000; pub const MAX_GRACE: u64 = 200_000_000; pub const FINALS_EPISODES: u32 = 15; pub const FINALS_SEEDTO: u64 = 360_000; pub const SLACK_BASE: u64 = 360_000; pub const SLACK_PER_TICK: u64 = 40;
+pub fn phase_deadline(start: u64, episodes: u32, spt: u32) -> u64 { let t = u64::from(episodes) * 150; start + t * u64::from(spt) + SLACK_BASE + t * SLACK_PER_TICK }
+// ---- claims account ----
+pub mod cl { pub const STATE: usize = 4; pub const N: usize = 5; pub const CAP: usize = 6; pub const KIND: usize = 7; pub const SEASON: usize = 8; pub const MINT: usize = 16; pub const OWED: usize = 48; pub const CLAIMED: usize = 56; pub const HDR: usize = 72; pub const E_OWNER: usize = 0; pub const E_OWED: usize = 32; pub const E_DONE: usize = 40; pub const ESZ: usize = 48; }
+pub fn claims_size(cap: usize) -> usize { cl::HDR + cap * cl::ESZ }
 pub const BOND: u64 = 2_000_000;
-pub const F_LOCKED: u8 = 1; pub const F_REQ: u8 = 2; pub const F_SEEDED: u8 = 4; pub const F_DONE: u8 = 8; pub const F_SETTLED: u8 = 16;
+pub const F_LOCKED: u8 = 1; pub const F_REQ: u8 = 2; pub const F_SEEDED: u8 = 4; pub const F_DONE: u8 = 8; pub const F_SETTLED: u8 = 16; pub const F_SDONE: u8 = 32; pub const F_FREQ: u8 = 64; pub const F_FSEEDED: u8 = 128;
 pub fn rd64(d: &[u8], o: usize) -> u64 { u64::from_le_bytes(d[o..o + 8].try_into().unwrap()) }
 pub fn rdi64(d: &[u8], o: usize) -> i64 { rd64(d, o) as i64 }
 pub fn rd32(d: &[u8], o: usize) -> u32 { u32::from_le_bytes(d[o..o + 4].try_into().unwrap()) }
 
 pub fn sha256(parts: &[&[u8]]) -> [u8; 32] { let mut h = Sha256::new(); for p in parts { h.update(p); } h.finalize().into() }
 pub fn code_commit(salt: &[u8; 32], code: &[u8]) -> [u8; 32] { sha256(&[b"CNCL-CODE-v1", salt, code]) }
-pub fn score_commit(salt: &[u8; 32], season: u64, id: u64, total: i64, wins: u16, neps: u32) -> [u8; 32] { sha256(&[b"CNCL-SCORE-v1", salt, &season.to_le_bytes(), &id.to_le_bytes(), &total.to_le_bytes(), &wins.to_le_bytes(), &neps.to_le_bytes()]) }
+pub fn score_commit(salt: &[u8; 32], season: u64, id: u64, total: i64, ftotal: i64, neps: u32, fneps: u32) -> [u8; 32] { sha256(&[b"CNCL-SCORE-v2", salt, &season.to_le_bytes(), &id.to_le_bytes(), &total.to_le_bytes(), &ftotal.to_le_bytes(), &neps.to_le_bytes(), &fneps.to_le_bytes()]) }
 
 pub type Res = Result<TransactionMetadata, FailedTransactionMetadata>;
 /// the custom error code of a failed transaction, if it failed with one
@@ -63,7 +71,7 @@ impl Env {
     pub fn new(nplayers: usize) -> Env { Env::new_with(nplayers, true) }
     /// configure=false leaves the config account uncreated so InitConfig itself can be tested
     pub fn new_with(nplayers: usize, configure: bool) -> Env {
-        let mut svm = LiteSVM::new().with_sigverify(false).with_blockhash_check(false);
+        let mut svm = LiteSVM::new().with_sigverify(true).with_blockhash_check(false);
         let mut rent = solana_rent::Rent::default(); rent.lamports_per_byte = 0; svm.set_sysvar(&rent); // rent-exempt minimum 0: ER ephemeral accounts hold no lamports
         let pid = Address::new_unique(); svm.add_program(pid, &conclave_so()).unwrap();
         let so = standin_so(); for id in [MAGIC, PERMISSION, VRF, ESPL, DLP] { svm.add_program(a(id), &so).unwrap(); }
@@ -91,9 +99,9 @@ impl Env {
     pub fn ro(&self, k: Address) -> AccountMeta { AccountMeta::new_readonly(k, false) }
     pub fn rw(&self, k: Address) -> AccountMeta { AccountMeta::new(k, false) }
     pub fn ix(&self, tag: u8, accounts: Vec<AccountMeta>, data: Vec<u8>) -> Instruction { let mut d = vec![tag]; d.extend(data); Instruction { program_id: self.pid, accounts, data: d } }
-    /// send; `extra` are keypairs that must sign besides the payer. `fake_signers` lists addresses that are marked signer without a signature (only possible because the SVM runs with sigverify off; used to play the VRF oracle's callback)
+    /// send; `extra` are keypairs that must sign besides the payer. Signatures are VERIFIED. The one exception is `send_oracle`
     pub fn send_with(&mut self, ixs: &[Instruction], extra: &[&Keypair], cu: Option<u32>) -> Res {
-        self.nonce += 1; let mut all: Vec<Instruction> = vec![];
+        self.nonce += 1; self.svm.expire_blockhash(); /* every send is a distinct transaction, so a repeated operation is judged by the program, never refused as a duplicate */ let mut all: Vec<Instruction> = vec![];
         if let Some(c) = cu { let mut d = vec![2u8]; d.extend(c.to_le_bytes()); all.push(Instruction { program_id: a("ComputeBudget111111111111111111111111111111"), accounts: vec![], data: d }); }
         // distinct no-op memo-free marker so identical consecutive transactions are not rejected as duplicates
         all.push(Instruction { program_id: a(SYSTEM), accounts: vec![AccountMeta::new(self.payer.pubkey(), true), AccountMeta::new(self.payer.pubkey(), false)], data: { let mut d = vec![2, 0, 0, 0]; d.extend(0u64.to_le_bytes()); d } });
@@ -141,6 +149,7 @@ impl Env {
     pub fn arena_pda(&self, sid: u64) -> Address { pda(&[b"arena", &sid.to_le_bytes()], &self.pid) }
     pub fn pool_pda(&self, sid: u64) -> Address { pda(&[b"pool", &sid.to_le_bytes()], &self.pid) }
     pub fn receipt_pda(&self, sid: u64) -> Address { pda(&[b"receipt", &sid.to_le_bytes()], &self.pid) }
+    pub fn claims_pda(&self, sid: u64) -> Address { pda(&[b"claims", &sid.to_le_bytes()], &self.pid) }
     pub fn seal_ix(&self, s: &Strat, signer: usize) -> Instruction { let mut d = s.id.to_le_bytes().to_vec(); d.extend_from_slice(&s.salt); d.extend_from_slice(&s.code); let ow = self.players[signer].pubkey();
         self.ix(3, vec![self.m(ow, true, false), self.rw(self.hub), self.rw(self.strat_pda(s.id)), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.ro(self.reg_pda(s.id))], d) }
     pub fn player(&self, i: usize) -> Keypair { Keypair::try_from(&self.players[i].to_bytes()[..]).unwrap() }
@@ -151,9 +160,11 @@ impl Env {
 
 // ================= season lifecycle helpers =================
 pub const CB_DISC: [u8; 8] = [200, 1, 2, 3, 4, 5, 6, 7];
-#[derive(Clone)] pub struct Season { pub sid: u64, pub arena: Address, pub receipt: Address, pub pool: Address, pub maxs: usize, pub entries: Vec<Strat>, pub seed: [u8; 32], pub neps: u32, pub fee: u64 }
+pub const CB_DISC_FINALS: [u8; 8] = [200, 1, 2, 3, 4, 5, 6, 8];
+pub fn seed_of(b: u8) -> [u8; 32] { let mut seed = [0u8; 32]; for (i, x) in seed.iter_mut().enumerate() { *x = b.wrapping_add((i as u8).wrapping_mul(37)) ^ 0x5a; } seed }
+#[derive(Clone)] pub struct Season { pub sid: u64, pub arena: Address, pub receipt: Address, pub pool: Address, pub claims: Address, pub maxs: usize, pub entries: Vec<Strat>, pub seed: [u8; 32], pub fseed: [u8; 32], pub neps: u32, pub fee: u64 }
 impl Env {
-    pub fn season(&self, sid: u64) -> Season { Season { sid, arena: self.arena_pda(sid), receipt: self.receipt_pda(sid), pool: self.pool_pda(sid), maxs: 20, entries: vec![], seed: [0; 32], neps: 0, fee: 0 } }
+    pub fn season(&self, sid: u64) -> Season { Season { sid, arena: self.arena_pda(sid), receipt: self.receipt_pda(sid), pool: self.pool_pda(sid), claims: self.claims_pda(sid), maxs: 20, entries: vec![], seed: [0; 32], fseed: [0; 32], neps: 0, fee: 0 } }
     pub fn init_receipt(&mut self, s: &Season) -> Res { let b = self.params.bond; self.init_receipt_bond(s, b) }
     pub fn init_receipt_bond(&mut self, s: &Season, bond: u64) -> Res { let mut d = s.sid.to_le_bytes().to_vec(); d.extend(bond.to_le_bytes()); let ix = self.ix(16, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.receipt), self.ro(a(SYSTEM))], d); self.send(&[ix], &[]) }
     pub fn init_pool(&mut self, s: &Season) -> Res {
@@ -161,8 +172,8 @@ impl Env {
         let ix = self.ix(13, accts, s.sid.to_le_bytes().to_vec()); self.send(&[ix], &[]) }
     pub fn create_season_ix(&self, s: &Season, neps: u32, spt: u32, fee: u64, maxs: u8, flags: u8, division: u8) -> Instruction {
         let mut d = s.sid.to_le_bytes().to_vec(); d.extend(neps.to_le_bytes()); d.extend(spt.to_le_bytes()); d.extend(fee.to_le_bytes()); d.extend_from_slice(self.mint.as_ref()); d.extend([maxs, flags, division]); let p = self.params; d.extend(p.window.to_le_bytes()); d.extend(p.seedto.to_le_bytes()); d.extend(p.grace.to_le_bytes()); d.push(p.mins);
-        self.ix(5, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt), self.ro(self.config)], d) }
-    pub fn create_season(&mut self, s: &mut Season, neps: u32, fee: u64, maxs: u8, finals: bool, division: u8) -> Res { self.provision_if_new(s.arena, arena_size(maxs as usize)); if self.svm.get_account(&s.receipt).is_none() { let r = self.init_receipt(s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r)); } s.maxs = maxs as usize; s.neps = neps; s.fee = fee;
+        self.ix(5, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt), self.ro(self.config), self.rw(s.claims)], d) }
+    pub fn create_season(&mut self, s: &mut Season, neps: u32, fee: u64, maxs: u8, finals: bool, division: u8) -> Res { self.provision_if_new(s.arena, arena_size(maxs as usize)); self.provision_if_new(s.claims, claims_size(maxs as usize)); if self.svm.get_account(&s.receipt).is_none() { let r = self.init_receipt(s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r)); } s.maxs = maxs as usize; s.neps = neps; s.fee = fee;
         let ix = self.create_season_ix(s, neps, 1, fee, maxs, if finals { 2 } else { 0 }, division); self.send(&[ix], &[]) }
     pub fn enter_ix(&self, s: &Season, st: &Strat, signer: usize) -> Instruction { let ow = self.players[signer].pubkey(); let owner_of_strat = self.players[st.owner].pubkey();
         let _ = owner_of_strat; self.ix(6, vec![self.m(ow, true, false), self.ro(self.strat_pda(st.id)), self.rw(s.arena), self.rw(self.ata(&ow)), self.rw(self.ata(&s.pool)), self.ro(a(TOKEN)), self.ro(self.config)], vec![]) }
@@ -170,27 +181,51 @@ impl Env {
     pub fn lock(&mut self, s: &Season) -> Res { let ix = self.ix(7, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena)], vec![]); self.send(&[ix], &[]) }
     /// lock signed by someone other than the creator
     pub fn lock_by(&mut self, s: &Season, who: usize) -> Res { let kp = self.player(who); let ix = self.ix(7, vec![self.m(kp.pubkey(), true, false), self.rw(s.arena)], vec![]); self.send(&[ix], &[&kp]) }
-    pub fn request_seed(&mut self, s: &Season) -> Res { let identity = pda(&[b"identity"], &self.pid); let ix = self.ix(8, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.ro(identity), self.rw(Address::new_unique()), self.ro(a(SYSTEM)), self.ro(a(SLOT_HASHES)), self.ro(a(VRF))], vec![]); self.send(&[ix], &[]) }
+    pub fn request_seed(&mut self, s: &Season) -> Res { let identity = pda(&[b"identity"], &self.pid); let ix = self.ix(8, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.ro(identity), self.rw(a(VRF_QUEUE)), self.ro(a(SYSTEM)), self.ro(a(SLOT_HASHES)), self.ro(a(VRF))], vec![]); self.send(&[ix], &[]) }
     /// plays the VRF oracle: the real one calls back with the identity PDA of the VRF program as signer
     pub fn deliver_seed(&mut self, s: &mut Season, seed: [u8; 32]) -> Res { let identity = pda(&[b"identity", self.pid.as_ref()], &a(VRF)); let mut d = CB_DISC.to_vec(); d.extend_from_slice(&seed);
-        let ix = Instruction { program_id: self.pid, accounts: vec![AccountMeta::new_readonly(identity, true), AccountMeta::new(s.arena, false)], data: d }; s.seed = seed; self.send(&[ix], &[]) }
+        let ix = Instruction { program_id: self.pid, accounts: vec![AccountMeta::new_readonly(identity, true), AccountMeta::new(s.arena, false)], data: d }; s.seed = seed; self.send_oracle(ix) }
+    /// THE ONLY UNVERIFIED TRANSACTION: the VRF callback is signed by a program address, which no keypair can sign for (the oracle here is a stand-in). Verification is off for this one send.
+    pub fn send_oracle(&mut self, ix: Instruction) -> Res { self.svm.set_sigverify(false); let r = self.send(&[ix], &[]); self.svm.set_sigverify(true); r }
+    pub fn deliver_finals_seed(&mut self, s: &mut Season, seed: [u8; 32]) -> Res { let identity = pda(&[b"identity", self.pid.as_ref()], &a(VRF)); let mut d = CB_DISC_FINALS.to_vec(); d.extend_from_slice(&seed);
+        let ix = Instruction { program_id: self.pid, accounts: vec![AccountMeta::new_readonly(identity, true), AccountMeta::new(s.arena, false)], data: d }; s.fseed = seed; self.send_oracle(ix) }
+    /// the season phase has ended and the arena is waiting for (or running) the finals
+    pub fn in_finals(&self, s: &Season) -> bool { let f = self.flags(s); f & F_SDONE != 0 && f & F_DONE == 0 }
+    /// request and deliver the finals seed, then drive the finals to the end
+    pub fn run_finals(&mut self, s: &mut Season, seed_byte: u8) { assert!(self.in_finals(s), "not in finals"); self.fresh_blockhash(); let r = self.request_seed(s); assert!(r.is_ok(), "finals RequestSeed {}", err_string(&r)); let r = self.deliver_finals_seed(s, seed_of(seed_byte ^ 0xa7)); assert!(r.is_ok(), "finals seed {}", err_string(&r)); self.drive(s, 1400, 1_400_000); }
     pub fn advance_ix(&self, s: &Season, max: u16, budget_k: u16) -> Instruction { let mut d = max.to_le_bytes().to_vec(); d.extend(budget_k.to_le_bytes()); self.ix(9, vec![self.rw(s.arena)], d) }
     pub fn advance(&mut self, s: &Season, budget_k: u16, cu: u32) -> Res { let ix = self.advance_ix(s, 65535, budget_k); self.send_with(&[ix], &[], Some(cu)) }
     pub fn flags(&self, s: &Season) -> u8 { self.data(&s.arena)[ar::FLAGS] }
     pub fn ticks(&self, s: &Season) -> u32 { rd32(&self.data(&s.arena), ar::TICKS) }
-    /// drive to completion with real transactions; returns the number of Advance transactions
-    pub fn drive(&mut self, s: &Season, budget_k: u16, cu: u32) -> usize { self.warp(2_000_000); let mut n = 0; loop { if self.flags(s) & F_DONE != 0 { return n; } self.fresh_blockhash(); let r = self.advance(s, budget_k, cu); assert!(r.is_ok(), "Advance: {}", err_string(&r)); n += 1; assert!(n < 100_000, "driver does not terminate"); } }
+    /// drive the phase that is currently running to its end with real transactions; returns the number of Advance transactions. Warps exactly far enough for every tick to be due, never past a deadline.
+    pub fn drive(&mut self, s: &Season, budget_k: u16, cu: u32) -> usize { let finals = self.flags(s) & F_SDONE != 0; let d = self.data(&s.arena); let neps = if finals { FINALS_EPISODES } else { rd32(&d, ar::NEPS) };
+        let all_due = rd64(&d, ar::START) + u64::from(neps) * 150 * u64::from(rd32(&d, 84)) + 1; if all_due > self.slot { let by = all_due - self.slot; self.warp(by); }
+        let mut n = 0; loop { let f = self.flags(s); if f & F_DONE != 0 || (!finals && f & F_SDONE != 0) { return n; } self.fresh_blockhash(); let r = self.advance(s, budget_k, cu); assert!(r.is_ok(), "Advance: {}", err_string(&r)); n += 1; assert!(n < 100_000, "driver does not terminate"); } }
     pub fn pool_accounts(&self, s: &Season) -> Vec<AccountMeta> { let mut v = vec![self.rw(s.pool).clone()]; v[0] = self.ro(s.pool); v }
-    pub fn settle_ix(&self, s: &Season, pool_sid_pool: Address, entries: &[Strat]) -> Instruction {
-        let mut accts = vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.rw(s.receipt), self.ro(pool_sid_pool), self.rw(self.ata(&pool_sid_pool)), self.ro(a(TOKEN))]; for e in entries { accts.push(self.rw(self.ata(&self.players[e.owner].pubkey()))); } self.ix(10, accts, vec![]) }
-    pub fn settle(&mut self, s: &Season) -> Res { let ix = self.settle_ix(s, s.pool, &s.entries); self.send(&[ix], &[]) }
+    pub fn settle_ix(&self, s: &Season) -> Instruction { self.ix(10, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena), self.rw(s.receipt), self.rw(s.claims), self.ro(s.pool), self.ro(self.ata(&s.pool))], vec![]) }
+    pub fn settle(&mut self, s: &Season) -> Res { let ix = self.settle_ix(s); self.send(&[ix], &[]) }
     /// Settle that also publishes the first `n` entries inline (strat + registry pairs appended)
-    pub fn settle_ix_publishing(&self, s: &Season, n: usize) -> Instruction { let mut ix = self.settle_ix(s, s.pool, &s.entries); for e in s.entries.iter().take(n) { ix.accounts.push(self.rw(self.strat_pda(e.id))); ix.accounts.push(self.rw(self.reg_pda(e.id))); } ix }
+    pub fn settle_ix_publishing(&self, s: &Season, n: usize) -> Instruction { let mut ix = self.settle_ix(s); for e in s.entries.iter().take(n) { ix.accounts.push(self.rw(self.strat_pda(e.id))); ix.accounts.push(self.rw(self.reg_pda(e.id))); } ix }
     pub fn settle_publishing(&mut self, s: &Season, n: usize) -> Res { let ix = self.settle_ix_publishing(s, n); self.send(&[ix], &[]) }
-    pub fn cancel_ix(&self, s: &Season, signer: Address, pool_sid_pool: Address, entries: &[Strat]) -> Instruction { let mut accts = vec![self.m(signer, true, signer == self.payer.pubkey()), self.rw(s.arena), self.ro(pool_sid_pool), self.rw(self.ata(&pool_sid_pool)), self.ro(a(TOKEN)), self.rw(s.receipt)]; for e in entries { accts.push(self.rw(self.ata(&self.players[e.owner].pubkey()))); } self.ix(17, accts, vec![]) }
+    pub fn cancel_ix(&self, s: &Season, signer: Address) -> Instruction { self.ix(17, vec![self.m(signer, true, signer == self.payer.pubkey()), self.rw(s.arena), self.rw(s.claims), self.ro(s.pool), self.ro(self.ata(&s.pool)), self.rw(s.receipt)], vec![]) }
     /// Cancel signed by the payer (who is the creator in these tests)
-    pub fn cancel(&mut self, s: &Season) -> Res { let ix = self.cancel_ix(s, self.payer.pubkey(), s.pool, &s.entries); self.send(&[ix], &[]) }
-    pub fn cancel_by(&mut self, s: &Season, who: usize) -> Res { let kp = self.player(who); let ix = self.cancel_ix(s, kp.pubkey(), s.pool, &s.entries); self.send(&[ix], &[&kp]) }
+    pub fn cancel(&mut self, s: &Season) -> Res { let ix = self.cancel_ix(s, self.payer.pubkey()); self.send(&[ix], &[]) }
+    pub fn cancel_by(&mut self, s: &Season, who: usize) -> Res { let kp = self.player(who); let ix = self.cancel_ix(s, kp.pubkey()); self.send(&[ix], &[&kp]) }
+    pub fn claim_ix_to(&self, s: &Season, i: u8, dest: Address) -> Instruction { self.ix(22, vec![self.rw(s.claims), self.ro(s.pool), self.rw(self.ata(&s.pool)), self.rw(dest), self.ro(a(TOKEN))], vec![i]) }
+    pub fn claim_ix(&self, s: &Season, i: usize) -> Instruction { self.claim_ix_to(s, i as u8, self.ata(&self.players[s.entries[i].owner].pubkey())) }
+    pub fn claim(&mut self, s: &Season, i: usize) -> Res { self.fresh_blockhash(); let ix = self.claim_ix(s, i); self.send(&[ix], &[]) }
+    /// claim every entry, as the clients do; every claim must succeed (the no-op ones included)
+    pub fn claim_all(&mut self, s: &Season) { for i in 0..s.entries.len() { let r = self.claim(s, i); assert!(r.is_ok(), "Claim {}: {}", i, err_string(&r)); } }
+    pub fn close_claims_ix(&self, s: &Season, crank: Address) -> Instruction { self.ix(23, vec![self.m(crank, true, crank == self.payer.pubkey()), self.rw(self.hub), self.rw(s.claims), self.rw(Address::new_unique()), self.ro(a(MAGIC))], vec![]) }
+    pub fn close_claims(&mut self, s: &Season) -> Res { self.fresh_blockhash(); let ix = self.close_claims_ix(s, self.payer.pubkey()); self.send(&[ix], &[]) }
+    pub fn owed(&self, s: &Season, i: usize) -> u64 { rd64(&self.data(&s.claims), cl::HDR + i * cl::ESZ + cl::E_OWED) }
+    pub fn claim_done(&self, s: &Season, i: usize) -> bool { self.data(&s.claims)[cl::HDR + i * cl::ESZ + cl::E_DONE] != 0 }
+    /// (recorded?, owed total, claimed total)
+    pub fn claim_totals(&self, s: &Season) -> (bool, u64, u64) { let d = self.data(&s.claims); (d[cl::STATE] == 1, rd64(&d, cl::OWED), rd64(&d, cl::CLAIMED)) }
+    pub fn pool_balance(&self, s: &Season) -> u64 { rd64(&self.data(&self.ata(&s.pool)), 64) }
+    /// the money invariant at any moment after recording: what the pool still holds (less any donation) is exactly what is still unclaimed, and entries in = claimed + unclaimed
+    pub fn assert_books(&self, s: &Season, donated: u64) { let (rec, owed, claimed) = self.claim_totals(s); assert!(rec); let n = s.entries.len(); assert_eq!(owed, s.fee * n as u64, "owed = entries in"); assert_eq!((0..n).map(|i| self.owed(s, i)).sum::<u64>(), owed, "per-entry amounts sum to the pot"); let done: u64 = (0..n).filter(|&i| self.claim_done(s, i)).map(|i| self.owed(s, i)).sum(); assert_eq!(done, claimed, "claimed total = sum of paid entries"); if self.pool_exists(s) { assert_eq!(self.pool_balance(s), owed - claimed + donated, "pool = unclaimed"); } }
+    pub fn pool_exists(&self, s: &Season) -> bool { self.data(&self.ata(&s.pool)).len() >= 72 }
     pub fn release_bond_ix(&self, s: &Season, creator: Address) -> Instruction { self.ix(18, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.receipt), self.rw(creator)], vec![]) }
     pub fn release_bond(&mut self, s: &Season) -> Res { let ix = self.release_bond_ix(s, self.payer.pubkey()); self.send(&[ix], &[]) }
     pub fn lamports(&self, k: &Address) -> u64 { self.svm.get_account(k).map(|x| x.lamports).unwrap_or(0) }
@@ -201,9 +236,6 @@ impl Env {
     pub fn commit_undelegate(&mut self, accts: &[Address]) -> Res { let mut m = vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX))]; for k in accts { m.push(self.rw(*k)); } let ix = self.ix(12, m, vec![1]); self.send(&[ix], &[]) }
     pub fn cleanup_ix(&self, s: &Season) -> Instruction { self.ix(15, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt)], vec![]) }
     pub fn cleanup(&mut self, s: &Season) -> Res { let ix = self.cleanup_ix(s); self.send(&[ix], &[]) }
-    pub fn start_finals(&mut self, parent: &Season, fsid: u64, k: u8, neps: u32) -> (Res, Season) { let mut f = self.season(fsid); if self.svm.get_account(&f.receipt).is_none() { let r = self.init_receipt(&f); assert!(r.is_ok(), "InitReceipt finals {}", err_string(&r)); } f.neps = neps; let kk = (k as usize).min(parent.entries.len()).max(1); f.maxs = kk; self.provision_if_new(f.arena, arena_size(kk));
-        let mut d = fsid.to_le_bytes().to_vec(); d.push(k); d.extend(neps.to_le_bytes()); d.extend(1u32.to_le_bytes());
-        let ix = self.ix(14, vec![self.m(self.payer.pubkey(), true, true), self.rw(parent.arena), self.rw(self.hub), self.rw(f.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(f.receipt)], d); (self.send(&[ix], &[]), f) }
     /// register + seal one strategy per name for owners round-robin, then create, enter and lock a full season; returns it seeded and fully run if `run`
     pub fn full_season(&mut self, sid: u64, names: &[&str], neps: u32, fee: u64, finals: bool, division: u8, seed_byte: u8, run: bool) -> Season {
         let mut s = self.season(sid); let r = self.init_pool(&s); assert!(r.is_ok(), "InitPool {}", err_string(&r)); let r = self.init_receipt(&s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r));
@@ -211,14 +243,30 @@ impl Env {
         for (i, n) in names.iter().enumerate() { let st = self.register_and_seal(i % self.players.len(), n, code_of(n)); let r = self.enter(&mut s, &st); assert!(r.is_ok(), "Enter {}: {}", n, err_string(&r)); }
         let r = self.lock(&s); assert!(r.is_ok(), "Lock {}", err_string(&r)); let r = self.request_seed(&s); assert!(r.is_ok(), "RequestSeed {}", err_string(&r));
         let mut seed = [0u8; 32]; for (i, b) in seed.iter_mut().enumerate() { *b = seed_byte.wrapping_add((i as u8).wrapping_mul(37)) ^ 0x5a; } let r = self.deliver_seed(&mut s, seed); assert!(r.is_ok(), "seed callback {}", err_string(&r));
-        if run { self.drive(&s, 1400, 1_400_000); } s }
-    pub fn finish(&mut self, s: &Season) { let r = self.settle(s); assert!(r.is_ok(), "Settle {}", err_string(&r)); for i in 0..s.entries.len() { let r = self.publish(s, i); assert!(r.is_ok(), "Publish {} {}", i, err_string(&r)); } }
+        if run { self.drive(&s, 1400, 1_400_000); if self.in_finals(&s) { self.run_finals(&mut s, seed_byte); } } s }
+    pub fn finish(&mut self, s: &Season) { let r = self.settle(s); assert!(r.is_ok(), "Settle {}", err_string(&r)); self.claim_all(s); for i in 0..s.entries.len() { let r = self.publish(s, i); assert!(r.is_ok(), "Publish {} {}", i, err_string(&r)); } }
     // ---- readers ----
     pub fn slot_field(&self, s: &Season, i: usize, off: usize) -> u64 { rd64(&self.data(&s.arena), HDR + i * SLOT + off) }
     pub fn total(&self, s: &Season, i: usize) -> i64 { self.slot_field(s, i, ar::SL_TOTAL) as i64 }
     pub fn rank(&self, s: &Season, i: usize) -> u32 { rd32(&self.data(&s.arena), HDR + i * SLOT + ar::SL_RANK) }
-    pub fn wins(&self, s: &Season, i: usize) -> u16 { let d = self.data(&s.arena); u16::from_le_bytes([d[HDR + i * SLOT + ar::SL_WINS], d[HDR + i * SLOT + ar::SL_WINS + 1]]) }
+    pub fn srank(&self, s: &Season, i: usize) -> u32 { u32::from(self.data(&s.arena)[HDR + i * SLOT + ar::SL_SRANK]) }
+    pub fn ftotal(&self, s: &Season, i: usize) -> i64 { self.slot_field(s, i, ar::SL_FTOTAL) as i64 }
+    pub fn finalist(&self, s: &Season, i: usize) -> bool { self.data(&s.arena)[HDR + i * SLOT + ar::SL_BITS] & B_FINALIST != 0 }
 }
-/// host replay of a whole season with the conclave-vm crate, from the same seed words the program derives
-pub fn replay(s: &Season, sts: &[Strat]) -> (Vec<i64>, Vec<u32>) { let (sa, sb) = conclave_vm::world::season_words(&s.seed); let progs: Vec<&[u8]> = sts.iter().map(|x| x.code.as_slice()).collect(); conclave_lab::run::run_season_wins(&progs, sa, sb, u64::from(s.neps)) }
+/// host replay of the season phase with the conclave-vm crate, from the same seed words the program derives
+pub fn replay(s: &Season, sts: &[Strat]) -> (Vec<i64>, ()) { let (sa, sb) = conclave_vm::world::season_words(&s.seed); let progs: Vec<&[u8]> = sts.iter().map(|x| x.code.as_slice()).collect(); (conclave_lab::run::run_season(&progs, sa, sb, u64::from(s.neps)), ()) }
 pub fn shares(ns: usize) -> Vec<u128> { match ns { 1 => vec![100], 2 => vec![60, 40], _ => vec![50, 30, 20] } }
+/// 50/30/20 of `pot` by rank (1-based), remainder on the last paid rank
+pub fn prize_by_rank(pot: u64, ns: usize) -> Vec<u64> { let sh = shares(ns); let np = sh.len().min(ns); let mut out = vec![0u64; ns]; let mut paid = 0u64; for k in 0..np { let amt = if k == np - 1 { pot - paid } else { (u128::from(pot) * sh[k] / 100) as u64 }; paid += amt; out[k] = amt; } out }
+/// THE TEST ORACLE: everything a season must produce, computed from the VM replay alone (never from program state).
+/// `played`: whether the finals counted. Season rank: total descending, ties to the earlier entry. Finals: the top three (both, with two) replayed on the finals seed; ordered by season + finals total, ties to the better season rank.
+#[derive(Debug)] pub struct Expect { pub season: Vec<i64>, pub finals: Vec<i64>, pub finalist: Vec<bool>, pub srank: Vec<u32>, pub frank: Vec<u32>, pub owed: Vec<u64> }
+pub fn expect(s: &Season, played: bool) -> Expect {
+    let n = s.entries.len(); let season = replay(s, &s.entries).0; let mut ord: Vec<usize> = (0..n).collect(); ord.sort_by(|&x, &y| season[y].cmp(&season[x]).then(x.cmp(&y)));
+    let mut srank = vec![0u32; n]; for (k, &i) in ord.iter().enumerate() { srank[i] = k as u32 + 1; }
+    let (mut finals, mut finalist, mut frank) = (vec![0i64; n], vec![false; n], srank.clone());
+    if played && n >= 2 { let q: Vec<usize> = (0..n).filter(|&i| srank[i] <= 3).collect(); let (fa, fb) = conclave_vm::world::season_words(&s.fseed); let progs: Vec<&[u8]> = q.iter().map(|&i| s.entries[i].code.as_slice()).collect(); let tot = conclave_lab::run::run_season(&progs, fa, fb, u64::from(FINALS_EPISODES));
+        for (k, &i) in q.iter().enumerate() { finals[i] = tot[k]; finalist[i] = true; }
+        let mut by = q.clone(); by.sort_by(|&x, &y| (season[y] + finals[y]).cmp(&(season[x] + finals[x])).then(srank[x].cmp(&srank[y]))); for (k, &i) in by.iter().enumerate() { frank[i] = k as u32 + 1; } }
+    let prizes = prize_by_rank(s.fee * n as u64, n); let owed = (0..n).map(|i| prizes[frank[i] as usize - 1]).collect();
+    Expect { season, finals, finalist, srank, frank, owed } }

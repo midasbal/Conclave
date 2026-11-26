@@ -47,9 +47,10 @@ export function logger(file) { return (...a) => { const s = a.join(" "); console
 export function loadPool() { const pool = fs.readFileSync(path.join(OUT, "real_pool.bin")); const meta = JSON.parse(fs.readFileSync(path.join(OUT, "real_pool.json"))).strategies; const n = pool.readUInt16LE(0); const progs = []; let off = 2; for (let i = 0; i < n; i++) { const l = pool.readUInt16LE(off); off += 2; progs.push(pool.subarray(off, off + l)); off += l; } const by = {}; meta.forEach((s, i) => by[s.name] = { code: progs[i], ops: s.ops, i }); return by; }
 export const sha256 = b => crypto.createHash("sha256").update(b).digest();
 // ---- commitments (must match program/src/lib.rs) ----
-const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v1");
+const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v2");
 export const codeCommit = (salt, code) => sha256(Buffer.concat([DOM_CODE, salt, code]));
-export const scoreCommit = (salt, season, id, total, wins, neps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha256(Buffer.concat([DOM_SCORE, salt, b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(2, x => x.writeUInt16LE(wins)), b(4, x => x.writeUInt32LE(neps))])); };
+/** total: season-phase total; finalsTotal and finalsEps are 0 for an entry that did not play the finals (not a qualifier, no finals, or voided) */
+export const scoreCommit = (salt, season, id, total, finalsTotal, neps, finalsEps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha256(Buffer.concat([DOM_SCORE, salt, b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(8, x => x.writeBigInt64LE(BigInt(finalsTotal))), b(4, x => x.writeUInt32LE(neps)), b(4, x => x.writeUInt32LE(finalsEps))])); };
 /** strategy ids are random 64-bit numbers (the namespace is global); the secret salts live with the keys, outside the repo */
 export const newId = () => crypto.randomBytes(8).readBigUInt64LE();
 const stratFile = () => path.join(KEYS, "strategies.json");
@@ -58,6 +59,6 @@ export const saveStrats = a => fs.writeFileSync(stratFile(), JSON.stringify(a, n
 export const players = () => readKey("players.json").map(a => Keypair.fromSecretKey(Uint8Array.from(a)));
 // arena / receipt layouts (mirror of program/src/lib.rs)
 export const A = { HDR: 1280, SLOT: 440 };
-export const RC = { SIZE: 192 + 20 * 80, ENT: 192, ESZ: 80 };
-export function parseReceipt(d) { const n = d[5]; const out = { kind: d[4], ns: n, published: d[6], division: d[7], season: d.readBigUInt64LE(8), parent: d.readBigUInt64LE(16), ruleset: d.readUInt16LE(24), vmVersion: d[26], genVersion: d[27], packs: [d[28], d[29]], neps: d.readUInt32LE(32), seedA: d.readBigUInt64LE(40), seedB: d.readBigUInt64LE(48), pins: d.subarray(56, 104), creator: d.subarray(104, 136), bond: d.readBigUInt64LE(136), state: d[144], reason: d[145], refunded: d.readBigUInt64LE(152), rentDrawn: d.readBigUInt64LE(160), rentReclaimed: d.readBigUInt64LE(168), forfeit: d.readBigUInt64LE(176), release: d.readBigUInt64LE(184), entries: [] }; // kind 0 ensemble, 1 finals, 2 cancelled
-  for (let i = 0; i < n; i++) { const e = 192 + i * 80; out.entries.push({ id: d.readBigUInt64LE(e), commit: d.subarray(e + 8, e + 40), score: d.subarray(e + 40, e + 72), rank: d.readUInt32LE(e + 72), wins: d.readUInt16LE(e + 76) }); } return out; }
+export const RC = { SIZE: 224 + 20 * 80, ENT: 224, ESZ: 80 };
+export { parseReceipt, parseReceiptMoney, parseClaims } from "./layouts.mjs";
+export const claimsPda = sid => pda([Buffer.from("claims"), u64(sid)]);

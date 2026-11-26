@@ -38,14 +38,15 @@ log(`pool token account usable after ${(await F.awaitPoolReady(c, sid, field[0].
 const ownersAfterEnter = {}; for (const o of owners) ownersAfterEnter[o] = await F.bal(c, o); log(`owners' token balances after entering ${JSON.stringify(ownersAfterEnter)}; paid in ${owners.reduce((x, o) => x + ownersBefore[o] - ownersAfterEnter[o], 0)}`);
 const lk = await L.sendTee(c.URL, [F.lockIx(sid)], [O]); const sd = await L.sendTee(c.URL, [F.seedIx(sid)], [O]); log(`SIG Lock: ${lk.sig}\nSIG RequestSeed: ${sd.sig}`); check("Lock and RequestSeed (VRF)", !lk.err && !sd.err);
 const d1 = await F.drive(c, sid, { log }); log(`Advance: ${d1.ok} self-metered transactions, ${d1.fail} failures, first ${d1.sigs[0]}, last ${d1.sigs.at(-1)}`); check("the season ran to completion with no compute failures", d1.ok > 0 && d1.fail === 0);
-const st = await L.sendTee(c.URL, [F.settleIx(c, sid, field.map(e => [e.owner]), sid, field.map(e => e.id))], [O]); log(`SIG TEE Settle (pays the pool, writes the receipt, publishes all ${field.length} inline): ${st.sig} ${st.err ? "FAILED " + JSON.stringify(st.err) : "ok"}`); if (!check("Settle", !st.err)) process.exit(1);
+const st = await L.sendTee(c.URL, [F.settleIx(c, sid, field.map(e => e.id))], [O]); log(`SIG TEE Settle (records what each entry is owed, writes the receipt, publishes all ${field.length} inline): ${st.sig} ${st.err ? "FAILED " + JSON.stringify(st.err) : "ok"}`); if (!check("Settle", !st.err)) process.exit(1);
+const claimed = await F.claimAll(c, sid, log); log(F.claimsTable(claimed.after)); if (!check("every claim succeeded", claimed.results.every(r => !r.err))) process.exit(1);
 const ownersAfter = {}; for (const o of owners) ownersAfter[o] = await F.bal(c, o);
 const regs = field.map(e => L.regPda(e.id)); const parts = [[L.receiptPda(sid), ...regs.slice(0, 3)], regs.slice(3)]; const cms = []; for (const accts of parts) { const cm = await L.sendTee(c.URL, [F.commitIx(accts)], [O]); cms.push(cm); log(`SIG TEE Commit: ${cm.sig} ${cm.err ? "FAILED " + JSON.stringify(cm.err) : "ok"}`); } check("Commit of the receipt and registries to base", cms.every(x => !x.err));
 const raw = await F.readReceiptBase(sid, field.length); if (!check("the receipt is on base with every entry published", !!raw)) process.exit(1); const rc = K.parseReceipt(raw); log(`receipt: kind ${rc.kind}, ${rc.ns} entrants, ${rc.published} published, ${rc.neps} episodes, seed words ${rc.seedA} / ${rc.seedB}`);
 
 // ---- 4. entrant -> VM score -> published rank
 const local = A.season(field.map(e => e.code), rc.seedA, rc.seedB, NEPS); const recs = []; for (const e of field) recs.push(await F.ownerRec(c, e.owner, e.id));
-const rows = field.map((e, i) => ({ id: e.id, owner: e.owner, name: e.name, onchainTotal: recs[i].pnl, localTotal: local.totals[i], ownerRank: recs[i].rank, receiptRank: rc.entries[i].rank }));
+const rows = field.map((e, i) => ({ id: e.id, owner: e.owner, name: e.name, onchainTotal: recs[i].pnl, localTotal: local.totals[i], ownerRank: recs[i].rank, receiptRank: rc.entries[i].rank, receiptSeasonRank: rc.entries[i].seasonRank }));
 log(`\nENTRANT -> SCORE -> RANK  (season packs ${local.packs}; scores in vol-units)\n  entry strategy          owner   on-chain total   local VM replay    receipt rank   forecast mean   realised vs forecast`);
 for (const [i, r] of rows.entries()) log(`  ${String(i).padStart(3)}  ${r.name.padEnd(16)} ${String(r.owner).padStart(4)}   ${f(q16(r.onchainTotal)).padStart(12)}   ${f(q16(r.localTotal)).padStart(14)}   ${String(r.receiptRank).padStart(10)}   ${f(field[i].fMean).padStart(13)}   percentile ${K.percentileOf(q16(r.onchainTotal), field[i].forecast).toFixed(0)} of its own forecast`);
 runAll("score and rank checks:", K.scoreRankChecks(rows));
@@ -59,7 +60,8 @@ log(`  Spearman correlation between realised ranks and mean ranks: ${stab.spearm
 check("the realised ranking is consistent with the field's long-run order (rank correlation above 0.5)", stab.spearman > 0.5, stab.spearman.toFixed(2));
 
 // ---- 6. receipt hygiene, payouts
-const regData = []; for (const e of field) regData.push(Buffer.from((await L.base.getAccountInfo(L.regPda(e.id))).data)); const secrets = field.map((e, i) => ({ id: e.id, salt: e.salt, code: e.code, regCommit: regData[i].subarray(48, 80), total: recs[i].pnl }));
+const regData = []; for (const e of field) regData.push(Buffer.from((await L.base.getAccountInfo(L.regPda(e.id))).data)); runAll("owed versus claimed:", K.claimsChecks(claimed.after, rc, { fee: FEE }));
+const secrets = field.map((e, i) => ({ id: e.id, salt: e.salt, code: e.code, regCommit: regData[i].subarray(48, 80), total: recs[i].pnl }));
 runAll("\nreceipt checks (the full public receipt):", K.receiptChecks(rc, raw, secrets, { season: sid, neps: NEPS })); runAll("public coarse view checks:", K.coarseChecks(coarseReceipt(raw), rc, secrets));
 { let bad = 0; for (const e of field) for (const r of Art.registryChecks(regData[field.indexOf(e)], { code: e.code, salt: e.salt, commitment: regData[field.indexOf(e)].subarray(48, 80) })) if (!r.ok) { bad++; check(`${e.name} registry: ${r.name}`, false); } check(`all ${field.length} public registry entries hold only the salted commitment (8 hygiene checks each, ${bad} failed)`, bad === 0); }
 runAll("payout checks:", K.payoutChecks({ fee: FEE, entries: rows.map(r => ({ owner: r.owner, receiptRank: r.receiptRank })), ownersBefore, ownersAfterEnter, ownersAfter }));
@@ -71,6 +73,7 @@ check("for every entrant: the bytecode the author's tool assembled from source, 
 check("the on-chain season totals equal a replay of the same bytes by the WASM VM using the season's own seed words (so the pre-seal tool and the chain are one VM)", rows.every((r, i) => r.onchainTotal === r.localTotal));
 
 // ---- 8. close out: cleanup and release the bond
+const cc = await L.sendTee(c.URL, [F.closeClaimsIx(c, sid)], [O]); log(`SIG TEE CloseClaims: ${cc.sig} ${cc.err ? "FAILED " + JSON.stringify(cc.err) : "ok"}`); check("CloseClaims", !cc.err);
 const cl = await L.sendTee(c.URL, [F.cleanupIx(c, sid)], [O]); log(`SIG TEE Cleanup: ${cl.sig} ${cl.err ? "FAILED " + JSON.stringify(cl.err) : "ok"}`); check("Cleanup", !cl.err); const hubD = await F.hubLamports(c); check("hub made whole for the arena", hubD === hubB, `before CreateSeason ${hubB}, after Cleanup ${hubD}`);
 const cu = await L.sendTee(c.URL, [F.commitUndelegateIx([L.receiptPda(sid)])], [O]); log(`SIG TEE Commit+undelegate receipt: ${cu.sig}`); let a; for (let t = 0; t < 60; t++) { a = await L.base.getAccountInfo(L.receiptPda(sid)); if (a && a.owner.equals(L.PROGRAM) && a.data[144] === 2) break; await L.sleep(1500); }
 const RR = L.parseReceipt(a.data); const l0 = a.lamports; const rel = await L.sendBase([F.releaseBondIx(sid, O.publicKey)], [O]); const l1 = await L.base.getBalance(L.receiptPda(sid)); log(`SIG base ReleaseBond: ${rel}`);

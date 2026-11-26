@@ -46,6 +46,10 @@ jobs:
         run: tests/author.sh
       - name: SVM suite (lifecycle, edge cases, rejections, metering, parsing fuzz)
         run: tests/svm.sh
+      - name: Client instruction builders against the program bytecode
+        run: |
+          (cd client && npm ci --no-audit --no-fund)
+          cd tests/svm && cargo test --release --test client_flows -- --ignored
       - name: Bounded VM fuzz (fails on any panic or divergence)
         run: |
           cargo build --profile fuzz -p conclave-conformance-tools --features cov --locked

@@ -1,6 +1,8 @@
 // Checks for a finished season, as pure functions over plain data (no chain, no keys, no printing), so the same code verifies a real devnet season and is tested offline with corrupted inputs.
 import crypto from "crypto";
-const sha = b => crypto.createHash("sha256").update(b).digest(); const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v1");
+import { parseReceipt, FINALS_EPISODES } from "./layouts.mjs";
+export { parseReceipt };
+const sha = b => crypto.createHash("sha256").update(b).digest(); const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v2");
 const named = (name, ok, detail) => ({ name, ok: !!ok, ...(detail ? { detail } : {}) });
 export const allOk = checks => checks.every(c => c.ok);
 
@@ -10,21 +12,41 @@ export function rankByScore(totals) { const o = totals.map((t, i) => i).sort((a,
 export function prizeSplit(pot, ns) { const sh = ns === 1 ? [100] : ns === 2 ? [60, 40] : [50, 30, 20]; const np = Math.min(sh.length, ns); const out = []; let paid = 0n; for (let k = 0; k < np; k++) { const amt = k === np - 1 ? BigInt(pot) - paid : BigInt(pot) * BigInt(sh[k]) / 100n; out.push(amt); paid += amt; } return out; }
 /** share of a distribution strictly below x plus half of the ties: where a realised value sits in a forecast */
 export function percentileOf(x, dist) { if (!dist.length) return NaN; let below = 0, eq = 0; for (const d of dist) { if (d < x) below++; else if (d === x) eq++; } return 100 * (below + eq / 2) / dist.length; }
+/** which entry slots play the finals: the top three by season rank (both, with two entrants; nobody, with one) */
+export function qualifiersOf(seasonTotals) { if (seasonTotals.length < 2) return []; const r = rankByScore(seasonTotals); return r.map((x, i) => i).filter(i => r[i] <= 3); }
+/** THE PROGRAM'S OUTCOME RULE over replayed totals. season: totals in entry order (BigInt). finals: totals in entry order (0 for non-qualifiers), or null when no finals were played or they were voided.
+ *  Final rank is the season rank, except that played finals reorder the qualifiers among themselves by season + finals total, ties to the better season rank. The whole pot is owed 50/30/20 by final rank. */
+export function expectedOutcome({ season, finals = null, fee }) {
+  const n = season.length, seasonRank = rankByScore(season), finalRank = [...seasonRank]; const finalist = Array(n).fill(false);
+  if (finals && n >= 2) { const q = qualifiersOf(season); q.forEach(i => { finalist[i] = true; }); const sum = i => season[i] + finals[i]; [...q].sort((a, b) => (sum(b) > sum(a) ? 1 : sum(b) < sum(a) ? -1 : seasonRank[a] - seasonRank[b])).forEach((i, k) => { finalRank[i] = k + 1; }); }
+  const prizes = prizeSplit(BigInt(fee) * BigInt(n), n); return { seasonRank, finalRank, finalist, owed: finalRank.map(r => prizes[r - 1] ?? 0n) }; }
+/** owed versus claimed: the claims account against the rule and against the receipt. complete: every claim has been made */
+export function claimsChecks(claims, rc, { fee, complete = true }) {
+  const pot = BigInt(fee) * BigInt(rc.ns), prizes = prizeSplit(pot, rc.ns), paid = claims.entries.filter(e => e.done).reduce((x, e) => x + e.owed, 0n);
+  return [named("the claims account is recorded for this season, one row per entry", claims.recorded && claims.season === rc.season && claims.entries.length === rc.ns),
+    named("each entry is owed exactly the prize of its final rank on the receipt", claims.entries.every((e, i) => e.owed === (prizes[rc.entries[i].rank - 1] ?? 0n))),
+    named("the amounts owed sum to the pot, and the receipt states the same total", claims.owed === pot && rc.owed === pot && claims.entries.reduce((x, e) => x + e.owed, 0n) === pot),
+    named("the claimed total is exactly the sum of the paid entries and never exceeds what is owed", claims.claimed === paid && claims.claimed <= claims.owed),
+    ...(complete ? [named("every claim is made: claimed equals owed, nothing outstanding", claims.claimed === claims.owed && claims.entries.every(e => e.done), `claimed ${claims.claimed} of ${claims.owed}`)] : [])]; }
 
-/** entrant -> deterministic VM score -> published rank. entries: [{ id, owner, name, onchainTotal (BigInt), localTotal (BigInt), ownerRank, receiptRank }] in entry order */
-export function scoreRankChecks(entries) {
-  const local = entries.map(e => e.localTotal), chain = entries.map(e => e.onchainTotal); const want = rankByScore(chain); const byRank = entries.map((e, i) => ({ ...e, i })).sort((a, b) => a.receiptRank - b.receiptRank);
+/** entrant -> deterministic VM score -> published ranks. entries: [{ id, owner, name, onchainTotal (BigInt), localTotal (BigInt), ownerRank, receiptRank, receiptSeasonRank? }] in entry order.
+ *  finals (when played): { onchain: BigInt[] | null, local: BigInt[] } in entry order, 0 for non-qualifiers; onchain null where the owners' records do not carry it */
+export function scoreRankChecks(entries, finals = null) {
+  const local = entries.map(e => e.localTotal), chain = entries.map(e => e.onchainTotal); const want = expectedOutcome({ season: chain, finals: finals ? finals.local : null, fee: 0 }); const seasonRankOf = e => e.receiptSeasonRank ?? e.receiptRank;
+  const byRank = entries.map((e, i) => ({ ...e, i })).sort((a, b) => seasonRankOf(a) - seasonRankOf(b));
   return [
     named("every entrant's on-chain season total equals the local replay by the same VM, bit for bit", entries.every((e, i) => chain[i] === local[i])),
-    named("the published rank of every entrant equals the rank its score earns (total descending, ties to the earlier entry)", entries.every((e, i) => e.receiptRank === want[i])),
-    named("the owner's private record carries the same rank as the public receipt", entries.every(e => e.ownerRank === e.receiptRank)),
+    ...(finals?.onchain ? [named("every entrant's on-chain finals total equals the local replay of the finals phase, bit for bit", finals.onchain.every((x, i) => x === finals.local[i]))] : []),
+    named("the published season rank of every entrant equals the rank its season score earns (total descending, ties to the earlier entry)", entries.every((e, i) => seasonRankOf(e) === want.seasonRank[i])),
+    named("the published final rank follows the rule (qualifiers by season + finals total, everyone else keeps the season rank)", entries.every((e, i) => e.receiptRank === want.finalRank[i])),
+    named("the owner's private record carries the same final rank as the public receipt", entries.every(e => e.ownerRank === e.receiptRank)),
     named("ranks are exactly 1..N, each used once", [...entries.map(e => e.receiptRank)].sort((a, b) => a - b).every((r, k) => r === k + 1)),
-    named("in rank order the scores never increase (the ranks are the scores, not noise)", byRank.every((e, k) => k === 0 || byRank[k - 1].onchainTotal >= e.onchainTotal)),
-    named("the local replay alone, with no chain data, produces the same ranking", rankByScore(local).every((r, i) => r === entries[i].receiptRank)),
+    named("in season rank order the season scores never increase (the ranks are the scores, not noise)", byRank.every((e, k) => k === 0 || byRank[k - 1].onchainTotal >= e.onchainTotal)),
+    named("the local replay alone, with no chain data, produces the same final ranking", expectedOutcome({ season: local, finals: finals ? finals.local : null, fee: 0 }).finalRank.every((r, i) => r === entries[i].receiptRank)),
   ];
 }
 /** payouts exact and solvent. The pool's own balance is readable by nobody but the program (no one can authenticate as the pool), so solvency is shown from what IS observable: every owner's token balance
- *  before entering, after entering and after settling, plus the program's own assertions at Settle (bookkeeping == fee x entrants, pool balance >= owed, payouts == pot), which a successful Settle proves.
+ *  before entering, after entering and after every claim, plus the program's own assertions: at Settle (bookkeeping == fee x entrants, pool balance >= pot, amounts owed == pot) and at each Claim (pool >= everything unclaimed).
  *  fee per entry; entries [{owner, receiptRank}] */
 export function payoutChecks({ fee, entries, ownersBefore, ownersAfterEnter, ownersAfter }) {
   const ns = entries.length, pot = BigInt(fee) * BigInt(ns), prizes = prizeSplit(pot, ns); const prizeFor = rank => rank >= 1 && rank <= prizes.length ? prizes[rank - 1] : 0n; const keys = [...new Set(entries.map(e => String(e.owner)))];
@@ -40,29 +62,27 @@ export function payoutChecks({ fee, entries, ownersBefore, ownersAfterEnter, own
     named("solvent: no prize is negative or larger than the pot", prizes.every(p => p >= 0n && p <= pot)),
   ];
 }
-/** full-receipt layout mirror (program/src/lib.rs): header 192 bytes, then 80 per entry (id 8 | code commitment 32 | score commitment 32 | rank u32 | wins u16) */
-export function parseReceipt(d) { const n = d[5]; const out = { kind: d[4], ns: n, published: d[6], state: d[144], season: d.readBigUInt64LE(8), neps: d.readUInt32LE(32), seedA: d.readBigUInt64LE(40), seedB: d.readBigUInt64LE(48), entries: [] };
-  for (let i = 0; i < n; i++) { const e = 192 + i * 80; out.entries.push({ id: d.readBigUInt64LE(e), commit: d.subarray(e + 8, e + 40), score: d.subarray(e + 40, e + 72), rank: d.readUInt32LE(e + 72), wins: d.readUInt16LE(e + 76) }); } return out; }
-export const scoreCommit = (salt, season, id, total, wins, neps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha(Buffer.concat([DOM_SCORE, Buffer.from(salt), b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(2, x => x.writeUInt16LE(wins)), b(4, x => x.writeUInt32LE(neps))])); };
+export const scoreCommit = (salt, season, id, total, finalsTotal, neps, finalsEps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha(Buffer.concat([DOM_SCORE, Buffer.from(salt), b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(8, x => x.writeBigInt64LE(BigInt(finalsTotal))), b(4, x => x.writeUInt32LE(neps)), b(4, x => x.writeUInt32LE(finalsEps))])); };
 export const codeCommit = (salt, code) => sha(Buffer.concat([DOM_CODE, Buffer.from(salt), Buffer.from(code)]));
-/** receipt hygiene. rc: parseReceipt output; raw: the receipt bytes; secrets: per entrant { id, salt, code, regCommit (Buffer from the public registry), total (BigInt) } in entry order */
+/** receipt hygiene. rc: parseReceipt output; raw: the receipt bytes; secrets: per entrant { id, salt, code, regCommit (Buffer from the public registry), total (BigInt), finalsTotal? (BigInt, finalists only) } in entry order */
 export function receiptChecks(rc, raw, secrets, { season, neps }) {
   const found = n => n.length > 0 && raw.includes(Buffer.from(n)); const windows = (c, n) => { const o = []; for (let i = 0; i + n <= c.length; i++) { const w = c.subarray(i, i + n); if (new Set(w).size > 2) o.push(w); } return o; };
   const unsalted = c => [sha(c), sha(Buffer.concat([DOM_CODE, c])), sha(Buffer.concat([DOM_CODE, Buffer.alloc(32), c])), sha(Buffer.concat([c, DOM_CODE]))];
+  const commitOf = (salt, e, i) => scoreCommit(salt, season, secrets[i].id, secrets[i].total, e.finalist ? secrets[i].finalsTotal ?? 0n : 0n, neps, e.finalist ? FINALS_EPISODES : 0);
   return [
     named("the receipt is the season's, closed out with every entry published", rc.season === BigInt(season) && rc.ns === secrets.length && rc.published === secrets.length && rc.neps === neps),
     named("entries are in entry order with the right strategy ids", rc.entries.every((e, i) => e.id === BigInt(secrets[i].id))),
     named("every entry's code commitment equals the public registry's", rc.entries.every((e, i) => e.commit.equals(secrets[i].regCommit))),
     named("every code commitment opens to the sealed code under the owner's salt", rc.entries.every((e, i) => e.commit.equals(codeCommit(secrets[i].salt, secrets[i].code)))),
-    named("every entry has a score commitment, and it is the salted hash of (season, id, total, wins, episodes)", rc.entries.every((e, i) => e.score.some(b => b !== 0) && e.score.equals(scoreCommit(secrets[i].salt, season, secrets[i].id, secrets[i].total, e.wins, neps)))),
-    named("no score commitment is the unsalted hash of its own plain total, so a published total cannot be guessed by brute force", rc.entries.every((e, i) => !e.score.equals(scoreCommit(Buffer.alloc(32), season, secrets[i].id, secrets[i].total, e.wins, neps)))),
+    named("every entry has a score commitment, and it is the salted hash of (season, id, season total, finals total, episodes, finals episodes)", rc.entries.every((e, i) => e.score.some(b => b !== 0) && e.score.equals(commitOf(secrets[i].salt, e, i)))),
+    named("no score commitment is the unsalted hash of its own plain totals, so a published total cannot be guessed by brute force", rc.entries.every((e, i) => !e.score.equals(commitOf(Buffer.alloc(32), e, i)))),
     named("no entrant's code, salt, 8-byte code window or unsalted code hash appears anywhere in the receipt", secrets.every(s => !found(s.code) && !found(s.salt) && !windows(s.code, 8).some(w => found(w)) && !unsalted(s.code).some(h => found(h)))),
   ];
 }
 /** the public coarse view (server/src/receipt.mjs coarseReceipt output) of the same receipt: ranks only */
 export function coarseChecks(coarse, rc, secrets) { const json = JSON.stringify(coarse); const hexes = [...rc.entries.flatMap(e => [e.commit.toString("hex"), e.score.toString("hex")]), ...secrets.flatMap(s => [s.salt.toString("hex"), Buffer.from(s.code).toString("hex")])];
-  return [named("the coarse view lists exactly id, rank and wins per entry", coarse.entries.every(e => Object.keys(e).sort().join() === "id,rank,wins") && coarse.entries.length === rc.ns),
-    named("the coarse view's ranks are the receipt's ranks", coarse.entries.every((e, i) => BigInt(e.id) === rc.entries[i].id && e.rank === rc.entries[i].rank)),
+  return [named("the coarse view lists exactly id, rank and seasonRank per entry", coarse.entries.every(e => Object.keys(e).sort().join() === "id,rank,seasonRank") && coarse.entries.length === rc.ns),
+    named("the coarse view's ranks are the receipt's ranks", coarse.entries.every((e, i) => BigInt(e.id) === rc.entries[i].id && e.rank === rc.entries[i].rank && e.seasonRank === rc.entries[i].seasonRank)),
     named("the coarse view carries no commitment, score hash, salt or code", hexes.every(h => !json.includes(h)) && !/commit|score|salt|code|hash/i.test(json))]; }
 /** how stable is the ranking across many independent seasons? seasons: array of rank arrays (1-based, in entry order). Returns mean rank per entrant and the share of pairwise orderings the realised season agrees with */
 export function stability(seasonRanks, realised) {

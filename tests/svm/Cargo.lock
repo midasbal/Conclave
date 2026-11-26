@@ -679,6 +679,7 @@ dependencies = [
  "conclave-vm",
  "magicblock-account",
  "magicblock-litesvm",
+ "serde_json",
  "sha2 0.10.9",
  "solana-address 2.6.1",
  "solana-hash",

@@ -47,7 +47,8 @@ expires: <unix seconds>
 | Route | Access | Notes |
 |---|---|---|
 | `GET /health`, `POST /auth/challenge`, `POST /auth/token` | open | auth routes limited per client address |
-| `GET /public/receipt/:season` | open | coarse view: kind, state, entrants, published, per-entry id, rank, wins. No commitments |
+| `GET /public/receipt/:season` | open | coarse view: kind, state, finals status, amount owed in total, entrants, published, per-entry id, final rank, season rank (receipts of the previous build show rank and wins). No commitments |
+| `GET /public/claims/:season` | open | owed versus claimed per entry slot (receipt order), read from the rollup (`CONCLAVE_ROLLUP_UPSTREAM`; 404 without it). No wallet addresses. The account closes once everything is claimed, and then this route answers 404 |
 | `POST /public/rpc` | open | `getSlot`, `getLatestBlockhash`, `getAccountInfo`, `getMultipleAccounts`; limited per client address |
 | `GET /me` | token | the token's pubkey and expiry |
 | `GET /me/strategies` | token | the player's registries, base and delegated (the keyed `getProgramAccounts` query runs server-side) |

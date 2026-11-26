@@ -23,10 +23,12 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
     // new risk is refused: a new season and a new entry
     let mut f2 = fresh.clone(); rejects(&e.create_season(&mut f2, 2, 10, 20, false, 2), 9060, "CreateSeason while paused"); rejects(&e.enter(&mut c, &late), 9060, "Enter while paused");
     // everything that unwinds a live season still works
-    let r = e.settle_publishing(&a, 3); assert!(r.is_ok(), "Settle while paused: {}", err_string(&r)); for i in 3..5 { assert!(e.publish(&a, i).is_ok(), "Publish while paused"); } assert!(e.cleanup(&a).is_ok(), "Cleanup while paused");
-    e.warp(100); e.fresh_blockhash(); let pre = bals(&e); let r = e.cancel_by(&b, 4); assert!(r.is_ok(), "Cancel (seed timeout) while paused: {}", err_string(&r)); assert!(e.cleanup(&b).is_ok(), "Cleanup of the cancelled season while paused"); let mid = bals(&e); for i in 0..3 { assert_eq!(mid[i] - pre[i], 10, "entrant {} refunded exactly while paused", i); }
-    let r = e.cancel(&c); assert!(r.is_ok(), "creator Cancel (refund) while paused: {}", err_string(&r)); assert!(e.cleanup(&c).is_ok());
+    let r = e.settle_publishing(&a, 3); assert!(r.is_ok(), "Settle while paused: {}", err_string(&r)); e.claim_all(&a); assert!(e.close_claims(&a).is_ok(), "Claim and CloseClaims while paused"); for i in 3..5 { assert!(e.publish(&a, i).is_ok(), "Publish while paused"); } assert!(e.cleanup(&a).is_ok(), "Cleanup while paused");
+    e.warp(100); e.fresh_blockhash(); let pre = bals(&e); let r = e.cancel_by(&b, 4); assert!(r.is_ok(), "Cancel (seed timeout) while paused: {}", err_string(&r)); e.claim_all(&b); assert!(e.cleanup(&b).is_ok(), "Cleanup of the cancelled season while paused"); let mid = bals(&e); for i in 0..3 { assert_eq!(mid[i] - pre[i], 10, "entrant {} refunded exactly while paused", i); }
+    let r = e.cancel(&c); assert!(r.is_ok(), "creator Cancel (refund) while paused: {}", err_string(&r)); e.claim_all(&c);
     let bl = bals(&e); assert_eq!(bl[0] - mid[0], 10, "the creator-cancelled season refunded its entrant exactly"); let _ = start;
+    // the finals phase runs to the end while paused too: transition, finals seed, both runs, Settle and Claim
+    e.admin_ok(1, &[]); let mut f = e.season(204); assert!(e.init_pool(&f).is_ok()); assert!(e.create_season(&mut f, 15, 10, 20, true, 2).is_ok()); for i in 0..3 { let st = e.register_and_seal(i, NAMES[i], code_of(NAMES[i])); assert!(e.enter(&mut f, &st).is_ok()); } e.admin_ok(0, &[]); assert!(e.lock(&f).is_ok()); assert!(e.request_seed(&f).is_ok()); assert!(e.deliver_seed(&mut f, seed_of(4)).is_ok()); e.drive(&f, 1400, 1_400_000); e.run_finals(&mut f, 4); assert!(e.settle(&f).is_ok(), "two-phase settle while paused"); e.claim_all(&f); e.assert_books(&f, 0);
     // unpause: new seasons and entries work again
     e.admin_ok(1, &[]); assert_eq!(cfgb(&e)[C_PAUSED], 0); let r = e.create_season(&mut f2, 2, 10, 20, false, 2); assert!(r.is_ok(), "{}", err_string(&r)); let r = e.enter(&mut f2, &late); assert!(r.is_ok(), "{}", err_string(&r));
 }
@@ -40,7 +42,7 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
 }
 #[test] fn stake_mint_allowlist_accepts_and_rejects() {
     let mut e = Env::new(5); let real = e.mint; let other = Address::new_unique();
-    let attempt = |e: &mut Env, sid: u64, mint: Address| -> Res { let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); let keep = e.mint; e.mint = mint; let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); e.mint = keep; e.send(&[ix], &[]) };
+    let attempt = |e: &mut Env, sid: u64, mint: Address| -> Res { let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let keep = e.mint; e.mint = mint; let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); e.mint = keep; e.send(&[ix], &[]) };
     assert!(attempt(&mut e, 210, real).is_ok(), "the allowlisted mint is accepted"); rejects(&attempt(&mut e, 211, other), 9061, "a mint that is not on the list");
     e.admin_ok(2, other.as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 2); assert!(attempt(&mut e, 212, other).is_ok(), "after being allowed"); e.admin_ok(2, other.as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 2, "allowing twice is idempotent");
     e.admin_ok(3, other.as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 1); rejects(&attempt(&mut e, 213, other), 9061, "after being removed"); assert!(attempt(&mut e, 214, real).is_ok(), "the other mint is unaffected by the removal");
@@ -49,14 +51,14 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
     // only the authority edits the list
     let q = e.player(1); rejects(&e.admin_by(&q, 2, other.as_ref()), 9062, "a stranger editing the allowlist");
     // a fake config cannot be slipped in to bypass the list or the pause
-    let s = e.season(215); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); let mut ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); let n = ix.accounts.len(); ix.accounts[n - 1] = e.rw(Address::new_unique()); rejects(&e.send(&[ix], &[]), 9063, "CreateSeason with a fake config");
+    let s = e.season(215); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let mut ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); ix.accounts[8] = e.rw(Address::new_unique()); rejects(&e.send(&[ix], &[]), 9063, "CreateSeason with a fake config");
     let mut s2 = open(&mut e, 216, 1, 10); let st = e.register_and_seal(2, "x", code_of("EMAcross")); let mut ix = e.enter_ix(&s2, &st, 2); let n = ix.accounts.len(); ix.accounts[n - 1] = e.ro(Address::new_unique()); let kp = e.player(2); rejects(&e.send(&[ix], &[&kp]), 9063, "Enter with a fake config"); let _ = &mut s2;
 }
 #[test] fn a_lookalike_config_at_another_address_is_refused() {
     // a program-owned account carrying a copy of the real config (same magic, a permissive allowlist, not paused) must not be accepted in place of the PDA
     let mut e = Env::new(5); let other = Address::new_unique(); let fake = Address::new_unique(); let mut d = e.data(&e.config); d[C_NMINTS] = 2; d[64 + 32..64 + 64].copy_from_slice(other.as_ref());
     e.svm.set_account(fake, Account { lamports: 1, data: d, owner: e.pid, executable: false, rent_epoch: 0 }).unwrap();
-    let s = e.season(250); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); let keep = e.mint; e.mint = other; let mut ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); e.mint = keep; let n = ix.accounts.len(); ix.accounts[n - 1] = e.ro(fake);
+    let s = e.season(250); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); let keep = e.mint; e.mint = other; let mut ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); e.mint = keep; ix.accounts[8] = e.ro(fake);
     rejects(&e.send(&[ix], &[]), 9063, "a copy of the config at another address");
 }
 #[test] fn init_config_is_for_the_upgrade_authority_only() {
@@ -67,7 +69,7 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
     let ix = e.init_config_ix(pd, e.payer.pubkey()); assert!(e.send(&[ix], &[]).is_ok(), "the upgrade authority creates the config"); assert_eq!(&cfgb(&e)[C_AUTH..C_AUTH + 32], e.payer.pubkey().as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 0, "no mint is allowed until the authority allows one");
     let ix = e.init_config_ix(pd, e.payer.pubkey()); assert!(e.send(&[ix], &[]).is_err(), "the config cannot be created twice");
     // with an empty allowlist nothing can be created
-    let s = e.season(220); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9061, "empty allowlist");
+    let s = e.season(220); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9061, "empty allowlist");
 }
 
 // ---- stranded-bond recovery ----

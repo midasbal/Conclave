@@ -8,7 +8,7 @@ const keyfile = process.env.CANARY_KEYFILE || path.join(here, "..", "..", "concl
 const keyJson = process.env.CANARY_KEY || (fs.existsSync(keyfile) ? fs.readFileSync(keyfile, "utf8") : null);
 if (!keyJson) { console.error("no canary key: set CANARY_KEY (JSON key array) or create " + keyfile); process.exit(2); }
 Object.assign(process.env, { CONCLAVE_SOLO: "1", CONCLAVE_SIGNER: keyJson.trim(), CONCLAVE_PROGRAM_ID: process.env.CONCLAVE_PROGRAM_ID || "HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne", CONCLAVE_MINT: process.env.CONCLAVE_MINT || "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX" });
-const L = await import("./lib.mjs"); const F = await import("./flows.mjs"); const { O } = L; const codes = Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(path.join(here, "canary_codes.json"), "utf8"))).map(([k, v]) => [k, Buffer.from(v, "hex")]));
+const L = await import("./lib.mjs"); const F = await import("./flows.mjs"); const { expectedOutcome, qualifiersOf, claimsChecks } = await import("./campaign_lib.mjs"); const { O } = L; const codes = Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(path.join(here, "canary_codes.json"), "utf8"))).map(([k, v]) => [k, Buffer.from(v, "hex")]));
 const stamp = new Date().toISOString().replace(/[:.]/g, "-"); const log0 = L.logger(L.EV + "canary_" + stamp + ".txt"); const log = (...a) => log0(...a);
 const checks = []; const check = (name, ok, detail = "") => { checks.push({ name, ok: !!ok }); log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? " | " + detail : ""}`); return !!ok; };
 const abort = (msg, code) => { log("ABORT:", msg); process.exit(code); };
@@ -24,7 +24,7 @@ if (!fs.existsSync(L.LAB)) abort("target/release/conclave-lab not built (cargo b
 
 // ---- program identity on chain (informational for the report; the hash is checked by scripts/verify-deployed.sh)
 log(`program data ${pdAddr.toBase58()} upgrade authority ${authority ? authority.toBase58() : "none"} data bytes ${pdAcc.data.length - 45}`);
-const c = await F.ctx(); const sid = BigInt(Date.now() % 1_000_000_000 + 7_000_000); const NEPS = 2; const hub0 = await F.hubLamports(c);
+const c = await F.ctx(); const sid = BigInt(Date.now() % 1_000_000_000 + 7_000_000); const NEPS = 15; /* the minimum with finals: the season weighs at least as much as the 15 finals episodes */ const hub0 = await F.hubLamports(c);
 log("season", sid.toString(), "validator", c.validator.toBase58(), "hub lamports before", hub0);
 
 // ---- A. ruleset gate still enforced by the deployed program on the live validator (over-cap: 14 x HIST = work 71)
@@ -36,17 +36,21 @@ const names = ["Mom20th", "EMAcross", "SwitchTwo"]; const entries = [];
 for (const n of names) { const r = await F.register(c, 0, n, codes[n]); entries.push({ o: 0, id: r.id, salt: r.salt, code: codes[n], commit: r.commit, name: n }); }
 await F.initReceipt(c, sid); await F.initPool(c, sid);
 let allSealed = true; for (const e of entries) { const r = await F.seal(c, e.o, e.id, e.salt, e.code); if (r.err) { allSealed = false; log("seal error", e.name, JSON.stringify(r.err)); } } check("3 strategies sealed in the TEE", allSealed);
-const cs = await F.createSeason(c, sid, { neps: NEPS, fee: 0, maxs: 20, finals: false, division: 2 }); check("CreateSeason", !cs.err, cs.sig + (cs.err ? " " + JSON.stringify(cs.err) : ""));
+const cs = await F.createSeason(c, sid, { neps: NEPS, fee: 0, maxs: 20, finals: true, division: 2 }); check("CreateSeason", !cs.err, cs.sig + (cs.err ? " " + JSON.stringify(cs.err) : ""));
 // fee 0: no tokens move, so the throwaway wallet needs no token account; its (absent) ATA is passed read-only, the pool eATA is the real delegated one
 const t0 = Date.now(); for (;;) { const e = await F.simErr(c, [F.enterIx(c, sid, 0, entries[0].id, true)], [O]); if (!e) break; if (Date.now() - t0 > 90_000) { check("pool token account usable within 90s", false, e); summary(); await L.sleep(5000); } await L.sleep(500); }
 log(`pool token account usable after ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 const en = await F.enter(c, sid, entries.map(e => [e.o, e.id]), log, true); check("3 entries accepted", en.every(r => !r.err));
 const outsiderArena = await L.readAcct(L.TEE, L.arenaPda(sid)); const outsiderStrat = await L.readAcct(L.TEE, L.stratPda(entries[0].id)); check("privacy: arena and sealed strategy unreadable without the owner token", outsiderArena === null && outsiderStrat === null);
 const lock = await L.sendTee(c.URL, [F.lockIx(sid)], [O]); check("Lock", !lock.err, lock.sig); const seed = await L.sendTee(c.URL, [F.seedIx(sid)], [O]); check("RequestSeed (VRF)", !seed.err, seed.sig);
-const d = await F.drive(c, sid, { log }); check("Advance runs to completion with no compute failures", d.ok > 0 && d.fail === 0, `${d.ok} txs in ${d.wall.toFixed(0)}s`);
-const settleIx = () => { const ix = F.settleIx(c, sid, entries.map(e => [e.o])); ix.keys.forEach((k, i) => { if (i >= 6) k.isWritable = false; }); return ix; };
-const settle = await L.sendTee(c.URL, [settleIx()], [O]); check("Settle", !settle.err, settle.sig + (settle.err ? " " + JSON.stringify(settle.err) : ""));
-const dup = await L.sendTee(c.URL, [settleIx()], [O]); check("second Settle rejected", !!dup.err);
+const run = await F.runSeason(c, sid, { log }); check("season phase and finals phase run to completion with no compute failures", run.season.ok > 0 && run.season.fail === 0 && !!run.finals && run.finals.ok > 0 && run.finals.fail === 0, run.finals ? `${run.season.ok} + ${run.finals.ok} txs in ${(run.season.wall + run.finals.wall).toFixed(0)}s` : "no finals ran");
+const settle = await L.sendTee(c.URL, [F.settleIx(c, sid)], [O]); check("Settle (records what each entry is owed)", !settle.err, settle.sig + (settle.err ? " " + JSON.stringify(settle.err) : ""));
+const dup = await L.sendTee(c.URL, [F.settleIx(c, sid)], [O]); check("second Settle rejected (9116)", !!dup.err && JSON.stringify(dup.err).includes("9116"), JSON.stringify(dup.err || "ACCEPTED"));
+// the claims account is meant to be public: read it with NO token. The canary's season has fee 0, so every entry is owed nothing: this proves the account, the Claim instruction and CloseClaims on the live
+// validator, not a token transfer (the throwaway wallet holds no tokens by design)
+const pubClaims = L.parseClaims(await L.readAcct(L.TEE, L.claimsPda(sid))); check("the claims account is readable without any token and is recorded", !!pubClaims && pubClaims.recorded && pubClaims.n === entries.length);
+if (pubClaims) log(F.claimsTable(pubClaims));
+const cl0 = await L.sendTee(c.URL, [F.claimIx(c, sid, 0, O.publicKey, true)], [O]); check("Claim of an entry owed nothing succeeds and moves nothing", !cl0.err, cl0.sig + (cl0.err ? " " + JSON.stringify(cl0.err) : ""));
 let pubOk = true; for (let i = 0; i < entries.length; i++) { const r = await L.sendTee(c.URL, [F.publishIx(sid, i, entries[i].id)], [O]); if (r.err) { pubOk = false; log("publish error", i, JSON.stringify(r.err)); } } check("Publish all ranks", pubOk);
 const cm = await L.sendTee(c.URL, [F.commitIx([L.receiptPda(sid), ...entries.map(e => L.regPda(e.id))])], [O]); check("Commit receipt and registries to base", !cm.err, cm.sig);
 
@@ -54,14 +58,19 @@ const cm = await L.sendTee(c.URL, [F.commitIx([L.receiptPda(sid), ...entries.map
 const rb = await F.readReceiptBase(sid, entries.length); if (!check("receipt visible on base with all ranks published", !!rb)) { summary(); }
 const R = L.parseReceipt(rb); const pinsLocal = execFileSync(L.LAB, ["pins"]).toString().trim(); check("receipt pins equal the local conclave-vm pins", Buffer.from(R.pins).toString("hex") === pinsLocal, pinsLocal);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "canary-")); const poolBin = path.join(tmp, "pool.bin"); const parts = [Buffer.from([entries.length & 255, entries.length >> 8])]; for (const e of entries) { const l = Buffer.alloc(2); l.writeUInt16LE(e.code.length); parts.push(l, e.code); } fs.writeFileSync(poolBin, Buffer.concat(parts));
-const loc = execFileSync(L.LAB, ["season", R.seedA.toString(), R.seedB.toString(), String(NEPS), poolBin, entries.map((_, i) => i).join(",")]).toString().trim().split("\n"); const tot = loc[0].split(",").map(BigInt); fs.rmSync(tmp, { recursive: true, force: true });
-let okC = 0, okI = 0; for (let i = 0; i < entries.length; i++) { const e = entries[i], re = R.entries[i]; const reg = await L.base.getAccountInfo(L.regPda(e.id)); if (Buffer.compare(re.commit, reg.data.subarray(48, 80)) === 0 && Buffer.compare(re.commit, e.commit) === 0) okC++; const rec = await F.ownerRec(c, e.o, e.id); if (rec && rec.pnl === tot[i] && rec.rank === re.rank) okI++; log(`  entry ${i} ${e.name} id ${re.id} rank ${re.rank} chain total ${rec && rec.pnl} local replay ${tot[i]}`); }
-check("code commitments in the receipt equal the registry and the owner's salted commitment", okC === entries.length, `${okC}/${entries.length}`); check("owner-read totals and ranks bit-identical to the local replay from the receipt seed words", okI === entries.length, `${okI}/${entries.length}`);
+const replay = (sa, sb, eps, who) => execFileSync(L.LAB, ["season", sa.toString(), sb.toString(), String(eps), poolBin, who.join(",")]).toString().trim().split("\n")[0].split(",").map(BigInt);
+const tot = replay(R.seedA, R.seedB, NEPS, entries.map((_, i) => i)); const q = qualifiersOf(tot); const qt = R.finals.status === 1 ? replay(R.finals.seedA, R.finals.seedB, R.finals.neps, q) : []; const ftot = entries.map(() => 0n); q.forEach((i, k) => { ftot[i] = qt[k] ?? 0n; }); fs.rmSync(tmp, { recursive: true, force: true });
+check("the finals were played on their own seed, three finalists", R.finals.status === 1 && R.finals.qualifiers === 3 && (R.finals.seedA !== R.seedA || R.finals.seedB !== R.seedB));
+const want = expectedOutcome({ season: tot, finals: ftot, fee: 0 });
+let okC = 0, okI = 0; for (let i = 0; i < entries.length; i++) { const e = entries[i], re = R.entries[i]; const reg = await L.base.getAccountInfo(L.regPda(e.id)); if (Buffer.compare(re.commit, reg.data.subarray(48, 80)) === 0 && Buffer.compare(re.commit, e.commit) === 0) okC++; const rec = await F.ownerRec(c, e.o, e.id); if (rec && rec.pnl === tot[i] && rec.finalsPnl === ftot[i] && rec.rank === re.rank && re.rank === want.finalRank[i] && re.seasonRank === want.seasonRank[i]) okI++; log(`  entry ${i} ${e.name} id ${re.id} season rank ${re.seasonRank} final rank ${re.rank} season ${rec && rec.pnl} (local ${tot[i]}) finals ${rec && rec.finalsPnl} (local ${ftot[i]})`); }
+check("code commitments in the receipt equal the registry and the owner's salted commitment", okC === entries.length, `${okC}/${entries.length}`); check("totals of BOTH phases and both ranks are bit-identical to the local replay from the receipt's two seeds", okI === entries.length, `${okI}/${entries.length}`);
+if (pubClaims) for (const x of claimsChecks(pubClaims, R, { fee: 0 })) check("owed versus claimed: " + x.name, x.ok, x.detail ?? "");
 
 // ---- D. cleanup and sponsor accounting
+const cc = await L.sendTee(c.URL, [F.closeClaimsIx(c, sid)], [O]); check("CloseClaims", !cc.err, cc.sig + (cc.err ? " " + JSON.stringify(cc.err) : ""));
 const cl = await L.sendTee(c.URL, [F.cleanupIx(c, sid)], [O]); check("Cleanup", !cl.err, cl.sig + (cl.err ? " " + JSON.stringify(cl.err) : ""));
-// Cleanup refunds the arena (about 418k lamports). The three sealed strategy accounts stay in the rollup by design, so the hub ends lower by their rent only (observed 19,744 each).
-const hub1 = await F.hubLamports(c); check("sponsor hub: arena rent refunded, loss limited to the 3 strategy accounts (at most 21,000 lamports each)", hub1 !== null && hub0 - hub1 >= 0 && hub0 - hub1 <= 3 * 21_000, `${hub0} -> ${hub1} (${hub1 - hub0})`);
+// CloseClaims and Cleanup refund the claims account and the arena. The three sealed strategy accounts stay in the rollup by design, so the hub ends lower by their rent only (observed 19,744 each).
+const hub1 = await F.hubLamports(c); check("sponsor hub: arena and claims rent refunded, loss limited to the 3 strategy accounts (at most 21,000 lamports each)", hub1 !== null && hub0 - hub1 >= 0 && hub0 - hub1 <= 3 * 21_000, `${hub0} -> ${hub1} (${hub1 - hub0})`);
 // ---- E. the creator bond comes back: undelegate the closed receipt, release on base, exact amount
 { const cu = await L.sendTee(c.URL, [F.commitUndelegateIx([L.receiptPda(sid)])], [O]); check("Commit+undelegate the closed receipt", !cu.err, cu.sig + (cu.err ? " " + JSON.stringify(cu.err) : ""));
   let acc = null; for (let t = 0; t < 60; t++) { acc = await L.base.getAccountInfo(L.receiptPda(sid)); if (acc && acc.owner.equals(L.PROGRAM) && acc.data[144] === 2) break; await L.sleep(1500); }

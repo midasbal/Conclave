@@ -1,0 +1,32 @@
+//! The CLIENT's instruction builders against the REAL program bytecode: tests/client_ix.mjs prints what client/flows.mjs builds, and every instruction here is sent exactly as printed (accounts, order, signer and
+//! writable flags, data). Ignored by default because it needs node and client/node_modules: `(cd client && npm ci)` then `cargo test --release --test client_flows -- --ignored`.
+mod common;
+use common::*;
+use serde_json::Value;
+use solana_instruction::{AccountMeta, Instruction};
+
+const NAMES: [&str; 5] = ["Mom20th", "EMAcross", "TrendSwitch", "SwitchTwo", "SwitchFade"];
+fn built(e: &Env, s: &Season, sts: &[Strat]) -> Value {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../.."); let secret = format!("{:?}", e.payer.to_bytes().to_vec());
+    let input = serde_json::json!({ "sid": s.sid.to_string(), "mint": e.mint.to_string(), "players": e.players.iter().map(|p| p.pubkey().to_string()).collect::<Vec<_>>(), "strategies": sts.iter().map(|x| serde_json::json!({ "owner": x.owner, "id": x.id.to_string() })).collect::<Vec<_>>() });
+    let out = std::process::Command::new("node").current_dir(root).args(["tests/client_ix.mjs", &input.to_string()]).env("CONCLAVE_PROGRAM_ID", e.pid.to_string()).env("CONCLAVE_SIGNER", secret).env_remove("CONCLAVE_SIGNER_FILE").output().expect("node");
+    assert!(out.status.success(), "client_ix.mjs failed: {}", String::from_utf8_lossy(&out.stderr)); serde_json::from_slice(&out.stdout).expect("json") }
+fn ix(e: &Env, v: &Value) -> Instruction { let h = v["data"].as_str().unwrap(); let data = (0..h.len()).step_by(2).map(|i| u8::from_str_radix(&h[i..i + 2], 16).unwrap()).collect();
+    Instruction { program_id: e.pid, data, accounts: v["keys"].as_array().unwrap().iter().map(|k| { let key = a(k["pubkey"].as_str().unwrap()); if k["w"].as_bool().unwrap() { AccountMeta::new(key, k["s"].as_bool().unwrap()) } else { AccountMeta::new_readonly(key, k["s"].as_bool().unwrap()) } }).collect() } }
+fn send(e: &mut Env, v: &Value, who: Option<usize>, what: &str) { e.fresh_blockhash(); let i = ix(e, v); let kps: Vec<_> = who.into_iter().map(|w| e.player(w)).collect(); let refs: Vec<_> = kps.iter().collect(); let r = e.send(&[i], &refs); assert!(r.is_ok(), "client {}: {}", what, err_string(&r)); }
+fn setup(e: &mut Env, sid: u64, n: usize) -> (Season, Vec<Strat>) { let mut s = e.season(sid); assert!(e.init_pool(&s).is_ok()); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); s.neps = 15; s.fee = 10; let sts: Vec<Strat> = (0..n).map(|i| e.register_and_seal(i, NAMES[i], code_of(NAMES[i]))).collect(); (s, sts) }
+
+#[test] #[ignore = "needs node and client/node_modules"] fn the_clients_instructions_run_a_two_phase_season_to_the_last_claim() {
+    let mut e = Env::new(5); let before: Vec<u64> = e.players.iter().map(|p| e.balance(&p.pubkey())).collect(); let (mut s, sts) = setup(&mut e, 7001, 5); let v = built(&e, &s, &sts);
+    assert_eq!(a(v["claimsPda"].as_str().unwrap()), s.claims); assert_eq!(v["scoreCommit"].as_str().unwrap(), score_commit(&[7; 32], 7001, 5, -123, 456, 2, 15).iter().map(|b| format!("{:02x}", b)).collect::<String>(), "the client's score commitment is the program's");
+    send(&mut e, &v["create"], None, "CreateSeason"); for (i, st) in sts.iter().enumerate() { send(&mut e, &v["enter"][i], Some(st.owner), "Enter"); s.entries.push(st.clone()); }
+    send(&mut e, &v["lock"], None, "Lock"); send(&mut e, &v["seed"], None, "RequestSeed"); assert!(e.deliver_seed(&mut s, seed_of(3)).is_ok()); e.warp(301); send(&mut e, &v["advance"], None, "Advance (season)"); e.drive(&s, 1400, 1_400_000);
+    send(&mut e, &v["seed"], None, "RequestSeed (finals, the same builder)"); assert!(e.deliver_finals_seed(&mut s, seed_of(4)).is_ok()); e.drive(&s, 1400, 1_400_000);
+    send(&mut e, &v["settle"], None, "Settle with inline publish"); let ex = expect(&s, true); for i in 0..5 { assert_eq!(e.owed(&s, i), ex.owed[i]); }
+    for i in 0..5 { send(&mut e, &v["claim"][i], None, "Claim"); } e.assert_books(&s, 0); send(&mut e, &v["claimReadOnly"], None, "a repeat claim with read-only token accounts");
+    for i in 0..5 { assert_eq!(e.balance(&e.players[i].pubkey()) + 10 - before[i], ex.owed[i]); } send(&mut e, &v["closeClaims"], None, "CloseClaims"); send(&mut e, &v["cleanup"], None, "Cleanup"); }
+
+#[test] #[ignore = "needs node and client/node_modules"] fn the_clients_cancel_refunds_through_claims() {
+    let mut e = Env::new(5); let before: Vec<u64> = e.players.iter().map(|p| e.balance(&p.pubkey())).collect(); let (mut s, sts) = setup(&mut e, 7002, 3); let v = built(&e, &s, &sts);
+    send(&mut e, &v["create"], None, "CreateSeason"); for (i, st) in sts.iter().enumerate() { send(&mut e, &v["enter"][i], Some(st.owner), "Enter"); s.entries.push(st.clone()); }
+    send(&mut e, &v["cancel"], None, "Cancel by the creator while unlocked"); for i in 0..3 { send(&mut e, &v["claim"][i], None, "Claim (refund)"); } e.assert_books(&s, 0); for i in 0..5 { assert_eq!(e.balance(&e.players[i].pubkey()), before[i]); } send(&mut e, &v["closeClaims"], None, "CloseClaims"); }
