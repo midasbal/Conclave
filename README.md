@@ -102,7 +102,7 @@ No keypair is stored in this repository. The client reads its keys from a folder
 - `payer.json`: funds transactions and is the program upgrade authority
 - `conclave-program.json`: the program address keypair
 - `players.json`: a JSON array of keypair arrays used as test players
-- `strategies.json`: written by the client, it holds each strategy's secret salt and code; losing it means you can no longer prove or reveal a sealed strategy
+- `strategies.json`: written by the client before it sends a registration, it holds each strategy's secret salt and code. Back it up with encrypted recovery bundles (`docs/CUSTODY.md`): once a strategy is closed, a copy of its salt and code is the only way to prove or replay it
 
 Keep that folder outside version control and out of any backup that is shared.
 

@@ -1,4 +1,4 @@
-import * as L from "./lib.mjs"; import fs from "fs";
+import * as L from "./lib.mjs"; import fs from "fs"; import path from "path"; import { execFileSync } from "child_process"; import * as Custody from "./custody.mjs";
 const { K, ixp, u64, u32, O, PublicKey, SystemProgram } = L;
 export const ATOKEN = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 /** access guards: the config PDA (pause, stake-mint allowlist, authority) lives in the rollup after delegation */
@@ -9,12 +9,25 @@ export async function ctx() { const st = fs.existsSync(L.ROOT + "/client/state.j
   return { st, mint: process.env.CONCLAVE_MINT ? new PublicKey(process.env.CONCLAVE_MINT) : st.mint ? new PublicKey(st.mint) : null, players, validator, URL, ptok, codes: process.env.CONCLAVE_SOLO ? {} : L.loadPool(), hub: L.hubPda(), ata(o) { return L.getAssociatedTokenAddressSync(this.mint, o, true); }, save() { fs.writeFileSync(L.ROOT + "/client/state.json", JSON.stringify(this.st, null, 1)); } }; }
 export const hubLamports = async c => { const d = (await L.rpc(c.URL, "getAccountInfo", [c.hub.toBase58(), { encoding: "base64" }])).result?.value; return d ? d.lamports : null; };
 const delegIx = (c, payer, pdaK, kind, idOrSid) => { const a = L.delegAccts(pdaK); return ixp(2, [K(payer, true, true), K(SystemProgram.programId), K(pdaK, true), K(L.PROGRAM), K(a.buffer, true), K(a.record, true), K(a.meta, true), K(L.DLP), K(c.validator)], Buffer.concat([Buffer.from([kind]), u64(idOrSid)])); };
-/** register a sealed-strategy commitment on base and delegate the registry to the TEE. The salt is generated here and kept with the keys. */
-/** meta (optional): extra fields stored with the strategy in strategies.json, e.g. the authored artifact's source hash, ruleset and division. The salt is kept there and nowhere else. */
+/** register a sealed-strategy commitment on base and delegate the registry to the TEE. The salt is generated here.
+ *  The record (salt and code) is on disk BEFORE anything is sent: after any crash, from the first request on, the key file can open the commitment, and resumeStrategy finishes the job.
+ *  It is never removed on failure: a send that reported an error may still have landed.
+ *  meta (optional): extra fields stored with the strategy in strategies.json, e.g. the authored artifact's source hash, ruleset and division. The salt is kept there and in recovery bundles, nowhere else. */
 export async function register(c, ownerIdx, name, code, meta = {}) { const owner = c.players[ownerIdx]; const id = L.newId(); const salt = (await import("crypto")).randomBytes(32); const commit = L.codeCommit(salt, code); const reg = L.regPda(id);
-  const s1 = await L.sendBase([ixp(1, [K(owner.publicKey, true, true), K(reg, true), K(SystemProgram.programId)], Buffer.concat([u64(id), commit]))], [O, owner]);
+  if (!process.env.CONCLAVE_SOLO) L.addStrat({ id: id.toString(), owner: ownerIdx, name, salt: salt.toString("hex"), code: code.toString("hex"), ...meta }); /* disposable canary strategies are never written to the key folder */
+  const s1 = await L.sendBase([registerIx(owner.publicKey, id, commit)], [O, owner]);
   const s2 = await L.sendBase([delegIx(c, owner.publicKey, reg, 1, id)], [O, owner]);
-  if (!process.env.CONCLAVE_SOLO) { const all = L.loadStrats(); all.push({ id: id.toString(), owner: ownerIdx, name, salt: salt.toString("hex"), code: code.toString("hex"), ...meta }); L.saveStrats(all); } /* disposable canary strategies are never written to the key folder */ return { id, salt, commit, sigs: [s1, s2] }; }
+  return { id, salt, commit, sigs: [s1, s2] }; }
+const registerIx = (owner, id, commit) => ixp(1, [K(owner, true, true), K(L.regPda(id), true), K(SystemProgram.programId)], Buffer.concat([u64(id), commit]));
+/** Finish a strategy whose registration was interrupted, from its key-file record: register if the registry is missing, delegate it if it is still on base, seal it if it is not sealed. Safe to run again. */
+export async function resumeStrategy(c, id, log) { const rec = L.loadStrats().find(x => x.id === String(id)); if (!rec) throw new Error("no such strategy in the key file"); const owner = c.players[rec.owner]; const salt = Buffer.from(rec.salt, "hex"), code = Buffer.from(rec.code, "hex"), commit = L.codeCommit(salt, code); const reg = L.regPda(BigInt(rec.id)); const did = [];
+  const step = (n, sig) => { did.push(n); log && log(`SIG ${n}: ${sig}`); };
+  let a = await L.base.getAccountInfo(reg);
+  if (!a) { step("register", await L.sendBase([registerIx(owner.publicKey, BigInt(rec.id), commit)], [O, owner])); a = await L.base.getAccountInfo(reg); }
+  const onChain = await L.readAcct(c.URL, reg) ?? a?.data; if (!onChain || !Buffer.from(onChain).subarray(48, 80).equals(commit)) throw new Error("the registry does not hold this record's commitment");
+  if (a && a.owner.equals(L.PROGRAM)) step("delegate", await L.sendBase([delegIx(c, owner.publicKey, reg, 1, BigInt(rec.id))], [O, owner]));
+  if (!(await L.readAcct(c.ptok[rec.owner], L.stratPda(BigInt(rec.id))))) { const r = await seal(c, rec.owner, BigInt(rec.id), salt, code); if (r.err) throw new Error("seal failed: " + JSON.stringify(r.err)); step("seal", r.sig); }
+  return did; }
 export async function seal(c, ownerIdx, id, salt, code, wait = true) { const p = c.players[ownerIdx]; const s = L.stratPda(id);
   if (wait) for (let i = 0; i < 60; i++) { if (await L.readAcct(c.URL, L.regPda(id))) break; await L.sleep(700); }
   return L.sendTee(c.URL, [ixp(3, [K(p.publicKey, false, true), K(c.hub, true), K(s, true), K(L.permissionPdaFromAccount(s), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.regPda(id))], Buffer.concat([u64(id), salt, code]))], [O, p]); }
@@ -94,12 +107,33 @@ export const recoverBondIx = sid => ixp(21, [K(O.publicKey, true, true), K(CONFI
 /** the config as the rollup sees it */
 export async function readConfig(c) { const d = await L.readAcct(c.URL, CONFIG); if (!d) return null; const n = d[5]; return { paused: d[4] !== 0, authority: new PublicKey(d.subarray(8, 40)), mints: Array.from({ length: n }, (_, i) => new PublicKey(d.subarray(64 + i * 32, 96 + i * 32))) }; }
 
-/** CloseStrategy (the owner, in the rollup): only with no open entry (9130). The sealed account's rent returns to the hub, which paid it; the registry is marked closed. */
-export const closeStrategyIx = (c, owner, id) => { const s = L.stratPda(id); return ixp(24, [K(owner, false, true), K(c.hub, true), K(s, true), K(L.permissionPdaFromAccount(s), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.regPda(id), true)]); };
+/** CloseStrategy (the owner, in the rollup): only with no open entry (9130). The sealed account's rent returns to the hub, which paid it; the registry is marked closed.
+ *  It WIPES the sealed salt and code, so this builder refuses without a ticket from a recovery bundle that was written, reopened and checked against the commitment (custody.issueCloseTicket).
+ *  This guards this client only: anyone who builds the instruction by hand, or uses another client, bypasses it. The program cannot know whether a backup exists. */
+export const closeStrategyIx = (c, owner, id, ticket) => { Custody.assertCloseTicket(ticket, { program: L.PROGRAM.toBase58(), id, owner: owner.toBase58() }); const s = L.stratPda(id); return ixp(24, [K(owner, false, true), K(c.hub, true), K(s, true), K(L.permissionPdaFromAccount(s), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.regPda(id), true)]); };
+/** observed from getGenesisHash on api.devnet.solana.com and on the base RPC this client uses */
+export const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+export async function clusterInfo() { const g = (await L.rpc(L.BASE_URL, "getGenesisHash")).result; if (!g) throw new Error("cannot read the cluster's genesis hash"); return { name: g === DEVNET_GENESIS ? "devnet" : "unknown", genesisHash: g }; }
+export const bundleDir = () => path.join(L.KEYS, "bundles");
+export const bundlePath = (id, dir = bundleDir()) => path.join(dir, String(id) + Custody.BUNDLE_EXT);
+/** the repository example whose assembly is exactly this bytecode, if any (source "if available"); null when none matches or the author module is not built */
+export async function sourceFor(code) { try { const A = await (await import("./author.mjs")).load(); const d = path.join(L.ROOT, "strategies"); for (const f of fs.readdirSync(d)) { if (!f.endsWith(".cvs")) continue; const src = fs.readFileSync(path.join(d, f), "utf8"); const a = A.assemble(src); if (a.ok && a.bytecode === Buffer.from(code).toString("hex")) return src; } } catch { /* no author module */ } return null; }
+export const vmPins = () => { try { return execFileSync(L.LAB, ["pins"]).toString().trim(); } catch { return null; } };
+/** what the owner reads of a sealed strategy and its registry, from the rollup */
+async function readSealed(c, ownerIdx, id) { const sealedData = await L.readAcct(c.ptok[ownerIdx], L.stratPda(id)); if (!sealedData) throw new Error(`strategy ${id}: no sealed account readable by this owner (never sealed, closed, not the owner, or the rollup lost it)`); const registryData = await L.readAcct(c.URL, L.regPda(id)); if (!registryData) throw new Error(`strategy ${id}: the registry cannot be read`); return { sealedData, registryData }; }
+async function backupArgs(c, ownerIdx, id, backup) { if (!backup?.passphrase) throw new Error("a recovery-bundle passphrase is required"); const data = await readSealed(c, ownerIdx, id); const sealed = Custody.fromSealedAccount(data.sealedData);
+  return { file: backup.file ?? bundlePath(id, backup.dir), passphrase: backup.passphrase, program: L.PROGRAM.toBase58(), cluster: await clusterInfo(), id: String(id), owner: c.players[ownerIdx].publicKey.toBase58(), ...data, source: await sourceFor(sealed.code), vmPins: vmPins() }; }
+/** RECOVER from the sealed account: needs the owner's wallet and nothing from the key file. Writes (or checks) the bundle, reopens it and verifies it against the sealed account and registry.
+ *  restore: also put the record back into the key file, so the other scripts can use the strategy again. */
+export async function recoverBundle(c, ownerIdx, id, backup) { const a = await backupArgs(c, ownerIdx, id, backup); const ticket = Custody.exportForClose(a);
+  if (backup.restore) { const s = Custody.fromSealedAccount(a.sealedData); L.addStrat({ id: String(id), owner: ownerIdx, name: "recovered", salt: s.salt.toString("hex"), code: s.code.toString("hex") }); }
+  return { file: ticket.file, ticket }; }
 /** CloseRegistry (base): removes a closed registry that is back from the rollup and returns all its lamports to the owner, who paid them at Register */
 export const closeRegistryIx = (id, owner) => ixp(25, [K(O.publicKey, true, true), K(L.regPda(id), true), K(owner, true)]);
-/** the whole retirement of a strategy: close in the rollup, undelegate the closed registry, remove it on base. Needs the program build with CloseStrategy (deployed). */
-export async function closeStrategy(c, ownerIdx, id) { const p = c.players[ownerIdx]; const a = await L.sendTee(c.URL, [closeStrategyIx(c, p.publicKey, id)], [O, p]); if (a.err) return { err: a.err, sigs: [a.sig] };
-  const b = await L.sendTee(c.URL, [commitUndelegateIx([L.regPda(id)])], [O]); if (b.err) return { err: b.err, sigs: [a.sig, b.sig] };
-  for (let t = 0; ; t++) { const acct = await L.base.getAccountInfo(L.regPda(id)); if (acct && acct.owner.equals(L.PROGRAM)) break; if (t >= 60) return { err: "the registry has not come back to base yet; send closeRegistryIx later", sigs: [a.sig, b.sig] }; await L.sleep(1500); }
-  return { err: null, sigs: [a.sig, b.sig, await L.sendBase([closeRegistryIx(id, p.publicKey)], [O])] }; }
+/** the whole retirement of a strategy: back it up, close it in the rollup, undelegate the closed registry, remove it on base.
+ *  backup: { passphrase, dir? or file? } (REQUIRED). Nothing is sent until the bundle is on disk, reopened and verified against the commitment. */
+export async function closeStrategy(c, ownerIdx, id, backup) { const p = c.players[ownerIdx]; const { ticket } = await recoverBundle(c, ownerIdx, id, { ...backup, restore: false });
+  const a = await L.sendTee(c.URL, [closeStrategyIx(c, p.publicKey, id, ticket)], [O, p]); if (a.err) return { err: a.err, sigs: [a.sig], bundle: ticket.file };
+  const b = await L.sendTee(c.URL, [commitUndelegateIx([L.regPda(id)])], [O]); if (b.err) return { err: b.err, sigs: [a.sig, b.sig], bundle: ticket.file };
+  for (let t = 0; ; t++) { const acct = await L.base.getAccountInfo(L.regPda(id)); if (acct && acct.owner.equals(L.PROGRAM)) break; if (t >= 60) return { err: "the registry has not come back to base yet; send closeRegistryIx later", sigs: [a.sig, b.sig], bundle: ticket.file }; await L.sleep(1500); }
+  return { err: null, sigs: [a.sig, b.sig, await L.sendBase([closeRegistryIx(id, p.publicKey)], [O])], bundle: ticket.file }; }

@@ -7,6 +7,9 @@ players.json
 .env
 .env.*
 *.pem
+strategies.json
+*.cvbundle
+*passphrase*.txt
 
 # Rust build artifacts
 target/

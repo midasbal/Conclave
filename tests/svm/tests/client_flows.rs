@@ -6,9 +6,14 @@ use serde_json::Value;
 use solana_instruction::{AccountMeta, Instruction};
 
 const NAMES: [&str; 5] = ["Mom20th", "EMAcross", "TrendSwitch", "SwitchTwo", "SwitchFade"];
+const PASSPHRASE: &str = "svm test bundle passphrase";
+fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{:02x}", x)).collect() }
+fn bundle_dir(e: &Env, s: &Season) -> std::path::PathBuf { std::env::temp_dir().join(format!("cv-svm-bundles-{}-{}-{}", std::process::id(), e.pid, s.sid)) }
 fn built(e: &Env, s: &Season, sts: &[Strat]) -> Value {
+    // the sealed and registry accounts exactly as the program made them: the client exports its recovery bundles from these
+    let accounts: Vec<Value> = sts.iter().map(|x| serde_json::json!({ "sealed": hex(&e.data(&e.strat_pda(x.id))), "registry": hex(&e.data(&e.reg_pda(x.id))) })).collect();
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../.."); let secret = format!("{:?}", e.payer.to_bytes().to_vec());
-    let input = serde_json::json!({ "sid": s.sid.to_string(), "mint": e.mint.to_string(), "players": e.players.iter().map(|p| p.pubkey().to_string()).collect::<Vec<_>>(), "strategies": sts.iter().map(|x| serde_json::json!({ "owner": x.owner, "id": x.id.to_string() })).collect::<Vec<_>>() });
+    let input = serde_json::json!({ "bundleDir": bundle_dir(e, s), "passphrase": PASSPHRASE, "accounts": accounts, "sid": s.sid.to_string(), "mint": e.mint.to_string(), "players": e.players.iter().map(|p| p.pubkey().to_string()).collect::<Vec<_>>(), "strategies": sts.iter().map(|x| serde_json::json!({ "owner": x.owner, "id": x.id.to_string() })).collect::<Vec<_>>() });
     let out = std::process::Command::new("node").current_dir(root).args(["tests/client_ix.mjs", &input.to_string()]).env("CONCLAVE_PROGRAM_ID", e.pid.to_string()).env("CONCLAVE_SIGNER", secret).env_remove("CONCLAVE_SIGNER_FILE").output().expect("node");
     assert!(out.status.success(), "client_ix.mjs failed: {}", String::from_utf8_lossy(&out.stderr)); serde_json::from_slice(&out.stdout).expect("json") }
 fn ix(e: &Env, v: &Value) -> Instruction { let h = v["data"].as_str().unwrap(); let data = (0..h.len()).step_by(2).map(|i| u8::from_str_radix(&h[i..i + 2], 16).unwrap()).collect();
@@ -42,3 +47,20 @@ fn setup(e: &mut Env, sid: u64, n: usize) -> (Season, Vec<Strat>) { let mut s = 
     send(&mut e, &w["cancel"], None, "Cancel naming none"); for i in 0..3 { send(&mut e, &w["claim"][i], None, "Claim"); } send(&mut e, &w["closeClaims"], None, "CloseClaims"); send(&mut e, &w["cleanupNaming"], None, "Cleanup naming the held strategies");
     for (i, st) in sts.iter().enumerate() { send(&mut e, &v["closeStrategy"][i], Some(st.owner), "CloseStrategy"); } send(&mut e, &v["undelegateRegs"], None, "Commit and undelegate the closed registries"); for i in 0..3 { send(&mut e, &v["closeRegistry"][i], None, "CloseRegistry"); }
     assert_eq!(e.lamports(&e.hub), hub0 + 2 * (BOND / 4), "whole, plus the 25% bond each of the two creator cancels forfeits"); assert_eq!(e.vault_total(), 0); }
+
+#[test] #[ignore = "needs node, client/node_modules and the WASM author module"] fn a_bundle_from_the_real_sealed_account_replays_the_season_after_the_strategy_is_closed() {
+    let mut e = Env::new(5); e.model_rent(); let (mut s, sts) = setup(&mut e, 7005, 5); let v = built(&e, &s, &sts);
+    send(&mut e, &v["create"], None, "CreateSeason"); for (i, st) in sts.iter().enumerate() { send(&mut e, &v["enter"][i], Some(st.owner), "Enter"); s.entries.push(st.clone()); }
+    send(&mut e, &v["lock"], None, "Lock"); send(&mut e, &v["seed"], None, "RequestSeed"); assert!(e.deliver_seed(&mut s, seed_of(31)).is_ok()); e.warp(301); e.drive(&s, 1400, 1_400_000);
+    send(&mut e, &v["seed"], None, "RequestSeed (finals)"); assert!(e.deliver_finals_seed(&mut s, seed_of(32)).is_ok()); e.drive(&s, 1400, 1_400_000); send(&mut e, &v["settle"], None, "Settle with inline publish");
+    let ex = expect(&s, true);
+    // the owners close every strategy with the client's guarded builder: the sealed salt and code are wiped and the accounts are gone
+    for (i, st) in sts.iter().enumerate() { send(&mut e, &v["closeStrategy"][i], Some(st.owner), "CloseStrategy"); assert!(e.data(&e.strat_pda(st.id)).is_empty(), "the sealed account is gone"); }
+    let receipt = hex(&e.data(&s.receipt)); let mut finalists = 0;
+    for (i, st) in sts.iter().enumerate() {
+        let file = v["bundles"][i].as_str().unwrap(); let input = serde_json::json!({ "bundle": file, "passphrase": PASSPHRASE, "receipt": receipt });
+        let out = std::process::Command::new("node").current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")).args(["tests/custody_replay.mjs", &input.to_string()]).env("CONCLAVE_PROGRAM_ID", e.pid.to_string()).env("CONCLAVE_SIGNER", format!("{:?}", e.payer.to_bytes().to_vec())).env_remove("CONCLAVE_SIGNER_FILE").output().expect("node");
+        assert!(out.status.success(), "replay failed: {}", String::from_utf8_lossy(&out.stderr)); let r: Value = serde_json::from_slice(&out.stdout).expect("json");
+        assert_eq!(r["id"].as_str().unwrap(), st.id.to_string()); assert_eq!(r["codeCommitmentMatches"], true, "entry {}", i); assert_eq!(r["scoreCommitmentMatches"], true, "entry {}: the bundle alone reproduces the score commitment", i);
+        assert_eq!(r["total"].as_str().unwrap(), ex.season[i].to_string(), "the replayed season total is the oracle's"); assert_eq!(r["finalsTotal"].as_str().unwrap(), ex.finals[i].to_string()); if r["finalist"] == true { finalists += 1; } }
+    assert_eq!(finalists, 3, "the replay covered finalists and non-finalists"); let _ = std::fs::remove_dir_all(bundle_dir(&e, &s)); }

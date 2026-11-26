@@ -17,12 +17,14 @@ export const PROGRAM = process.env.CONCLAVE_PROGRAM_ID ? new PublicKey(process.e
 export const DLP = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"), ESPL = new PublicKey("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"), TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 export const MAGIC = new PublicKey("Magic11111111111111111111111111111111111111"), MCTX = new PublicKey("MagicContext1111111111111111111111111111111");
 export const VRF = new PublicKey("Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"), SLOTH = new PublicKey("SysvarS1otHashes111111111111111111111111111"), EQUEUE = new PublicKey("5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc");
-export const BASE_URL = "https://rpc.magicblock.app/devnet", TEE = "https://devnet-tee.magicblock.app";
+/** CONCLAVE_BASE_URL overrides the base RPC (used by the custody crash test, which points it at a local port) */
+export const BASE_URL = process.env.CONCLAVE_BASE_URL || "https://rpc.magicblock.app/devnet", TEE = "https://devnet-tee.magicblock.app";
 export const base = new Connection(BASE_URL, "confirmed");
 /** the acting wallet: payer.json by default; CONCLAVE_SIGNER (JSON key array in the environment) or CONCLAVE_SIGNER_FILE override it, which is how the canary runs under its throwaway wallet */
 export const O = Keypair.fromSecretKey(Uint8Array.from(process.env.CONCLAVE_SIGNER ? JSON.parse(process.env.CONCLAVE_SIGNER) : process.env.CONCLAVE_SIGNER_FILE ? JSON.parse(fs.readFileSync(process.env.CONCLAVE_SIGNER_FILE, "utf8")) : readKey("payer.json")));
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 import { Endpoint } from "./endpoint.mjs"; export { Endpoint };
+import { readRecords, writeRecords, addRecord } from "./custody.mjs";
 const urlOf = u => typeof u === "string" ? u : u.url, hdrOf = u => typeof u === "string" ? {} : u.headers();
 export const rpc = async (u, m, p = []) => { for (let a = 0; a < 3; a++) { try { const r = await fetch(urlOf(u), { method: "POST", headers: { "content-type": "application/json", ...hdrOf(u) }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: m, params: p }) }); return JSON.parse(await r.text()); } catch (e) { if (a == 2) return { error: String(e) }; await sleep(300); } } };
 export const K = (pubkey, w = false, s = false) => ({ pubkey, isWritable: w, isSigner: s });
@@ -53,9 +55,11 @@ export const codeCommit = (salt, code) => sha256(Buffer.concat([DOM_CODE, salt, 
 export const scoreCommit = (salt, season, id, total, finalsTotal, neps, finalsEps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha256(Buffer.concat([DOM_SCORE, salt, b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(8, x => x.writeBigInt64LE(BigInt(finalsTotal))), b(4, x => x.writeUInt32LE(neps)), b(4, x => x.writeUInt32LE(finalsEps))])); };
 /** strategy ids are random 64-bit numbers (the namespace is global); the secret salts live with the keys, outside the repo */
 export const newId = () => crypto.randomBytes(8).readBigUInt64LE();
-const stratFile = () => path.join(KEYS, "strategies.json");
-export const loadStrats = () => fs.existsSync(stratFile()) ? JSON.parse(fs.readFileSync(stratFile(), "utf8")) : [];
-export const saveStrats = a => fs.writeFileSync(stratFile(), JSON.stringify(a, null, 1), { mode: 0o600 });
+/** the key file. Writes are durable and serialised, and no write may drop a secret it holds (client/custody.mjs) */
+export const stratFile = () => path.join(KEYS, "strategies.json");
+export const loadStrats = () => readRecords(stratFile());
+export const saveStrats = a => writeRecords(stratFile(), a);
+export const addStrat = rec => addRecord(stratFile(), rec);
 export const players = () => readKey("players.json").map(a => Keypair.fromSecretKey(Uint8Array.from(a)));
 // arena / receipt layouts (mirror of program/src/lib.rs)
 export const A = { HDR: 1280, SLOT: 440 };
