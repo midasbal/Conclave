@@ -30,3 +30,15 @@ fn setup(e: &mut Env, sid: u64, n: usize) -> (Season, Vec<Strat>) { let mut s = 
     let mut e = Env::new(5); let before: Vec<u64> = e.players.iter().map(|p| e.balance(&p.pubkey())).collect(); let (mut s, sts) = setup(&mut e, 7002, 3); let v = built(&e, &s, &sts);
     send(&mut e, &v["create"], None, "CreateSeason"); for (i, st) in sts.iter().enumerate() { send(&mut e, &v["enter"][i], Some(st.owner), "Enter"); s.entries.push(st.clone()); }
     send(&mut e, &v["cancel"], None, "Cancel by the creator while unlocked"); for i in 0..3 { send(&mut e, &v["claim"][i], None, "Claim (refund)"); } e.assert_books(&s, 0); for i in 0..5 { assert_eq!(e.balance(&e.players[i].pubkey()), before[i]); } send(&mut e, &v["closeClaims"], None, "CloseClaims"); }
+
+#[test] #[ignore = "needs node and client/node_modules"] fn the_clients_release_and_close_instructions_retire_strategies_and_make_the_hub_whole() {
+    let mut e = Env::new(5); e.model_rent(); let hub0 = e.lamports(&e.hub); let (mut s, sts) = setup(&mut e, 7003, 3); let v = built(&e, &s, &sts);
+    // cancelled with the strategies named by Cancel: Cleanup then names none
+    send(&mut e, &v["create"], None, "CreateSeason"); for (i, st) in sts.iter().enumerate() { send(&mut e, &v["enter"][i], Some(st.owner), "Enter"); s.entries.push(st.clone()); }
+    send(&mut e, &v["cancelReleasing"], None, "Cancel naming its strategies"); for st in &sts { assert_eq!(e.open_count(st.id), 0); } for i in 0..3 { send(&mut e, &v["claim"][i], None, "Claim"); } send(&mut e, &v["closeClaims"], None, "CloseClaims"); send(&mut e, &v["cleanup"], None, "Cleanup naming none");
+    // a second season, cancelled with none named: Cleanup names them
+    let (mut s2, _) = (e.season(7004), ()); assert!(e.init_pool(&s2).is_ok()); assert!(e.init_receipt(&s2).is_ok()); e.provision_if_new(s2.arena, arena_size(20)); e.provision_if_new(s2.claims, claims_size(20)); s2.neps = 15; s2.fee = 10; let w = built(&e, &s2, &sts);
+    send(&mut e, &w["create"], None, "CreateSeason"); for (i, st) in sts.iter().enumerate() { send(&mut e, &w["enter"][i], Some(st.owner), "Enter"); s2.entries.push(st.clone()); }
+    send(&mut e, &w["cancel"], None, "Cancel naming none"); for i in 0..3 { send(&mut e, &w["claim"][i], None, "Claim"); } send(&mut e, &w["closeClaims"], None, "CloseClaims"); send(&mut e, &w["cleanupNaming"], None, "Cleanup naming the held strategies");
+    for (i, st) in sts.iter().enumerate() { send(&mut e, &v["closeStrategy"][i], Some(st.owner), "CloseStrategy"); } send(&mut e, &v["undelegateRegs"], None, "Commit and undelegate the closed registries"); for i in 0..3 { send(&mut e, &v["closeRegistry"][i], None, "CloseRegistry"); }
+    assert_eq!(e.lamports(&e.hub), hub0 + 2 * (BOND / 4), "whole, plus the 25% bond each of the two creator cancels forfeits"); assert_eq!(e.vault_total(), 0); }

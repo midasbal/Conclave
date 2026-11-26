@@ -34,7 +34,7 @@ if (mode === "cancel") {
   const lk = await L.sendTee(c.URL, [F.lockIx(sid)], [O]); ok(lk, "TEE Lock (seed is deliberately never requested)"); const lockSlot = await slot();
   const early = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey)], [O, c.players[4]]); check("Cancel before the seed timeout is refused (a stranger, 9033)", !!early.err && JSON.stringify(early.err).includes("9033"), JSON.stringify(early.err || "ACCEPTED"));
   await waitSlot(lockSlot + 750); log("seed timeout (700 slots) elapsed, slot", await slot());
-  const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey)], [O, c.players[4]]); check("Cancel by a stranger after the timeout", ok(cx, "TEE Cancel (signed by a stranger wallet)"));
+  const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey, S.entries.map(e => e.id))], [O, c.players[4]]); check("Cancel by a stranger after the timeout", ok(cx, "TEE Cancel (signed by a stranger wallet)"));
   { const cm = await F.claimAll(c, sid, log); log(F.claimsTable(cm.after)); check("every refund claimed", cm.results.every(r => !r.err) && cm.after.claimed === cm.after.owed); }
   const refunded = []; for (const e of S.entries) refunded.push(await F.bal(c, e.o)); check("every fee refunded exactly", refunded.every((x, i) => x === before[i]), `${after} -> ${refunded} (started ${before})`);
   const dup = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey)], [O, c.players[4]]); check("a second Cancel is refused (9034), no double refund", !!dup.err && JSON.stringify(dup.err).includes("9034"));
@@ -49,21 +49,21 @@ if (mode === "cancel") {
   await F.enter(c, sid, S.entries.map(e => [e.o, e.id]), log); const early = await L.sendTee(c.URL, [F.lockIx(sid)], [O]); check("the creator cannot cancel early by locking an under-filled field (9031)", !!early.err && JSON.stringify(early.err).includes("9031"), JSON.stringify(early.err || "ACCEPTED"));
   const stranger = await L.sendTee(c.URL, [F.lockIx(sid, c.players[4].publicKey)], [O, c.players[4]]); check("a stranger cannot lock inside the window (9032)", !!stranger.err && JSON.stringify(stranger.err).includes("9032"), JSON.stringify(stranger.err || "ACCEPTED"));
   await waitSlot(created + 4_100); log("entry window elapsed, slot", await slot());
-  const lr = await F.register(c, 2, "Mom20th", c.codes["Mom20th"].code); ok(await F.seal(c, 2, lr.id, lr.salt, c.codes["Mom20th"].code), "TEE Seal late strategy (owner 2)");
+  const lr = await F.register(c, 2, "Mom20th", c.codes["Mom20th"].code); const hubBeforeLate = await F.hubLamports(c); ok(await F.seal(c, 2, lr.id, lr.salt, c.codes["Mom20th"].code), "TEE Seal late strategy (owner 2)"); const lateRent = hubBeforeLate - await F.hubLamports(c); /* sealed after the starting hub reading, and never closed here, so its rent stays out of the hub */
   const late = await L.sendTee(c.URL, [F.enterIx(c, sid, 2, lr.id)], [O, c.players[2]]); check("Enter after the window is refused (9030)", !!late.err && JSON.stringify(late.err).includes("9030"), JSON.stringify(late.err || "ACCEPTED"));
   const lk = await L.sendTee(c.URL, [F.lockIx(sid, c.players[4].publicKey)], [O, c.players[4]]); check("a stranger's Lock after the window cancels the under-minimum season", ok(lk, "TEE Lock (stranger)"));
-  const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey)], [O, c.players[4]]); check("Cancel and refund by a stranger", ok(cx, "TEE Cancel"));
+  const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey, S.entries.map(e => e.id))], [O, c.players[4]]); check("Cancel and refund by a stranger", ok(cx, "TEE Cancel"));
   { const cm = await F.claimAll(c, sid, log); log(F.claimsTable(cm.after)); check("both refunds claimed", cm.results.every(r => !r.err) && cm.after.claimed === cm.after.owed); }
   const refunded = []; for (const e of S.entries) refunded.push(await F.bal(c, e.o)); check("both fees refunded exactly", refunded.every((x, i) => x === before[i]), `${refunded} (started ${before})`);
   ok(await L.sendTee(c.URL, [F.commitIx([L.receiptPda(sid)])], [O]), "TEE Commit receipt"); const a = await receiptBase(sid, a => a.data[4] === 2); const R = a && L.parseReceipt(a.data); check("public record on base: cancelled, reason under-minimum, 20 refunded", R && R.kind === 2 && R.reason === 1 && R.refunded === 20n && R.ns === 2, R ? `kind ${R.kind} reason ${R.reason} refunded ${R.refunded}` : "no receipt");
   await closeClaims(sid); const cl = await L.sendTee(c.URL, [F.cleanupIx(c, sid)], [O]); check("Cleanup", ok(cl, "TEE Cleanup")); const hubD = await F.hubLamports(c); const forfeit = F.BOND / 100 * 25;
-  check("hub made whole and keeps the 25% forfeit", hubD - S.hubB === forfeit, `before CreateSeason ${S.hubB}, after Cleanup ${hubD}, difference ${hubD - S.hubB}, expected +${forfeit}`);
+  check("hub made whole and keeps the 25% forfeit (less the late strategy sealed during the run)", hubD - S.hubB === forfeit - lateRent && lateRent === 20_000, `before CreateSeason ${S.hubB}, after Cleanup ${hubD}, difference ${hubD - S.hubB}, expected +${forfeit} - ${lateRent}`);
   await closeOut(sid, forfeit, "under-minimum cancel");
 } else if (mode === "recover") {
   // a season left locked and unseeded (here: created while the rollup still ran the previous program binary): refund its entrants, close it, reconcile the hub, release the bond
   const sid = BigInt(process.argv[3]); const st = L.loadStrats().slice(-Number(process.argv[4] || 3)); const entries = st.map(x => ({ o: x.owner, id: BigInt(x.id) })); const hub0 = await F.hubLamports(c);
   const before = []; for (const e of entries) before.push(await F.bal(c, e.o)); log("entrant ER balances before:", before.join(","), "hub", hub0);
-  const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey)], [O, c.players[4]]); check("Cancel by a stranger", ok(cx, "TEE Cancel"));
+  const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey, entries.map(e => e.id))], [O, c.players[4]]); check("Cancel by a stranger", ok(cx, "TEE Cancel"));
   { const cm = await F.claimAll(c, sid, log); log(F.claimsTable(cm.after)); }
   const after = []; for (const e of entries) after.push(await F.bal(c, e.o)); check("every entrant refunded exactly the 10 they paid", after.every((x, i) => x - before[i] === 10), `${before} -> ${after}`);
   ok(await L.sendTee(c.URL, [F.commitIx([L.receiptPda(sid)])], [O]), "TEE Commit receipt"); const a = await receiptBase(sid, a => a.data[4] === 2); const R = a && L.parseReceipt(a.data); log("receipt on base:", R ? `kind ${R.kind} reason ${R.reason} refunded ${R.refunded} state ${R.state} bond ${R.bond} rentDrawn ${R.rentDrawn}` : "none");

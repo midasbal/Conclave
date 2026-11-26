@@ -24,11 +24,13 @@ export async function initReceipt(c, sid, bond = BOND) { const rc = L.receiptPda
 export async function initPool(c, sid) { const pool = L.poolPda(sid), pe = L.eataOf(pool, c.mint); const buf = L.pda([Buffer.from("buffer"), pe.toBuffer()], L.ESPL);
   return L.sendBase([ixp(13, [K(O.publicKey, true, true), K(pe, true), K(pool), K(c.mint), K(SystemProgram.programId), K(L.ESPL), K(buf, true), K(L.pda([Buffer.from("delegation"), pe.toBuffer()], L.DLP), true), K(L.pda([Buffer.from("delegation-metadata"), pe.toBuffer()], L.DLP), true), K(L.DLP), K(c.validator), K(c.ata(pool), true), K(ATOKEN), K(L.TOKEN)], u64(sid))], [O]); }
 /** clock parameters are in rollup slots: window = entry window, seedTimeout = slots after Lock before anyone may cancel, grace = slots after Settle before an unpublished entry stops blocking Cleanup */
+/** the shortest publish grace the program accepts (9105 below it): about 29 minutes of rollup slots. It delays only the arena cleanup */
+export const MIN_GRACE = 180_000;
 /** bounds enforced by the program: neps 1..100 (at least 15 with finals), spt 1..100, (neps + 15 if finals) x 150 x spt <= 720,000, window <= 25,000,000, seedTimeout <= 1,000,000. finals: the fixed format (top 3 by season rank, fresh seed, 15 episodes) */
-export function createSeasonIx(c, sid, { neps, spt = 1, fee = 0, maxs = 20, finals = false, division = 2, window = 600, seedTimeout = 600, grace = 600, minEntrants = 1 }) { const arena = L.arenaPda(sid);
+export function createSeasonIx(c, sid, { neps, spt = 1, fee = 0, maxs = 20, finals = false, division = 2, window = 600, seedTimeout = 600, grace = MIN_GRACE, minEntrants = 1 }) { const arena = L.arenaPda(sid);
   return ixp(5, [K(O.publicKey, true, true), K(c.hub, true), K(arena, true), K(L.permissionPdaFromAccount(arena), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.receiptPda(sid), true), K(CONFIG), K(L.claimsPda(sid), true)], Buffer.concat([u64(sid), u32(neps), u32(spt), u64(fee), c.mint.toBuffer(), Buffer.from([maxs, finals ? 2 : 0, division]), u64(window), u64(seedTimeout), u64(grace), Buffer.from([minEntrants])])); }
 export async function createSeason(c, sid, params) { return L.sendTee(c.URL, [createSeasonIx(c, sid, params)], [O]); }
-export const enterIx = (c, sid, o, id, ro = false) => { const p = c.players[o]; return ixp(6, [K(p.publicKey, false, true), K(L.stratPda(id)), K(L.arenaPda(sid), true), K(c.ata(p.publicKey), !ro), K(c.ata(L.poolPda(sid)), !ro), K(L.TOKEN), K(CONFIG)]); };
+export const enterIx = (c, sid, o, id, ro = false) => { const p = c.players[o]; return ixp(6, [K(p.publicKey, false, true), K(L.stratPda(id), true), K(L.arenaPda(sid), true), K(c.ata(p.publicKey), !ro), K(c.ata(L.poolPda(sid)), !ro), K(L.TOKEN), K(CONFIG), K(L.regPda(id), true)]); };
 export async function simErr(c, ixs, signers, cu = 1_400_000) { const tx = new L.Transaction().add(L.ComputeBudgetProgram.setComputeUnitLimit({ units: cu }), ...ixs); tx.feePayer = O.publicKey; tx.recentBlockhash = (await L.rpc(c.URL, "getLatestBlockhash")).result.value.blockhash; tx.sign(...signers); const r = (await L.rpc(c.URL, "simulateTransaction", [tx.serialize().toString("base64"), { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true }])).result?.value; return r && !r.err ? null : JSON.stringify(r?.err); }
 /** condition-based readiness: poll a simulated Enter until the pool token account is usable */
 export async function awaitPoolReady(c, sid, o, id, timeout = 90) { const t0 = Date.now(); for (;;) { const e = await simErr(c, [enterIx(c, sid, o, id)], [O, c.players[o]]); if (!e) return (Date.now() - t0) / 1000; if ((Date.now() - t0) / 1000 > timeout) throw new Error("pool not ready: " + e); await L.sleep(500); } }
@@ -42,8 +44,10 @@ export async function drive(c, sid, { budgetK = 1400, cu = 1_400_000, log } = {}
   return { ok, fail, errs, wall: (Date.now() - t0) / 1000, sigs }; }
 /** Settle records what each entry is owed; it moves no tokens and names no entrant's token account. publish: optional ids (in slot order) of the first entries to publish inline */
 export const settleIx = (c, sid, publish = []) => ixp(10, [K(O.publicKey, true, true), K(L.arenaPda(sid), true), K(L.receiptPda(sid), true), K(L.claimsPda(sid), true), K(L.poolPda(sid)), K(c.ata(L.poolPda(sid))), ...publish.flatMap(id => [K(L.stratPda(id), true), K(L.regPda(id), true)])]);
-/** Cancel: records each entry fee as owed. Allowed for the creator while unlocked, for anyone after the seed timeout or the season deadline, or once an under-minimum Lock has cancelled the arena */
-export const cancelIx = (c, sid, signer = O.publicKey) => ixp(17, [K(signer, signer.equals(O.publicKey), true), K(L.arenaPda(sid), true), K(L.claimsPda(sid), true), K(L.poolPda(sid)), K(c.ata(L.poolPda(sid))), K(L.receiptPda(sid), true)]);
+/** strategy accounts as the trailing writable list Cancel and Cleanup take */
+const strats = ids => ids.map(id => K(L.stratPda(id), true));
+/** Cancel: records each entry fee as owed. Allowed for the creator while unlocked, for anyone after the seed timeout or the season deadline, or once an under-minimum Lock has cancelled the arena. ids: the strategies of this season's entries, released at once (optional, a refund never needs them; name them all and Cleanup needs none) */
+export const cancelIx = (c, sid, signer = O.publicKey, ids = []) => ixp(17, [K(signer, signer.equals(O.publicKey), true), K(L.arenaPda(sid), true), K(L.claimsPda(sid), true), K(L.poolPda(sid)), K(c.ata(L.poolPda(sid))), K(L.receiptPda(sid), true), ...strats(ids)]);
 /** Claim: pays one entry what it is owed, to its owner's token account, once. Anyone may send it. nothingOwed: pass the token accounts read-only (the rollup rejects a writable account it does not hold, and nothing will move) */
 export const claimIx = (c, sid, slot, owner, nothingOwed = false) => ixp(22, [K(L.claimsPda(sid), true), K(L.poolPda(sid)), K(c.ata(L.poolPda(sid)), !nothingOwed), K(c.ata(owner), !nothingOwed), K(L.TOKEN)], Buffer.from([slot]));
 /** CloseClaims: once everything recorded has been paid, the claims account closes and its rent returns to the hub */
@@ -55,6 +59,11 @@ export async function claimAll(c, sid, log) { const before = await readClaims(c,
   const after = await readClaims(c, sid); return { before, after, results }; }
 /** owed versus claimed, one line per entry */
 export const claimsTable = cl => [`claims (${cl.kind}): owed ${cl.owed}, claimed ${cl.claimed}, outstanding ${cl.owed - cl.claimed}`, ...cl.entries.map(e => `  slot ${String(e.slot).padStart(2)}  owed ${String(e.owed).padStart(6)}  ${e.owed === 0n ? "nothing owed" : e.done ? "claimed" : "OUTSTANDING"}`)].join("\n");
+/** DEVNET TEST PLAYERS ONLY: before a paid season, move stake tokens inside the rollup so that every owner can pay. need: { ownerIndex: amount }. Takes from whichever player has the most to spare */
+export async function fundStake(c, need, log) { for (const [k, n] of Object.entries(need)) { const o = +k; if ((await bal(c, o)) >= n) continue; const spare = []; for (let i = 0; i < c.players.length; i++) spare.push(i === o ? -1 : (await bal(c, i)) - (need[i] ?? 0));
+    const from = spare.indexOf(Math.max(...spare)); const amt = Math.min(spare[from], n - (await bal(c, o))); if (amt <= 0 || spare[from] < n - (await bal(c, o))) throw new Error(`no test player can spare enough stake tokens for player ${o}`);
+    const d = Buffer.alloc(9); d[0] = 3; d.writeBigUInt64LE(BigInt(amt), 1); const r = await L.sendTee(c.URL, [new L.TransactionInstruction({ programId: L.TOKEN, keys: [K(c.ata(c.players[from].publicKey), true), K(c.ata(c.players[o].publicKey), true), K(c.players[from].publicKey, false, true)], data: d })], [O, c.players[from]]);
+    log && log(`SIG TEE move ${amt} stake tokens from player ${from} to player ${o}: ${r.sig} ${r.err ? "FAILED " + JSON.stringify(r.err) : "ok"}`); if (r.err) throw new Error("stake transfer failed " + JSON.stringify(r.err)); } }
 /** drive a season to the end of everything it has to run. The program moves into the finals by itself; the client's part is to request the second seed (anyone may) and keep advancing.
  *  Returns { season, finals } drive results; finals is null when the season had nothing more to run */
 export async function runSeason(c, sid, { log } = {}) { const season = await drive(c, sid, { log }); if (season.fail) return { season, finals: null };
@@ -66,7 +75,9 @@ export const commitUndelegateIx = accts => ixp(12, [K(O.publicKey, true, true), 
 export const releaseBondIx = (sid, creator) => ixp(18, [K(O.publicKey, true, true), K(L.receiptPda(sid), true), K(creator, true)]);
 export const publishIx = (sid, i, id) => ixp(11, [K(O.publicKey, true, true), K(L.arenaPda(sid), true), K(L.stratPda(id), true), K(L.regPda(id), true), K(L.receiptPda(sid), true)], Buffer.from([i]));
 export const commitIx = accts => ixp(12, [K(O.publicKey, true, true), K(L.MAGIC), K(L.MCTX, true), ...accts.map(a => K(a, true))]);
-export const cleanupIx = (c, sid) => { const arena = L.arenaPda(sid); return ixp(15, [K(O.publicKey, true, true), K(c.hub, true), K(arena, true), K(L.permissionPdaFromAccount(arena), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.receiptPda(sid), true)]); };
+/** Cleanup. ids: the strategies of the entries still counted on this arena, which must all be named (9131): every unpublished entry of a settled season, or every entry of a cancelled season that Cancel was not given.
+ *  The arena is private, so the list comes from what the caller knows: the receipt lists every entry id and which are published. A strategy already closed by its owner no longer exists and must not be named. */
+export const cleanupIx = (c, sid, ids = []) => { const arena = L.arenaPda(sid); return ixp(15, [K(O.publicKey, true, true), K(c.hub, true), K(arena, true), K(L.permissionPdaFromAccount(arena), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.receiptPda(sid), true), ...strats(ids)]); };
 /** the owner's private record: final rank, season-phase total, and (on strategies sealed since this build) the finals total */
 export async function ownerRec(c, o, id) { const d = await L.readAcct(c.ptok[o], L.stratPda(id)); return d && { season: Number(d.readBigUInt64LE(80)) - 1, rank: d.readUInt32LE(88), n: d.readUInt32LE(92), pnl: d.readBigInt64LE(96), finalsPnl: d.length >= 404 ? d.readBigInt64LE(396) : null }; }
 export async function bal(c, o) { const x = await L.readAcct(c.ptok[o], c.ata(c.players[o].publicKey)); return x ? Number(x.readBigUInt64LE(64)) : null; }
@@ -82,3 +93,13 @@ export const adminIx = (sub, payload = Buffer.alloc(0)) => ixp(20, [K(O.publicKe
 export const recoverBondIx = sid => ixp(21, [K(O.publicKey, true, true), K(CONFIG), K(L.receiptPda(sid), true), K(L.arenaPda(sid))], u64(sid));
 /** the config as the rollup sees it */
 export async function readConfig(c) { const d = await L.readAcct(c.URL, CONFIG); if (!d) return null; const n = d[5]; return { paused: d[4] !== 0, authority: new PublicKey(d.subarray(8, 40)), mints: Array.from({ length: n }, (_, i) => new PublicKey(d.subarray(64 + i * 32, 96 + i * 32))) }; }
+
+/** CloseStrategy (the owner, in the rollup): only with no open entry (9130). The sealed account's rent returns to the hub, which paid it; the registry is marked closed. */
+export const closeStrategyIx = (c, owner, id) => { const s = L.stratPda(id); return ixp(24, [K(owner, false, true), K(c.hub, true), K(s, true), K(L.permissionPdaFromAccount(s), true), K(L.EPHEMERAL_VAULT_ID, true), K(L.MAGIC), K(L.PERMISSION_PROGRAM_ID), K(L.regPda(id), true)]); };
+/** CloseRegistry (base): removes a closed registry that is back from the rollup and returns all its lamports to the owner, who paid them at Register */
+export const closeRegistryIx = (id, owner) => ixp(25, [K(O.publicKey, true, true), K(L.regPda(id), true), K(owner, true)]);
+/** the whole retirement of a strategy: close in the rollup, undelegate the closed registry, remove it on base. Needs the program build with CloseStrategy (deployed). */
+export async function closeStrategy(c, ownerIdx, id) { const p = c.players[ownerIdx]; const a = await L.sendTee(c.URL, [closeStrategyIx(c, p.publicKey, id)], [O, p]); if (a.err) return { err: a.err, sigs: [a.sig] };
+  const b = await L.sendTee(c.URL, [commitUndelegateIx([L.regPda(id)])], [O]); if (b.err) return { err: b.err, sigs: [a.sig, b.sig] };
+  for (let t = 0; ; t++) { const acct = await L.base.getAccountInfo(L.regPda(id)); if (acct && acct.owner.equals(L.PROGRAM)) break; if (t >= 60) return { err: "the registry has not come back to base yet; send closeRegistryIx later", sigs: [a.sig, b.sig] }; await L.sleep(1500); }
+  return { err: null, sigs: [a.sig, b.sig, await L.sendBase([closeRegistryIx(id, p.publicKey)], [O])] }; }

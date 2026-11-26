@@ -33,3 +33,4 @@ Offline and in CI: `tests/artifact.test.mjs` (commitment known answer from an in
 - Only the owner can read the sealed strategy back; the salt is therefore only as safe as the key folder, which is not backed up here. Losing `strategies.json` means the owner can no longer prove a commitment (the sealed copy in the rollup still exists while it lives).
 - The unsalted hashes in the artifact record are private. If a tool ever exports an artifact for sharing, it must drop them (`publicView` in `client/artifact.mjs` does).
 - Entering a campaign and running it with an authored strategy is the next phase; here Enter is only simulated.
+- Retiring a sealed strategy (CloseStrategy, then CloseRegistry; `closeStrategy` in `client/flows.mjs`) is possible once no entry is open; see `program/LIFECYCLE.md`. Closing wipes the sealed copy in the rollup, so after it the stored salt and code in `strategies.json` are the only copy.

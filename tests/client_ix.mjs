@@ -12,6 +12,8 @@ const out = {
   enter: entries.map(e => json(F.enterIx(c, sid, e.owner, e.id))), lock: json(F.lockIx(sid)), seed: json(F.seedIx(sid)), advance: json(F.advIx(sid, 1400)),
   settle: json(F.settleIx(c, sid, entries.map(e => e.id))), cancel: json(F.cancelIx(c, sid)), claim: entries.map((e, i) => json(F.claimIx(c, sid, i, players[e.owner].publicKey))),
   claimReadOnly: json(F.claimIx(c, sid, 0, players[entries[0].owner].publicKey, true)), publish: entries.map((e, i) => json(F.publishIx(sid, i, e.id))), closeClaims: json(F.closeClaimsIx(c, sid)), cleanup: json(F.cleanupIx(c, sid)),
+  cancelReleasing: json(F.cancelIx(c, sid, L.O.publicKey, entries.map(e => e.id))), cleanupNaming: json(F.cleanupIx(c, sid, entries.map(e => e.id))),
+  closeStrategy: entries.map(e => json(F.closeStrategyIx(c, players[e.owner].publicKey, e.id))), undelegateRegs: json(F.commitUndelegateIx(entries.map(e => L.regPda(e.id)))), closeRegistry: entries.map(e => json(F.closeRegistryIx(e.id, players[e.owner].publicKey))),
   claimsPda: L.claimsPda(sid).toBase58(), scoreCommit: L.scoreCommit(Buffer.alloc(32, 7), sid, 5n, -123n, 456n, 2, 15).toString("hex"),
 };
 process.stdout.write(JSON.stringify(out));

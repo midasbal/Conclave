@@ -36,7 +36,7 @@ async function sealField(spec) { const field = [];
 async function createAndEnter(sid, field, neps) {
   const rc = await F.initReceipt(c, sid); log(`SIG base InitReceipt: ${rc[0]} | delegate: ${rc[1]}`); log(`SIG base InitPool: ${await F.initPool(c, sid)}`);
   const hubBefore = await F.hubLamports(c); const before = await balances();
-  const cs = await F.createSeason(c, sid, { neps, fee: FEE, finals: true, division: DIV_IDX, window: 60_000, seedTimeout: 60_000, grace: 60_000, minEntrants: field.length }); log(`SIG TEE CreateSeason (${neps} episodes, fee ${FEE}, finals on): ${cs.sig} ${cs.err ? JSON.stringify(cs.err) : "ok"}`); must(cs, "CreateSeason");
+  const cs = await F.createSeason(c, sid, { neps, fee: FEE, finals: true, division: DIV_IDX, window: 60_000, seedTimeout: 60_000, grace: F.MIN_GRACE, minEntrants: field.length }); log(`SIG TEE CreateSeason (${neps} episodes, fee ${FEE}, finals on): ${cs.sig} ${cs.err ? JSON.stringify(cs.err) : "ok"}`); must(cs, "CreateSeason");
   log(`pool token account usable after ${(await F.awaitPoolReady(c, sid, field[0].owner, field[0].id)).toFixed(1)}s`);
   const en = await F.enter(c, sid, field.map(e => [e.owner, e.id]), log); if (!check(`${field.length} sealed entrants entered`, en.every(r => !r.err))) process.exit(1);
   const afterEnter = await balances(); check(`entries in: ${FEE} x ${field.length} left the owners' accounts`, sum(before) - sum(afterEnter) === FEE * field.length, `${before} -> ${afterEnter}`);

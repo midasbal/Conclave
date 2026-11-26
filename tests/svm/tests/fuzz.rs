@@ -2,6 +2,7 @@
 //! Valid instructions for every tag and every lifecycle stage are mutated (data bytes, account substitution, order, duplicates, dropped accounts, flag flips) and sent.
 //! Oracle: the program must answer with success or an error code. An abort (ProgramFailedToComplete that is not a compute-meter overrun) is a finding.
 //! The first pass also checks MONEY after every accepted transaction: the token supply across players and pools is unchanged, and every recorded pool still covers everything unclaimed.
+//! It checks the OPEN-ENTRY GUARD too: each strategy's count equals the number of arena slots holding a unit for it, and a strategy that no longer exists is held by none.
 //! A second pass also corrupts program-owned account bytes before the call: that state is not reachable by a transaction, so findings there are reported separately.
 mod common;
 use common::*;
@@ -24,6 +25,8 @@ fn build() -> World {
         if upto >= 6 { e.settle(&s).unwrap(); e.publish(&s, 0).unwrap(); e.publish(&s, 2).unwrap(); e.claim(&s, 0).unwrap(); e.claim(&s, 1).unwrap(); } s };
     for (i, up) in [1u8, 2, 3, 4, 5, 6].iter().enumerate() { seasons.push(mk(&mut e, 9010 + i as u64, *up)); }
     { let mut s = e.season(9030); e.init_pool(&s).unwrap(); e.params.seedto = 50; e.init_receipt(&s).unwrap(); e.create_season(&mut s, 3, 10, 6, false, 2).unwrap(); for i in 0..3 { let t = e.register_and_seal(i, names[i], code_of(names[i])); e.enter(&mut s, &t).unwrap(); } e.lock(&s).unwrap(); e.warp(51); e.fresh_blockhash(); e.cancel(&s).unwrap(); e.claim(&s, 1).unwrap(); seasons.push(s); e.params.seedto = 1_000_000; }
+    // a sealed strategy no season holds, and one whose owner already closed it (its registry waits for base)
+    let free = e.register_and_seal(0, names[0], code_of(names[0])); let closed = e.register_and_seal(1, names[1], code_of(names[1])); let r = e.close_strategy(&closed); assert!(r.is_ok(), "{}", err_string(&r));
     // template instructions, one family per tag and stage
     let all_strats: Vec<Strat> = e.strategies.clone(); let hub = e.hub; let pid = e.pid;
     for s in &seasons {
@@ -42,6 +45,9 @@ fn build() -> World {
         let id = pda(&[b"identity", pid.as_ref()], &a(VRF)); for disc in [CB_DISC, CB_DISC_FINALS] { let mut d = disc.to_vec(); d.extend([7u8; 32]); templates.push(Instruction { program_id: pid, accounts: vec![AccountMeta::new_readonly(id, true), AccountMeta::new(s.arena, false)], data: d }); } }
     for t in all_strats.iter().take(5) { templates.push(e.seal_ix(t, t.owner)); templates.push(e.ix(1, vec![e.m(e.players[t.owner].pubkey(), true, true), e.rw(e.reg_pda(t.id)), e.ro(a(SYSTEM))], { let mut d = t.id.to_le_bytes().to_vec(); d.extend([1u8; 32]); d }));
         let mut d = vec![1u8]; d.extend(t.id.to_le_bytes()); templates.push(e.ix(2, vec![e.m(e.players[t.owner].pubkey(), true, true), e.ro(a(SYSTEM)), e.rw(e.reg_pda(t.id)), e.ro(pid), e.rw(Address::new_unique()), e.rw(Address::new_unique()), e.rw(Address::new_unique()), e.ro(a(DLP)), e.ro(Address::new_unique())], d)); }
+    // closing: every strategy (held or free), the registry removal, its undelegation, and Cancel / Cleanup naming the strategies they release
+    for t in &all_strats { templates.push(e.close_strategy_ix(t.id, t.owner)); } for _ in 0..8 { templates.push(e.close_strategy_ix(free.id, free.owner)); templates.push(e.close_registry_ix(closed.id, e.players[closed.owner].pubkey())); templates.push(e.ix(12, vec![e.m(e.payer.pubkey(), true, true), e.ro(a(MAGIC)), e.rw(a(MAGIC_CTX)), e.rw(e.reg_pda(closed.id))], vec![1])); }
+    for s in &seasons { let ids: Vec<u64> = e.held_ids(s); if !ids.is_empty() { for _ in 0..3 { templates.push(e.with_strats(e.cleanup_ix(s), &ids)); templates.push(e.with_strats(e.cancel_ix(s, e.payer.pubkey()), &ids)); } } }
     templates.push(e.ix(0, vec![e.m(e.payer.pubkey(), true, true), e.rw(hub), e.ro(a(SYSTEM))], 5u64.to_le_bytes().to_vec()));
     { let pd = pda(&[pid.as_ref()], &a(LOADER)); templates.push(e.init_config_ix(pd, e.payer.pubkey())); let mut sub = vec![2u8]; sub.extend_from_slice(e.mint.as_ref());
       for (k, d) in [(0u8, vec![]), (1, vec![]), (2, e.mint.as_ref().to_vec()), (3, e.mint.as_ref().to_vec()), (4, Address::new_unique().as_ref().to_vec())] { let mut dd = vec![k]; dd.extend(d); templates.push(e.ix(20, vec![e.m(e.payer.pubkey(), true, true), e.rw(e.config)], dd)); } let _ = sub;
@@ -51,7 +57,7 @@ fn build() -> World {
     let mut keys: Vec<Address> = vec![hub, e.mint, e.payer.pubkey(), e.config]; keys.extend(e.players.iter().map(|p| p.pubkey())); let mut program_owned = vec![hub, e.config];
     for s in &seasons { keys.extend([s.arena, s.receipt, s.claims, s.pool, e.ata(&s.pool)]); program_owned.extend([s.arena, s.receipt, s.claims]); } for t in &all_strats { keys.extend([e.reg_pda(t.id), e.strat_pda(t.id)]); program_owned.extend([e.reg_pda(t.id), e.strat_pda(t.id)]); } for p in &e.players { keys.push(e.ata(&p.pubkey())); }
     keys.extend([pid, a(VRF_QUEUE), a(MAGIC), a(PERMISSION), a(VRF), a(ESPL), a(DLP), a(TOKEN), a(ATOKEN), a(SYSTEM), a(SLOT_HASHES), a(MAGIC_CTX)]); keys.sort(); keys.dedup();
-    let snap = keys.iter().map(|k| (*k, e.svm.get_account(k))).collect(); World { e, keys, snap, templates, program_owned, seasons } }
+    let snap = keys.iter().map(|k| (*k, e.svm.get_account(k))).collect(); let w = World { e, keys, snap, templates, program_owned, seasons }; assert!(guard(&w).is_empty(), "{:?}", guard(&w)); w }
 
 fn restore(w: &mut World) { for (k, acc) in w.snap.clone() { if let Some(a) = acc { if let Err(er) = w.e.svm.set_account(k, a.clone()) { panic!("restore {} owner {} len {} lamports {}: {:?}", k, a.owner, a.data.len(), a.lamports, er); } } } }
 fn mutate(w: &World, r: &mut Rng, base: &Instruction, ids: &[Address]) -> (Instruction, Vec<usize>) {
@@ -80,6 +86,11 @@ fn money(w: &World) -> (u64, Vec<String>) {
         let (owed, claimed, n) = (rd64(&c, cl::OWED), rd64(&c, cl::CLAIMED), c[cl::N] as usize); let paid: u64 = (0..n).filter(|i| c[cl::HDR + i * cl::ESZ + cl::E_DONE] != 0).map(|i| rd64(&c, cl::HDR + i * cl::ESZ + cl::E_OWED)).sum(); let sum: u64 = (0..n).map(|i| rd64(&c, cl::HDR + i * cl::ESZ + cl::E_OWED)).sum();
         if claimed > owed || pool < owed - claimed || paid != claimed || sum != owed { bad.push(format!("season {}: pool {} owed {} claimed {} paid entries {} entry sum {}", s.sid, pool, owed, claimed, paid, sum)); } }
     (supply, bad) }
+/// THE GUARD, from the account bytes: for every strategy, its count is exactly the number of arena slots holding a unit for it; one that is gone (or wiped) is held by none
+fn guard(w: &World) -> Vec<String> {
+    let mut held: HashMap<u64, u16> = HashMap::new(); for s in &w.seasons { let d = w.e.data(&s.arena); if d.len() < HDR { continue; } for i in 0..usize::from(d[ar::NS]) { let o = HDR + i * SLOT; if d[o + ar::SL_BITS] & B_COUNTED != 0 { *held.entry(rd64(&d, o + ar::SL_ID)).or_default() += 1; } } }
+    w.e.strategies.iter().filter_map(|t| { let d = w.e.data(&w.e.strat_pda(t.id)); let alive = d.len() >= STRAT_MIN_SIZE && rd32(&d, 0) != 0; let count = if alive { u16::from_le_bytes([d[S_OPEN], d[S_OPEN + 1]]) } else { 0 }; let n = held.get(&t.id).copied().unwrap_or(0); (count != n).then(|| format!("strategy {}: count {} but {} slots hold it (exists: {})", t.id, count, n, alive)) }).collect() }
+static ACCEPTED_GUARD_MOVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static ACCEPTED_CLAIM_STATES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn run(iters: u64, seed: u64, corrupt: bool) -> (u64, Vec<String>, HashMap<String, u64>) {
     let mut w = build(); let ids: Vec<Address> = (0..24).map(|_| Address::new_unique()).collect(); let mut findings = vec![]; let mut hist: HashMap<String, u64> = HashMap::new(); let n_t = w.templates.len();
@@ -92,6 +103,7 @@ fn run(iters: u64, seed: u64, corrupt: bool) -> (u64, Vec<String>, HashMap<Strin
         let oracle = pda(&[b"identity", w.e.pid.as_ref()], &a(VRF)); let unverified = ix.accounts.iter().any(|m| m.is_signer && m.pubkey == oracle); w.e.svm.set_sigverify(!unverified);
         let res = w.e.send(&[ix.clone()], &refs); w.e.svm.set_sigverify(true);
         if !corrupt && res.is_ok() { let (supply1, bad) = money(&w); if supply1 != supply0 { findings.push(format!("iter {} MONEY: token supply {} -> {} after tag {:?}", it, supply0, supply1, ix.data.first())); } for b in bad { findings.push(format!("iter {} MONEY: {} after tag {:?}", it, b, ix.data.first())); }
+            for b in guard(&w) { findings.push(format!("iter {} GUARD: {} after tag {:?}", it, b, ix.data.first())); } if matches!(ix.data.first(), Some(6 | 10 | 11 | 15 | 17 | 24 | 25)) { ACCEPTED_GUARD_MOVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
             if matches!(ix.data.first(), Some(10 | 17 | 22)) { ACCEPTED_CLAIM_STATES.fetch_add(1, std::sync::atomic::Ordering::Relaxed); } if findings.len() >= 20 { break; } }
         let class = match &res { Ok(_) => "ok".to_string(), Err(e) => format!("{:?}", e.err).chars().take(60).collect() }; *hist.entry(class.clone()).or_default() += 1;
         if failed_to_complete(&res) { let logs = &res.as_ref().err().unwrap().meta.logs; let cu = logs.iter().any(|l| l.contains("exceeded")); if !cu { let tag = ix.data.first().copied().unwrap_or(255); findings.push(format!("iter {} tag {} data {}B [{}] accounts [{}]: {} | {}", it, tag, ix.data.len(), ix.data.iter().take(24).map(|b| format!("{:02x}", b)).collect::<String>(), ix.accounts.iter().map(|m| format!("{}{}{}", w.keys.iter().position(|k| *k == m.pubkey).map(|i| i.to_string()).unwrap_or("x".into()), if m.is_signer {"s"} else {""}, if m.is_writable {"w"} else {""})).collect::<Vec<_>>().join(","), class, logs.iter().cloned().collect::<Vec<_>>().join(" // "))); if findings.len() >= 20 { break; } } }
@@ -99,6 +111,6 @@ fn run(iters: u64, seed: u64, corrupt: bool) -> (u64, Vec<String>, HashMap<Strin
     (iters, findings, hist) }
 
 #[test] fn adversarial_inputs_never_abort_the_program() { let n: u64 = std::env::var("SVM_FUZZ_ITERS").ok().and_then(|v| v.parse().ok()).unwrap_or(20_000); let (it, f, h) = run(n, 0xC0FFEE, false);
-    let mut top: Vec<_> = h.into_iter().collect(); top.sort_by(|a, b| b.1.cmp(&a.1)); println!("FUZZ money: supply and claims books checked after every accepted mutated transaction; {} accepted Settle/Cancel/Claim among them", ACCEPTED_CLAIM_STATES.load(std::sync::atomic::Ordering::Relaxed)); println!("FUZZ inputs: {} iterations; outcomes: {}", it, top.iter().take(8).map(|(k, v)| format!("{} x{}", k, v)).collect::<Vec<_>>().join(" | ")); for x in &f { println!("FINDING {}", x); } assert!(f.is_empty(), "{} aborts found", f.len()); }
+    let mut top: Vec<_> = h.into_iter().collect(); top.sort_by(|a, b| b.1.cmp(&a.1)); println!("FUZZ money: supply and claims books checked after every accepted mutated transaction; {} accepted Settle/Cancel/Claim among them", ACCEPTED_CLAIM_STATES.load(std::sync::atomic::Ordering::Relaxed)); println!("FUZZ guard: open-entry counts checked after every accepted mutated transaction; {} accepted Enter/Settle/Publish/Cleanup/Cancel/Close among them", ACCEPTED_GUARD_MOVES.load(std::sync::atomic::Ordering::Relaxed)); println!("FUZZ inputs: {} iterations; outcomes: {}", it, top.iter().take(8).map(|(k, v)| format!("{} x{}", k, v)).collect::<Vec<_>>().join(" | ")); for x in &f { println!("FINDING {}", x); } assert!(f.is_empty(), "{} aborts found", f.len()); }
 #[test] fn corrupted_state_never_aborts_the_program() { let n: u64 = std::env::var("SVM_FUZZ_ITERS").ok().and_then(|v| v.parse().ok()).unwrap_or(20_000); let (it, f, h) = run(n, 0xBADC0DE, true);
     let mut top: Vec<_> = h.into_iter().collect(); top.sort_by(|a, b| b.1.cmp(&a.1)); println!("FUZZ corrupted state: {} iterations; outcomes: {}", it, top.iter().take(8).map(|(k, v)| format!("{} x{}", k, v)).collect::<Vec<_>>().join(" | ")); for x in &f { println!("FINDING {}", x); } assert!(f.is_empty(), "{} aborts found", f.len()); }

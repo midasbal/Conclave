@@ -2,7 +2,7 @@ name: devnet-canary
 # Runs a minimal ruleset v2 season on devnet under a throwaway wallet to catch validator or SDK drift.
 # The only secret is CANARY_KEY: the JSON key array of the dedicated throwaway wallet (never the payer or the upgrade authority).
 # Set it yourself under Settings > Secrets and variables > Actions > Repository secrets. No key is stored in this file.
-# Each run spends about 0.045 SOL of that wallet; keep it funded (the script never funds itself).
+# Each run spends about 0.034 SOL of that wallet; keep it funded (the script never funds itself).
 on:
   schedule:
     - cron: "17 6 * * 1"

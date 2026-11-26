@@ -52,7 +52,7 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
     let q = e.player(1); rejects(&e.admin_by(&q, 2, other.as_ref()), 9062, "a stranger editing the allowlist");
     // a fake config cannot be slipped in to bypass the list or the pause
     let s = e.season(215); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let mut ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); ix.accounts[8] = e.rw(Address::new_unique()); rejects(&e.send(&[ix], &[]), 9063, "CreateSeason with a fake config");
-    let mut s2 = open(&mut e, 216, 1, 10); let st = e.register_and_seal(2, "x", code_of("EMAcross")); let mut ix = e.enter_ix(&s2, &st, 2); let n = ix.accounts.len(); ix.accounts[n - 1] = e.ro(Address::new_unique()); let kp = e.player(2); rejects(&e.send(&[ix], &[&kp]), 9063, "Enter with a fake config"); let _ = &mut s2;
+    let mut s2 = open(&mut e, 216, 1, 10); let st = e.register_and_seal(2, "x", code_of("EMAcross")); let mut ix = e.enter_ix(&s2, &st, 2); ix.accounts[6] = e.ro(Address::new_unique()); let kp = e.player(2); rejects(&e.send(&[ix], &[&kp]), 9063, "Enter with a fake config"); let _ = &mut s2;
 }
 #[test] fn a_lookalike_config_at_another_address_is_refused() {
     // a program-owned account carrying a copy of the real config (same magic, a permissive allowlist, not paused) must not be accepted in place of the PDA

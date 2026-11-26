@@ -6,6 +6,7 @@ InitReceipt (base, bond) -> CreateSeason -> Enter... -> Lock -> RequestSeed -> A
    -> Settle (+inline publish): RECORDS what each entry is owed -> Claim (per entry) -> CloseClaims
    -> Publish... -> Cleanup -> Commit+undelegate -> ReleaseBond (base)
    Cancel (RECORDS refunds) -> Claim -> CloseClaims, Cleanup      (seed timeout, season deadline, under-minimum, creator)
+   later, by the owner, when no entry is open: CloseStrategy -> Commit+undelegate the registry -> CloseRegistry (base)
 ```
 
 Slot figures below use about 103.5 rollup slots per second, observed on devnet on 2026-11-26. Deadlines are counted in slots, so a change in the rollup's slot rate changes their length in time.
@@ -22,7 +23,7 @@ Slot figures below use about 103.5 rollup slots per second, observed on devnet o
 | Entry window (how long buy-ins can wait before anyone may Lock) | 1 to 25,000,000 slots (about 2.8 days) | 9035 |
 | Season seed timeout (after Lock) | 1 to 1,000,000 slots (about 2.7 hours) | 9035 |
 | Finals seed timeout | fixed at 360,000 slots, nobody's choice | |
-| Publish grace | 1 to 200,000,000 slots. It delays only the arena cleanup (hub rent and the creator's own bond), never an entrant's money | 9035 |
+| Publish grace | at least 180,000 slots (about 29 minutes), so an unpublished result cannot be dropped right after Settle; at most 200,000,000. It delays only the arena cleanup (hub rent and the creator's own bond), never an entrant's money | 9105 below the floor, 9035 above the cap |
 
 **Longest possible wait for a buy-in.** Entry window + seed timeout + season deadline + finals seed timeout + finals deadline is under 3.5 days at 103.5 slots per second for every combination the bounds allow (`tests/svm/tests/money.rs` computes the maximum). Each of those steps ends in a permissionless exit, so after it anyone can move the season on; the money then waits only to be claimed. A creator who sets the longest waits and disappears still cannot keep a buy-in: anyone locks at the end of the window and anyone cancels at the end of the seed timeout.
 
@@ -82,6 +83,41 @@ Each (season, entry) is published at most once: the mark is in that season's are
 
 The score commitment is `sha256("CNCL-SCORE-v2", salt, season, id, season_total, finals_total, episodes, finals_episodes)`; the last two finals fields are zero for an entry that did not play the finals. The owner's sealed record holds the final rank, the season total and, for strategies sealed since this build, the finals total (older sealed accounts are 8 bytes shorter, stay usable, and their owners get the finals total by replaying the finals seed).
 
+## Strategy reclaim and the open-entry guard
+
+**Deployed on devnet** (see Observed on devnet).
+
+**Who pays.** The hub pays each sealed strategy's rent at Seal (20,000 lamports; 19,744 at the old size). An owner cannot pay it from their own wallet: the rollup refuses to debit an account that is not delegated to it. Observed on the devnet TEE by simulation (a 1 lamport debit of an owner wallet answers `Immutable`, a 0 lamport one succeeds); the validator engine source and MagicBlock's documentation say the same. A rent purse per owner (a delegated program account) could be built but would add custody and four or five new steps. So the hub pays and gets the rent back when the strategy is closed. **A strategy that is never closed keeps the hub's rent.**
+
+**The counter.** Two bytes of the sealed account that no earlier build ever wrote (offsets 6 and 7) hold the number of open entries. An arena slot that holds one unit of that count carries a bit (4).
+
+| Path | Effect |
+|---|---|
+| Enter | count + 1 and sets the slot's bit (Enter takes the strategy writable, and the strategy's registry writable: see below) |
+| Publish, separate or inline at Settle | count - 1 for that slot |
+| Cancel | releases every strategy named after its fixed accounts. Naming them is optional: a refund never depends on a strategy account |
+| Cleanup | releases every strategy named after the receipt, and refuses (9131) while any slot still holds a unit, because the arena is the only record of it |
+
+The count moves down only where the slot's bit is set, and the bit is cleared with it. So nothing releases twice, and entries made by an earlier build (no bit) never take a unit that a newer season holds.
+
+**Which strategies to name.** The arena is private, so a client works from what it knows. The receipt lists every entry id after Settle or Cancel and marks the published ones. For a settled season name the unpublished entries. Send Cancel with all of the season's strategies, and Cleanup then needs none. Do not name a strategy its owner has already closed.
+
+**CloseStrategy** (tag 24, in the rollup, the owner signs; works while paused): refused while the count is not zero (9130). It wipes and closes the sealed account and its permission, with the rent going to the hub, and marks the registry closed. A closed registry is refused by Seal, Publish and Delegate. Then `Commit` with undelegate (now also accepts a closed registry, still refuses a live one, 9055) and **CloseRegistry** (tag 25, base, anyone may send it) which removes the account and pays all its lamports to the owner recorded on it, who paid them at Register (9132 otherwise). That return is the owner's reason to close.
+
+**What the guard does not do.**
+
+* It does not force publication. If nobody publishes an entry before the grace ends, Cleanup still drops that publication and releases the count. The grace is at least 180,000 slots (9105), which is the least time anyone, Publish being permissionless, has to publish it first.
+* Closing removes the registry and with it the career figures (seasons, best rank, total). Each season's receipt keeps the strategy id, final rank, season rank and, for published entries, both commitments.
+* After CloseRegistry the id is free: anyone, the same owner included, can Register it again with empty figures. Anything that reads a record by id must also check the commitment, and for a person's history the owner at that time.
+* A registry that was never delegated to this rollup cannot be marked closed there, so such a strategy cannot be closed until its owner delegates the registry.
+* A registry that is registered but never sealed has no close instruction, so what its owner paid at Register stays in it.
+
+**Only a publishable strategy may enter.** Publish writes the registry, and Seal only reads it, so an owner who registers and never delegates can still seal (observed). Enter therefore takes the strategy's own registry and requires it **writable** (9133: read-only, another registry, a closed one, or one naming another owner). The program cannot see whether an account is delegated. The rule that makes this a guard is the rollup's: it refuses any transaction that marks writable an account it does not hold, even when nothing changes it (observed on the devnet TEE, by simulation and then with real transactions: `InvalidWritableAccount`). A delegated registry stays delegated until its owner closes the strategy, which an open entry forbids, so an entry that got in can always be published.
+
+**Upgrading to this build.** No account changes size and the arena magic is unchanged. Old strategies read a count of zero. Seasons opened by the previous build can still publish, cancel and clean up, and never decrement anything; a strategy entered only in such a season is NOT protected by the counter, so deploy with no season open. A client whose Enter does not pass the strategy and its registry writable stops working, and so does one that asks for a grace under 180,000 slots.
+
+**Done on devnet on 2026-11-26** (build sha256 `0ea300bf...`, 504,536 bytes, program data extended by 12,648 bytes, on-chain bytes equal to the artifact). Every receipt of a build that requires one was closed beforehand, so no season was open.
+
 ## Randomness queue
 
 RequestSeed accepts only `5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc` (9110). The previous build accepted any queue the VRF program accepted, including delegated queues that showed no activity.
@@ -120,6 +156,11 @@ RequestSeed accepts only `5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc` (9110). 
 | 9121 | publish before Settle |
 | 9122 | cleanup before the season is settled, or cancelled and recorded |
 | 9123 | unpublished entries inside the grace |
+| 9130 | the strategy has an open entry and cannot be closed |
+| 9131 | Cleanup was not given the strategy of an entry that is still counted |
+| 9132 | not a closed registry of this owner (CloseRegistry) |
+| 9133 | Enter was not given the strategy's own open registry, writable |
+| 9105 | publish grace under 180,000 slots |
 
 Instruction tag 14 (the old StartFinals) is retired and answers InvalidInstructionData.
 
@@ -145,12 +186,21 @@ Instruction tag 14 (the old StartFinals) is retired and answers InvalidInstructi
 * An owner can undelegate its own token account in the rollup. A Claim to it is then rejected (`InvalidWritableAccount`) while every other entry's claim goes through, and Settle, Cleanup and the bond release are unaffected. A wallet other than the owner (the payer) delegated the account again on base, after which the waiting claim paid in full.
 * A sealed strategy account of the new size costs the hub 20,000 lamports.
 * A four-entry season whose finals seed was never requested became voidable after the 360,000-slot timeout. Past it, a finals seed request was refused (9111) and so was a refund (9033). A Settle signed by a wallet outside the season paid the whole pot 50/30/20 by the frozen season ranks, the receipt was marked voided with reason finals seed timeout, and every claim paid. The other void reasons have been exercised only in the SVM tests.
+* **Reclaim, on the `0ea300bf` build.** Four strategies sealed for a paid finals season cost the hub 20,000 lamports each. Their counts went to 1 at Enter; CloseStrategy was refused (9130) after Enter, after the run, and after a Settle that left an entry unpublished; the counts went to 0 as entries were published. After the season each strategy closed, each close returned exactly 20,000 to the hub, and the hub ended at exactly its starting balance. Each registry came back to base and CloseRegistry returned its 3,300,480 lamports to the owner, the amount paid at Register.
+* In a cancelled season Cancel named no strategy and left the counts at 1; Cleanup was refused (9131) with none and with two of three named; a wallet owning none of the three then ran Cleanup naming all of them.
+* A 404-byte and a 396-byte strategy sealed by earlier builds read a count of 0, entered, published and closed (20,000 and 19,744 back to the hub).
+* A registry registered and not delegated: Seal succeeded, Enter was refused by the rollup (`InvalidWritableAccount`), passing it read-only was refused by the program (9133), and CloseStrategy failed too. After the owner delegated it the same strategy entered, published and closed.
+* A publish grace of 1, 600 and 179,999 slots was refused (9105); 180,000 was accepted.
 
 ## Tests
 
-`tests/svm/tests/`: `findings_3a.rs` (each Phase 3a defect, reversed into a regression test), `grief_3a.rs` (an unpayable account delays only itself), `money.rs`, `lifecycle.rs`, `edge.rs`, `reject.rs`, `admin.rs`, `meter.rs`, `fuzz.rs` (parsing, corrupted state, and a money check after every accepted mutated transaction), `authored.rs`, `client_flows.rs` (the client's own instruction builders against the program; ignored unless node is available) and `vrf_3a.rs` (the real VRF program; ignored unless its bytes are supplied).
+`tests/svm/tests/`: `findings_3a.rs` (each Phase 3a defect, reversed into a regression test), `grief_3a.rs` (an unpayable account delays only itself), `money.rs`, `lifecycle.rs`, `edge.rs`, `reject.rs`, `admin.rs`, `meter.rs`, `fuzz.rs` (parsing, corrupted state, and a money check and an open-entry count check after every accepted mutated transaction), `authored.rs`, `reclaim.rs` (the counter on every path, close, the dodge attempts, the hub made whole with rent modelled, and an upgrade over the previous program's bytecode that is ignored unless that binary is supplied), `client_flows.rs` (the client's own instruction builders against the program; ignored unless node is available) and `vrf_3a.rs` (the real VRF program; ignored unless its bytes are supplied).
 
-Known limits: sealed strategy accounts (20,000 lamports each; 19,744 at the old size) stay in the rollup; a cranker is not paid.
+The stand-ins move no lamports. With `model_rent` the harness applies ephemeral rent from the calls the program really made, right after each transaction, so balances between transactions are exact but the program's own in-instruction rent figures read zero there. Delegation is not modelled.
+
+**Stack frames.** `cargo-build-sbf` reports an overflowing stack frame as text and still exits 0, and the program then faults at run time. This happened while building the reclaim. `tests/svm.sh` and the reproducible build now fail on that message; the instructions that grew live in functions of their own.
+
+Known limits: on the deployed build, sealed strategy accounts (20,000 lamports each; 19,744 at the old size) stay in the rollup, and with the new build they stay until their owner closes them; a cranker is not paid.
 
 ## Access guards and admin recovery
 
@@ -162,7 +212,5 @@ One config account (PDA `["config"]`, delegated to the rollup so changes act on 
 | Stake-mint allowlist | `Admin 2` / `3`, authority only, 8 mints at most. CreateSeason refuses a mint that is not listed (a mint with a freeze authority, a transfer hook or any other surprise stays out unless the authority lists it) | 9061 not allowed, 9064 list full |
 | Config integrity | The config must be this program's PDA with the config magic; a copy at another address is refused | 9063 |
 | RecoverBond | Authority only, in the rollup. Acts only on a receipt that is not closed, whose season header was written by Settle or Cancel, whose season id matches, and whose arena no longer exists. It moves no lamports; `ReleaseBond` then pays the creator recorded on the receipt, never the authority | 9070 |
-
-Not done: reclaiming sealed-strategy accounts (planned separately; it needs an in-use marker on the strategy so one still needed for Publish is never closed).
 
 Large fields: one Commit of a receipt plus 16 registries is rejected by the Magic program (observed on devnet), so commit registries in chunks of 4.

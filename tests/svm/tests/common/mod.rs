@@ -35,10 +35,10 @@ pub mod ar { pub const FLAGS: usize = 4; pub const NS: usize = 5; pub const SEAS
     pub const SL_OWNER: usize = 0; pub const SL_ID: usize = 32; pub const SL_SRANK: usize = 42; pub const SL_BITS: usize = 43; pub const SL_RANK: usize = 44; pub const SL_TOTAL: usize = 48; pub const SL_FTOTAL: usize = 56; pub const SL_SEAT: usize = 64; }
 pub mod arx { pub const CREATED: usize = 1208; pub const WINDOW: usize = 1216; pub const SEEDTO: usize = 1224; pub const LOCKAT: usize = 1232; pub const SETTLEDAT: usize = 1240; pub const PUBGRACE: usize = 1248; pub const RENT: usize = 1256; pub const MINS: usize = 1264; pub const REASON: usize = 1265; pub const FEE: usize = 104; pub const AUTH: usize = 8; }
 pub mod rc { pub const KIND: usize = 4; pub const NS: usize = 5; pub const PUB: usize = 6; pub const SEASON: usize = 8; pub const CREATOR: usize = 104; pub const BOND: usize = 136; pub const STATE: usize = 144; pub const REASON: usize = 145; pub const REFUNDED: usize = 152; pub const FSEEDA: usize = 192; pub const FSEEDB: usize = 200; pub const FPACKS: usize = 208; pub const FSTATUS: usize = 210; pub const FQUAL: usize = 211; pub const FNEPS: usize = 212; pub const OWED: usize = 216; pub const E_FRANK: usize = 72; pub const E_SRANK: usize = 76; pub const E_PUBLISHED: usize = 78; pub const E_FINALIST: usize = 79; pub const RENT: usize = 160; pub const RECLAIMED: usize = 168; pub const FORFEIT: usize = 176; pub const RELEASE: usize = 184; }
-pub const F2_HASFIN: u8 = 2; pub const F2_CANCELLED: u8 = 8; pub const F2_REFUNDED: u8 = 16; pub const F2_THINFIELD: u8 = 32; pub const B_FINALIST: u8 = 1; pub const B_PUBLISHED: u8 = 2;
+pub const F2_HASFIN: u8 = 2; pub const F2_CANCELLED: u8 = 8; pub const F2_REFUNDED: u8 = 16; pub const F2_THINFIELD: u8 = 32; pub const B_FINALIST: u8 = 1; pub const B_PUBLISHED: u8 = 2; pub const B_COUNTED: u8 = 4; pub const S_OPEN: usize = 6; pub const M_REG: u32 = 0x5245_4753; pub const M_REG_CLOSED: u32 = 0x5845_4752;
 pub const FS_NONE: u8 = 0; pub const FS_PLAYED: u8 = 1; pub const FS_VOIDED: u8 = 2;
 // ---- program constants (mirrored on purpose) ----
-pub const MAX_EPISODES: u32 = 100; pub const MAX_SPT: u32 = 100; pub const MAX_RUN_SLOTS: u64 = 720_000; pub const MAX_SEEDTO: u64 = 1_000_000; pub const MAX_ENTRY_WINDOW: u64 = 25_000_000; pub const MAX_GRACE: u64 = 200_000_000; pub const FINALS_EPISODES: u32 = 15; pub const FINALS_SEEDTO: u64 = 360_000; pub const SLACK_BASE: u64 = 360_000; pub const SLACK_PER_TICK: u64 = 40;
+pub const MAX_EPISODES: u32 = 100; pub const MAX_SPT: u32 = 100; pub const MAX_RUN_SLOTS: u64 = 720_000; pub const MAX_SEEDTO: u64 = 1_000_000; pub const MAX_ENTRY_WINDOW: u64 = 25_000_000; pub const MAX_GRACE: u64 = 200_000_000; pub const MIN_GRACE: u64 = 180_000; pub const FINALS_EPISODES: u32 = 15; pub const FINALS_SEEDTO: u64 = 360_000; pub const SLACK_BASE: u64 = 360_000; pub const SLACK_PER_TICK: u64 = 40;
 pub fn phase_deadline(start: u64, episodes: u32, spt: u32) -> u64 { let t = u64::from(episodes) * 150; start + t * u64::from(spt) + SLACK_BASE + t * SLACK_PER_TICK }
 // ---- claims account ----
 pub mod cl { pub const STATE: usize = 4; pub const N: usize = 5; pub const CAP: usize = 6; pub const KIND: usize = 7; pub const SEASON: usize = 8; pub const MINT: usize = 16; pub const OWED: usize = 48; pub const CLAIMED: usize = 56; pub const HDR: usize = 72; pub const E_OWNER: usize = 0; pub const E_OWED: usize = 32; pub const E_DONE: usize = 40; pub const ESZ: usize = 48; }
@@ -61,7 +61,13 @@ pub fn err_string(r: &Res) -> String { match r { Ok(_) => "ok".into(), Err(e) =>
 
 #[derive(Clone, Copy)] pub struct Params { pub window: u64, pub seedto: u64, pub grace: u64, pub mins: u8, pub bond: u64 }
 pub const LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
-pub struct Env { pub config: Address, pub params: Params, pub svm: LiteSVM, pub pid: Address, pub payer: Keypair, pub players: Vec<Keypair>, pub mint: Address, pub hub: Address, pub slot: u64, pub nonce: u64, pub strategies: Vec<Strat> }
+pub struct Env { pub config: Address, pub params: Params, pub svm: LiteSVM, pub pid: Address, pub payer: Keypair, pub players: Vec<Keypair>, pub mint: Address, pub hub: Address, pub slot: u64, pub nonce: u64, pub strategies: Vec<Strat>,
+    /// None: ephemeral rent is not modelled (the stand-ins move no lamports). Some: what the rollup vault holds for each live ephemeral account, keyed by (is permission, account)
+    pub rent_held: Option<std::collections::HashMap<(bool, Address), u64>> }
+/// Ephemeral rent, as MagicBlock states it and as devnet showed it: (data length + 60) x 32 lamports, paid by the sponsor and returned to whatever account is named as sponsor on close.
+/// A permission account is 68 bytes plus 33 per member. Calibrated against devnet: sealed strategy 20,000 (404 bytes + 1 member) and 19,744 (396); 20-seat arena with its permission 328,576; its claims account 34,944.
+pub fn eph_rent(len: usize) -> u64 { (len as u64 + 60) * 32 }
+pub const STRAT_RENT: u64 = (404 + 60) * 32 + (68 + 33 + 60) * 32;
 #[derive(Clone)] pub struct Strat { pub id: u64, pub owner: usize, pub salt: [u8; 32], pub code: Vec<u8>, pub name: String }
 
 fn conclave_so() -> Vec<u8> { std::fs::read(std::env::var("CONCLAVE_SO").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../program/target/deploy/conclave.so").to_string())).expect("build the program first: (cd program && cargo build-sbf)") }
@@ -78,7 +84,7 @@ impl Env {
         let payer = Keypair::new(); svm.airdrop(&payer.pubkey(), 1_000_000_000_000).unwrap();
         let players: Vec<Keypair> = (0..nplayers).map(|_| Keypair::new()).collect(); for p in &players { svm.airdrop(&p.pubkey(), 10_000_000_000).unwrap(); }
         let hub = pda(&[b"hub"], &pid); svm.warp_to_slot(10);
-        let mut e = Env { config: pda(&[b"config"], &pid), params: Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }, svm, pid, payer, players, mint: Address::new_unique(), hub, slot: 10, nonce: 0, strategies: vec![] };
+        let mut e = Env { config: pda(&[b"config"], &pid), params: Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }, svm, pid, payer, players, mint: Address::new_unique(), hub, slot: 10, nonce: 0, strategies: vec![], rent_held: None };
         e.create_mint(); e.mint_to_players(1_000_000);
         e.ok(&[e.ix(0, vec![e.m(e.payer.pubkey(), true, true), e.m(hub, false, true), e.ro(a(SYSTEM))], u64le(1_000_000).to_vec())], &[], "InitHub");
         if configure { e.init_config(); let m = e.mint; e.admin_ok(2, m.as_ref()); }
@@ -108,8 +114,24 @@ impl Env {
         all.extend_from_slice(ixs);
         let msg = Message::new(&all, Some(&self.payer.pubkey())); let mut tx = Transaction::new_unsigned(msg); let bh = self.svm.latest_blockhash();
         let need: Vec<Address> = tx.message.account_keys[..usize::from(tx.message.header.num_required_signatures)].to_vec(); let mut signers: Vec<&Keypair> = vec![&self.payer]; signers.extend(extra.iter().copied().filter(|k| need.contains(&k.pubkey()))); tx.partial_sign(&signers, bh);
-        self.svm.send_transaction(tx)
+        let keys = tx.message.account_keys.clone(); let r = self.svm.send_transaction(tx); if let Ok(meta) = &r { self.apply_rent(&keys, meta); } r
     }
+    /// LIMIT: a stand-in cannot debit an account it does not own, so the lamports move right AFTER the transaction. Balances between transactions are exact, but inside an instruction the program sees no change,
+    /// so its own rent measurement on the receipt (drawn, reclaimed) reads zero here. That reconciliation is covered by money.rs, and was observed on devnet.
+    /// turn ephemeral rent on for the rest of this test (call before anything creates an ephemeral account) and give the hub room to pay it
+    pub fn model_rent(&mut self) { self.rent_held = Some(Default::default()); let mut h = self.svm.get_account(&self.hub).unwrap(); h.lamports += 100_000_000; self.svm.set_account(self.hub, h).unwrap(); }
+    /// lamports the rollup vault holds in total
+    pub fn vault_total(&self) -> u64 { self.rent_held.as_ref().unwrap().values().sum() }
+    fn shift_lamports(&mut self, k: &Address, by: i128) { let mut acc = self.svm.get_account(k).unwrap_or_else(|| panic!("rent: no account {}", k)); acc.lamports = u64::try_from(i128::from(acc.lamports) + by).unwrap_or_else(|_| panic!("rent: {} cannot pay {}", k, -by)); self.svm.set_account(*k, acc).unwrap(); }
+    /// Applies what the rollup would do with lamports for each CPI a SUCCESSFUL transaction really made: the program, not the test, chooses the sponsor that pays and the account that is refunded.
+    fn apply_rent(&mut self, keys: &[Address], meta: &TransactionMetadata) { if self.rent_held.is_none() { return; } let (magic, pp) = (a(MAGIC), a(PERMISSION)); let mut gone = vec![];
+        for inner in meta.inner_instructions.iter().flatten() { let ix = &inner.instruction; let prog = keys[usize::from(ix.program_id_index)]; let acct = |i: usize| keys[usize::from(ix.accounts[i])]; let d = &ix.data;
+            if prog == magic && d.len() >= 4 && d[..4] == 12u32.to_le_bytes() { let (sponsor, eph) = (acct(0), acct(1)); let amt = eph_rent(u32::from_le_bytes(d[4..8].try_into().unwrap()) as usize); self.shift_lamports(&sponsor, -i128::from(amt)); assert!(self.rent_held.as_mut().unwrap().insert((false, eph), amt).is_none(), "ephemeral account created twice"); }
+            else if prog == magic && d.len() >= 4 && d[..4] == 14u32.to_le_bytes() { let (sponsor, eph) = (acct(0), acct(1)); let amt = self.rent_held.as_mut().unwrap().remove(&(false, eph)).expect("closing an ephemeral account that holds no rent"); self.shift_lamports(&sponsor, i128::from(amt)); gone.push(eph); }
+            else if prog == pp && d.len() >= 8 && d[..8] == 6u64.to_le_bytes() { let (payer, of) = (acct(0), acct(1)); let members = (d.len() - 9) / 33; let amt = eph_rent(68 + 33 * members); self.shift_lamports(&payer, -i128::from(amt)); assert!(self.rent_held.as_mut().unwrap().insert((true, of), amt).is_none(), "permission created twice"); }
+            else if prog == pp && d.len() >= 8 && d[..8] == 8u64.to_le_bytes() { let (payer, of) = (acct(0), acct(2)); let amt = self.rent_held.as_mut().unwrap().remove(&(true, of)).expect("closing a permission that holds no rent"); self.shift_lamports(&payer, i128::from(amt)); } }
+        // a closed ephemeral account no longer exists in the rollup
+        for k in gone { self.svm.set_account(k, Account::default()).unwrap(); } }
     pub fn send(&mut self, ixs: &[Instruction], extra: &[&Keypair]) -> Res { self.send_with(ixs, extra, Some(1_400_000)) }
     pub fn ok(&mut self, ixs: &[Instruction], extra: &[&Keypair], what: &str) { let r = self.send(ixs, extra); assert!(r.is_ok(), "{} failed: {}\n{:?}", what, err_string(&r), r.as_ref().err().map(|e| e.meta.logs.iter().rev().take(6).cloned().collect::<Vec<_>>())); }
     pub fn fresh_blockhash(&mut self) { self.svm.expire_blockhash(); }
@@ -176,7 +198,7 @@ impl Env {
     pub fn create_season(&mut self, s: &mut Season, neps: u32, fee: u64, maxs: u8, finals: bool, division: u8) -> Res { self.provision_if_new(s.arena, arena_size(maxs as usize)); self.provision_if_new(s.claims, claims_size(maxs as usize)); if self.svm.get_account(&s.receipt).is_none() { let r = self.init_receipt(s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r)); } s.maxs = maxs as usize; s.neps = neps; s.fee = fee;
         let ix = self.create_season_ix(s, neps, 1, fee, maxs, if finals { 2 } else { 0 }, division); self.send(&[ix], &[]) }
     pub fn enter_ix(&self, s: &Season, st: &Strat, signer: usize) -> Instruction { let ow = self.players[signer].pubkey(); let owner_of_strat = self.players[st.owner].pubkey();
-        let _ = owner_of_strat; self.ix(6, vec![self.m(ow, true, false), self.ro(self.strat_pda(st.id)), self.rw(s.arena), self.rw(self.ata(&ow)), self.rw(self.ata(&s.pool)), self.ro(a(TOKEN)), self.ro(self.config)], vec![]) }
+        let _ = owner_of_strat; self.ix(6, vec![self.m(ow, true, false), self.rw(self.strat_pda(st.id)), self.rw(s.arena), self.rw(self.ata(&ow)), self.rw(self.ata(&s.pool)), self.ro(a(TOKEN)), self.ro(self.config), self.rw(self.reg_pda(st.id))], vec![]) }
     pub fn enter(&mut self, s: &mut Season, st: &Strat) -> Res { let ix = self.enter_ix(s, st, st.owner); let kp = self.player(st.owner); let r = self.send(&[ix], &[&kp]); if r.is_ok() { s.entries.push(st.clone()); } r }
     pub fn lock(&mut self, s: &Season) -> Res { let ix = self.ix(7, vec![self.m(self.payer.pubkey(), true, true), self.rw(s.arena)], vec![]); self.send(&[ix], &[]) }
     /// lock signed by someone other than the creator
@@ -235,7 +257,18 @@ impl Env {
     pub fn commit_undelegate_ix_for(&self, s: &Season) -> Instruction { self.ix(12, vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX)), self.rw(s.receipt)], vec![1]) }
     pub fn commit_undelegate(&mut self, accts: &[Address]) -> Res { let mut m = vec![self.m(self.payer.pubkey(), true, true), self.ro(a(MAGIC)), self.rw(a(MAGIC_CTX))]; for k in accts { m.push(self.rw(*k)); } let ix = self.ix(12, m, vec![1]); self.send(&[ix], &[]) }
     pub fn cleanup_ix(&self, s: &Season) -> Instruction { self.ix(15, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.hub), self.rw(s.arena), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(s.receipt)], vec![]) }
-    pub fn cleanup(&mut self, s: &Season) -> Res { let ix = self.cleanup_ix(s); self.send(&[ix], &[]) }
+    /// the strategies of the entries this arena still holds a count on (what the client has to name to Cleanup)
+    pub fn held_ids(&self, s: &Season) -> Vec<u64> { let d = self.data(&s.arena); if d.len() < HDR { return vec![]; } (0..usize::from(d[ar::NS])).filter(|&i| d[HDR + i * SLOT + ar::SL_BITS] & B_COUNTED != 0).map(|i| rd64(&d, HDR + i * SLOT + ar::SL_ID)).collect() }
+    pub fn with_strats(&self, mut ix: Instruction, ids: &[u64]) -> Instruction { for id in ids { ix.accounts.push(self.rw(self.strat_pda(*id))); } ix }
+    /// Cleanup as the client sends it: naming every strategy still counted
+    pub fn cleanup(&mut self, s: &Season) -> Res { let ix = self.with_strats(self.cleanup_ix(s), &self.held_ids(s)); self.send(&[ix], &[]) }
+    /// the open-entry count on a strategy account
+    pub fn open_count(&self, id: u64) -> u16 { let d = self.data(&self.strat_pda(id)); u16::from_le_bytes([d[S_OPEN], d[S_OPEN + 1]]) }
+    pub fn counted(&self, s: &Season, i: usize) -> bool { self.data(&s.arena)[HDR + i * SLOT + ar::SL_BITS] & B_COUNTED != 0 }
+    pub fn close_strategy_ix(&self, id: u64, signer: usize) -> Instruction { let strat = self.strat_pda(id); self.ix(24, vec![self.m(self.players[signer].pubkey(), true, false), self.rw(self.hub), self.rw(strat), self.rw(Address::new_unique()), self.rw(Address::new_unique()), self.ro(a(MAGIC)), self.ro(a(PERMISSION)), self.rw(self.reg_pda(id))], vec![]) }
+    pub fn close_strategy(&mut self, st: &Strat) -> Res { self.fresh_blockhash(); let ix = self.close_strategy_ix(st.id, st.owner); let kp = self.player(st.owner); self.send(&[ix], &[&kp]) }
+    pub fn close_registry_ix(&self, id: u64, owner: Address) -> Instruction { self.ix(25, vec![self.m(self.payer.pubkey(), true, true), self.rw(self.reg_pda(id)), self.rw(owner)], vec![]) }
+    pub fn close_registry(&mut self, st: &Strat) -> Res { self.fresh_blockhash(); let ix = self.close_registry_ix(st.id, self.players[st.owner].pubkey()); self.send(&[ix], &[]) }
     /// register + seal one strategy per name for owners round-robin, then create, enter and lock a full season; returns it seeded and fully run if `run`
     pub fn full_season(&mut self, sid: u64, names: &[&str], neps: u32, fee: u64, finals: bool, division: u8, seed_byte: u8, run: bool) -> Season {
         let mut s = self.season(sid); let r = self.init_pool(&s); assert!(r.is_ok(), "InitPool {}", err_string(&r)); let r = self.init_receipt(&s); assert!(r.is_ok(), "InitReceipt {}", err_string(&r));

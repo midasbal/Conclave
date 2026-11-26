@@ -29,10 +29,12 @@ log(`\npre-seal forecast, ${NEPS}-episode seasons over 48 seeded worlds (the aut
 for (const e of field) { const r = A.simulate(e.code, { worlds: 48, episodes: NEPS, field: false, raw: false }); e.forecast = r.dev_season_totals; e.fMean = r.dev.season_total.mean; e.fMed = r.dev.season_total.p50; log(`  ${e.name.padEnd(16)} mean ${f(e.fMean)} median ${f(e.fMed)} p5 ${f(r.dev.season_total.p5)} p95 ${f(r.dev.season_total.p95)} (division ${r.division})`); }
 
 // ---- 3. the season, through the Phase 1 flows
-const sid = BigInt(Date.now() % 1_000_000_000 + 14_000_000); const owners = [...new Set(field.map(e => e.owner))]; const ownersBefore = {}; for (const o of owners) ownersBefore[o] = await F.bal(c, o);
+const sid = BigInt(Date.now() % 1_000_000_000 + 14_000_000); const owners = [...new Set(field.map(e => e.owner))];
+// earlier runs move stake between the test players, so make sure every owner can pay for all its entries BEFORE a season exists
+await F.fundStake(c, field.reduce((n, e) => (n[e.owner] = (n[e.owner] ?? 0) + FEE, n), {}), log); const ownersBefore = {}; for (const o of owners) ownersBefore[o] = await F.bal(c, o);
 log(`\nseason ${sid}, division ${DIV}, ${NEPS} episodes, fee ${FEE} x ${field.length} entrants; owner token balances before entering ${JSON.stringify(ownersBefore)}`);
 log("SIG base InitReceipt:", (await F.initReceipt(c, sid)).join(" ")); log("SIG base InitPool:", await F.initPool(c, sid)); const hubB = await F.hubLamports(c);
-const cs = await F.createSeason(c, sid, { neps: NEPS, fee: FEE, division: DIV_IDX, window: 150_000, seedTimeout: 60_000, grace: 60_000, minEntrants: 4 }); log(`SIG TEE CreateSeason: ${cs.sig} ${cs.err ? "FAILED " + JSON.stringify(cs.err) : "ok"}`); if (!check("CreateSeason (division 32)", !cs.err)) process.exit(1);
+const cs = await F.createSeason(c, sid, { neps: NEPS, fee: FEE, division: DIV_IDX, window: 150_000, seedTimeout: 60_000, grace: F.MIN_GRACE, minEntrants: 4 }); log(`SIG TEE CreateSeason: ${cs.sig} ${cs.err ? "FAILED " + JSON.stringify(cs.err) : "ok"}`); if (!check("CreateSeason (division 32)", !cs.err)) process.exit(1);
 log(`pool token account usable after ${(await F.awaitPoolReady(c, sid, field[0].owner, field[0].id)).toFixed(1)}s`); const en = await F.enter(c, sid, field.map(e => [e.owner, e.id]), log); if (!check(`all ${field.length} sealed strategies entered`, en.every(r => !r.err))) process.exit(1);
 // the pool's own balance is readable by nobody but the program, so what the pool took in is observed from the owners' debits
 const ownersAfterEnter = {}; for (const o of owners) ownersAfterEnter[o] = await F.bal(c, o); log(`owners' token balances after entering ${JSON.stringify(ownersAfterEnter)}; paid in ${owners.reduce((x, o) => x + ownersBefore[o] - ownersAfterEnter[o], 0)}`);

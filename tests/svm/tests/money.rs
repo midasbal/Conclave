@@ -40,12 +40,12 @@ fn set64(e: &mut Env, k: &Address, off: usize, v: u64) { e.set_data(k, |d| d[off
     let p1 = e.lamports(&e.payer.pubkey()); let r = e.release_bond(&s); assert!(r.is_err(), "a second release finds nothing to pay"); assert!(e.lamports(&e.payer.pubkey()) <= p1, "no money moved to the creator, only the transaction fee was paid");
 }
 #[test] fn partial_inline_publish_and_the_publish_grace() {
-    let mut e = Env::new(5); e.params.grace = 5_000; let s = e.full_season(101, &NAMES, 2, 10, false, 2, 3, true);
+    let mut e = Env::new(5); e.params.grace = MIN_GRACE; let s = e.full_season(101, &NAMES, 2, 10, false, 2, 3, true);
     assert!(e.settle_publishing(&s, 2).is_ok()); assert_eq!(e.data(&s.arena)[ar::PUBN], 2);
     rejects(&e.cleanup(&s), 9123, "Cleanup with entries unpublished inside the grace");
     for i in 2..5 { assert!(e.publish(&s, i).is_ok()); } assert!(e.cleanup(&s).is_ok(), "all published: cleanup");
     // nobody publishes: after the grace the season can still be closed, it cannot stay half-published forever
-    let s2 = e.full_season(102, &NAMES, 2, 10, false, 2, 4, true); assert!(e.settle(&s2).is_ok()); errs(&e.cleanup(&s2), "Cleanup before the grace with nothing published"); e.warp(4_999); e.fresh_blockhash(); errs(&e.cleanup(&s2), "Cleanup one slot early");
+    let s2 = e.full_season(102, &NAMES, 2, 10, false, 2, 4, true); assert!(e.settle(&s2).is_ok()); errs(&e.cleanup(&s2), "Cleanup before the grace with nothing published"); e.warp(MIN_GRACE - 1); e.fresh_blockhash(); errs(&e.cleanup(&s2), "Cleanup one slot early");
     e.warp(2); e.fresh_blockhash(); assert!(e.cleanup(&s2).is_ok(), "Cleanup after the grace"); assert_eq!(e.data(&s2.receipt)[rc::STATE], 2);
 }
 #[test] fn inline_publish_is_limited_by_the_transaction_size_and_that_is_why_the_grace_exists() {
@@ -197,7 +197,7 @@ fn void_pays_by_season_rank(e: &mut Env, s: &Season, reason: u8, start: &[u64]) 
     let mut s1 = s.clone(); e.provision_if_new(s1.arena, arena_size(20)); { let kp = e.player(2); let mut ix = e.create_season_ix(&s1, 2, 1, 10, 20, 0, 2); ix.accounts[0] = e.m(kp.pubkey(), true, false); rejects(&e.send(&[ix], &[&kp]), 9052, "CreateSeason by a wallet that did not post the bond"); }
     e.provision_if_new(s1.claims, claims_size(20));
     for (label, neps, spt, flags, code) in [("zero episodes", 0u32, 1u32, 0u8, 9100u32), ("101 episodes", 101, 1, 0, 9100), ("zero slots per tick", 2, 0, 0, 9101), ("101 slots per tick", 2, 101, 0, 9101), ("paced run over the bound", 100, 49, 0, 9102), ("an unknown season flag", 2, 1, 1, 9103), ("another unknown flag", 2, 1, 130, 9103)] { let ix = e.create_season_ix(&s1, neps, spt, 10, 20, flags, 2); rejects(&e.send(&[ix], &[]), code, label); }
-    for (label, w, sd, g, m, maxs) in [("seed timeout over its bound", 10u64, MAX_SEEDTO + 1, 10u64, 1u8, 20u8), ("window 0", 0, 10, 10, 1, 20), ("seed timeout 0", 10, 0, 10, 1, 20), ("grace 0", 10, 10, 0, 1, 20), ("min 0", 10, 10, 10, 0, 20), ("min above max", 10, 10, 10, 5, 4), ("window absurd", MAX_W + 1, 10, 10, 1, 20)] {
+    for (label, w, sd, g, m, maxs) in [("seed timeout over its bound", 10u64, MAX_SEEDTO + 1, MIN_GRACE, 1u8, 20u8), ("window 0", 0, 10, MIN_GRACE, 1, 20), ("seed timeout 0", 10, 0, MIN_GRACE, 1, 20), ("grace over its cap", 10, 10, MAX_GRACE + 1, 1, 20), ("min 0", 10, 10, MIN_GRACE, 0, 20), ("min above max", 10, 10, MIN_GRACE, 5, 4), ("window absurd", MAX_W + 1, 10, MIN_GRACE, 1, 20)] {
         e.params = Params { window: w, seedto: sd, grace: g, mins: m, bond: BOND }; let ix = e.create_season_ix(&s1, 2, 1, 10, maxs, 0, 2); e.fresh_blockhash(); rejects(&e.send(&[ix], &[]), 9035, label); }
     // the claims account must be this season's
     e.params = Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }; { let mut other = s1.clone(); other.claims = e.claims_pda(999); e.provision_if_new(other.claims, claims_size(20)); let ix = e.create_season_ix(&other, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9082, "another season's claims account"); }
@@ -257,3 +257,12 @@ const MAX_W: u64 = MAX_ENTRY_WINDOW;
     set64(&mut e, &s.claims, cl::CLAIMED, 29); rejects(&e.close_claims(&s), 9083, "every entry flagged paid but the total is short"); set64(&mut e, &s.claims, cl::CLAIMED, 30);
     e.set_data(&s.claims, |d| d[cl::HDR + 2 * cl::ESZ + cl::E_DONE] = 0); rejects(&e.close_claims(&s), 9083, "the total is full but one entry is not marked paid"); e.set_data(&s.claims, |d| d[cl::HDR + 2 * cl::ESZ + cl::E_DONE] = 1); assert!(e.close_claims(&s).is_ok()); let _ = &mut s;
 }
+
+// ---- the shortest publish grace ----
+#[test] fn the_publish_grace_has_a_floor_so_cleanup_cannot_drop_results_right_after_settle() {
+    assert_eq!(MIN_GRACE, 180_000); let mut e = Env::new(5);
+    for (n, (grace, finals, want)) in [(0u64, false, Some(9105u32)), (1, false, Some(9105)), (600, true, Some(9105)), (MIN_GRACE - 1, false, Some(9105)), (MIN_GRACE - 1, true, Some(9105)), (MIN_GRACE, false, None), (MIN_GRACE, true, None), (MAX_GRACE, false, None), (MAX_GRACE + 1, false, Some(9035))].into_iter().enumerate() {
+        e.params.grace = grace; let s = e.season(680 + n as u64); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let hub = e.lamports(&e.hub); let ix = e.create_season_ix(&s, if finals { 15 } else { 2 }, 1, 10, 20, if finals { 2 } else { 0 }, 2); let r = e.send(&[ix], &[]);
+        match want { None => assert!(r.is_ok(), "grace {}: {}", grace, err_string(&r)), Some(c) => { rejects(&r, c, &format!("grace {}", grace)); assert_eq!((e.data(&s.receipt)[rc::STATE], e.lamports(&e.hub)), (0, hub), "a refused creation leaves the receipt unopened") } } }
+}
+
