@@ -54,7 +54,7 @@ export class Store {
   /** a first copy on disk that the ledger does not know (a process killed between writing the file and the ledger line) gets a ledger line, marked as recovered */
   reconcileLedger() {
     const known = new Map(this.ledger.entries.filter(e => e.type === "first-copy" || e.type === "import-first-copy").map(e => [e.address, e.sha256])); let added = 0;
-    for (const address of this.archive.addresses()) { const f = this.archive.first(address); if (!f || f.damaged || known.has(address)) continue; this.ledger.append({ type: "first-copy", recovered: true, address, season: f.season, sha256: f.sha256, finalizedSlot: f.finalizedSlot ?? null, observedAt: f.observedAt }); added++; }
+    for (const address of this.archive.addresses()) { if (known.has(address)) continue; let f; try { f = this.archive.first(address); } catch { continue; /* it cannot be read now: processing that receipt reports it */ } if (!f || f.damaged) continue; this.ledger.append({ type: "first-copy", recovered: true, address, season: f.season, sha256: f.sha256, finalizedSlot: f.finalizedSlot ?? null, observedAt: f.observedAt }); added++; }
     if (added) this.log(`ledger: ${added} first copies were on disk without a ledger line (a process was killed in between); lines added, marked recovered`);
     return added;
   }

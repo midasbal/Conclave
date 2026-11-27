@@ -20,28 +20,37 @@ export async function processAddress(ctx, address, account) {
     if (c.class === "legacy") return { kind: "legacy", row: legacyRow(c) };
     if (c.class === "empty") return { kind: "empty" };
   }
-  if (first?.damaged) { raise({ kind: "archive-damaged", detail: first.damaged }); return { kind: "rejected", row: { address, reason: "its archived first copy is damaged, so nothing about it can be relied on: " + first.damaged } }; }
+  if (first?.damaged) { raise({ kind: "archive-damaged", detail: first.damaged }); return { kind: "rejected", row: { address, reason: "its archived first copy is damaged, so nothing about it can be relied on: " + first.damaged }, failed: [`the first copy of ${address} on disk is damaged: ${first.damaged}`] }; }
 
   const seen = archive.seen(address);
   const held = readDelegationRecord(delegation);
-  if (held && held.originalOwner === program && !seen.delegationRecords.some(o => o.validator === held.validator)) seen.delegationRecords.push({ validator: held.validator, seenAt: now() });
+  // a delegation record can only be seen while the receipt is delegated, so it is saved at once, before any read that can fail or be rate limited
+  if (held && held.originalOwner === program && !seen.delegationRecords.some(o => o.validator === held.validator)) { seen.delegationRecords.push({ validator: held.validator, seenAt: now() }); archive.saveSeen(address, seen); }
+  // THE FIRST COPY COMES FIRST. It needs nothing but the account in hand, and it is the one thing that cannot be read again later: no history or pool read stands between a final receipt and its saved copy
+  let savedFirst = false;
+  if (!first && c.class === "final") {
+    archive.saveFirst(address, { account, season: c.receipt.season.toString(), observedAt: now() }); first = archive.first(address); savedFirst = true; ctx.firstCopies++;
+  }
+  // what could not be read. The one-shot builder publishes with the problem noted in the record; the capture loop does not publish at all while this is non-empty (lib/ingest.mjs)
+  const failed = [];
   let history = null, historyProblem = null;
-  try { history = await readHistory(source, address, program, seen.history); seen.history = { examined: history.examined, events: history.events, newest: history.newest }; if (!history.complete) historyProblem = "base did not serve the whole transaction history"; }
-  catch (e) { if (e.name === "RateLimited") throw e; historyProblem = "transaction history could not be read: " + e.message; history = { ...seen.history }; }
-  // the stake token: named once, in the season's InitPool transaction. Remembered once found; "none found" is asked again next time
+  if (ctx.skipReads) { historyProblem = "transaction history was not read in this cycle"; history = { ...seen.history }; failed.push(`the transaction history of ${address} was not read: ${ctx.skipReads}`); }
+  else try {
+    history = await readHistory(source, address, program, seen.history); seen.history = { examined: history.examined, events: history.events, newest: history.newest }; if (!history.complete) historyProblem = "base did not serve the whole transaction history";
+    // a transaction the node lists and then does not serve is a failed read. (A history longer than the page limit is not: anyone can make a receipt's history that long, and it is only noted)
+    if (history.unserved) failed.push(`reading the transaction history of ${address}: base did not serve ${history.unserved} listed transaction(s)`);
+  } catch (e) { if (e.name === "RateLimited") throw e; historyProblem = "transaction history could not be read: " + e.message; history = { ...seen.history }; failed.push(`reading the transaction history of ${address}: ${e.message}`); }
+  // the stake token: named once, in the season's InitPool transaction on base. Remembered once found; "none found" is asked again next time
   const sid = first ? (first.data.length >= 16 ? first.data.readBigUInt64LE(8) : null) : c.receipt?.season; let poolProblem = null; // from the receipt bytes, not from a text field
   if (sid != null && !seen.pool?.mint) {
-    try { const f = await readPoolMint(source, program, sid); seen.pool = f ? { mint: f.mint, signature: f.signature, slot: f.slot, time: f.time } : { mint: null }; }
-    catch (e) { if (e.name === "RateLimited") throw e; poolProblem = "the pool's transactions could not be read: " + e.message; }
+    if (ctx.skipReads) { poolProblem = "the pool's transactions were not read in this cycle"; failed.push(`the pool's transactions for ${address} were not read: ${ctx.skipReads}`); }
+    else try { const f = await readPoolMint(source, program, sid); seen.pool = f ? { mint: f.mint, signature: f.signature, slot: f.slot, time: f.time } : { mint: null }; }
+    catch (e) { if (e.name === "RateLimited") throw e; poolProblem = "the pool's transactions could not be read: " + e.message; failed.push(`reading the pool's transactions for ${address}: ${e.message}`); }
   }
   archive.saveSeen(address, seen);
   const delegations = history.events.filter(e => e.type === "delegated");
   if (delegations.length > 1) raise({ kind: "multiple-delegations", detail: `delegated ${delegations.length} times: ${delegations.map(d => d.signature).join(" ")}` });
 
-  let savedFirst = false;
-  if (!first && c.class === "final") {
-    archive.saveFirst(address, { account, season: c.receipt.season.toString(), observedAt: now() }); first = archive.first(address); savedFirst = true; ctx.firstCopies++;
-  }
   // counting is not enough: a node that has dropped the first delegation would show only the second. Any delegation after the copy was taken is one too many
   const after = first ? delegations.filter(d => first.finalizedSlot !== null && d.slot > first.finalizedSlot) : [];
   if (after.length) raise({ kind: "redelegated", detail: `delegated again after the first final copy: ${after.map(d => d.signature).join(" ")}` });
@@ -50,13 +59,13 @@ export async function processAddress(ctx, address, account) {
     // the record is built from the FIRST final copy. What is there now is only compared with it
     for (const f of compareToFirst(first.data, account)) raise(f);
     const asFirst = classify(address, { owner: program, data: first.data }, { program });
-    if (asFirst.class !== "final") return { kind: "rejected", row: { address, reason: "its archived first copy is not a final receipt: " + (asFirst.reason ?? asFirst.class) } };
+    if (asFirst.class !== "final") return { kind: "rejected", row: { address, reason: "its archived first copy is not a final receipt: " + (asFirst.reason ?? asFirst.class) }, ...(failed.length ? { failed } : {}) };
     data = asFirst; status = "final"; current = account ? { owner: account.owner, sha256: sha256(account.data).toString("hex") } : null;
   } else { data = c; status = "provisional"; current = { owner: account.owner, sha256: c.sha256 }; }
 
   const flags = archive.flags(address).map(({ kind, detail, info, firstSeenAt }) => ({ kind, detail, info: !!info && !ALARMS.includes(kind), firstSeenAt }));
   const created = history.events.find(e => e.type === "created");
-  return { kind: "season", savedFirst, season: {
+  return { kind: "season", savedFirst, ...(failed.length ? { failed } : {}), season: {
     ...seasonFromReceipt(data.receipt), address, status, stakeToken: stakeToken(seen.pool?.mint ? seen.pool : null, poolProblem),
     copy: first ? { from: "the first final copy this archive saw", sha256: first.sha256, savedAt: first.observedAt, finalizedSlot: first.finalizedSlot } : { from: "current base state, still delegated: it can still change", sha256: data.sha256 },
     current,

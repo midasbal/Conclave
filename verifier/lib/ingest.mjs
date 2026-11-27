@@ -10,8 +10,17 @@ import { PROGRAM_ID, DELEGATION_PROGRAM_ID, DEVNET_GENESIS, sha256 } from "./cha
 import { processAddress, assembleRecord, newContext } from "./builder.mjs";
 import { Store } from "./store.mjs"; import { syncMirror } from "./mirror.mjs"; import { readRegistryStatuses } from "./enrich.mjs";
 
+/** after this many receipts in a row fail, the rest of the cycle stops asking for histories and pools (the endpoint is not answering them) but still captures first copies */
+const FAILURES_BEFORE_CAPTURE_ONLY = 3;
+/** stands in the fingerprint of a receipt whose reads failed: it matches nothing, so the receipt is processed again by the next cycle, whether that is a poll or a sweep */
+const RETRY = "retry";
 const fingerprint = a => a ? sha256(Buffer.from(a.owner), Buffer.from("|"), Buffer.from(String(a.lamports)), Buffer.from("|"), a.data).toString("hex") : "absent";
 const abortableSleep = (ms, signal) => new Promise(res => { const t = setTimeout(res, ms); signal?.addEventListener("abort", () => { clearTimeout(t); res(); }, { once: true }); });
+
+/** names the step a failure happened in, so the status says what could not be done and not only what the disk answered */
+const step = (what, f) => { try { return f(); } catch (e) { throw new Error(`${what}: ${e.message}`); } };
+/** the status must be writable even when a first copy cannot be read, which is exactly when it is needed */
+const digestOrNull = archive => { try { return archive.digest(); } catch { return null; } };
 
 export class Ingest {
   constructor(source, { dir, backupDir = null, publishTo = null, program = PROGRAM_ID, genesis = DEVNET_GENESIS, sweepMs = 15 * 60_000, heartbeatMs = 24 * 3600_000, now = () => new Date().toISOString(), log = () => {} }) {
@@ -31,47 +40,82 @@ export class Ingest {
     this.clusterVerified = true;
   }
 
-  /** one cycle. `sweep: true` forces a full sweep. Returns what it did. Throws RateLimited (state is saved, nothing is lost) or any other error */
+  /** one cycle. `sweep: true` forces a full sweep. Returns what it did. Throws RateLimited (state is saved, nothing is lost) or any other error.
+   *  Whatever fails, at any step, the status says so with the reason before the error leaves here, and a cycle that could not read something publishes nothing: the record stays as it was. */
   async cycle({ sweep = false } = {}) {
     const t0 = Date.now(), at = this.now(), { store, state, source, program } = this; const archive = store.archive; const ctx = newContext(source, archive, { program, now: this.now });
     const listed = new Map(), slots = []; const sweepDue = sweep || !state.lastSweep || Date.parse(at) - Date.parse(state.lastSweep.at) >= this.sweepMs;
     let processed = 0, skipped = 0, looked = 0, known = [];
-    try { // the cluster check and the listing are inside the handler too: when one of them is what fails, the status must still say so
+    state.cycles = (state.cycles ?? 0) + 1;
+    try {
+      // a first copy whose ledger line could not be written (the disk refused it) gets its line now, not only at the next start
+      store.reconcileLedger();
       await this.verifyCluster();
       for (const owner of [program, DELEGATION_PROGRAM_ID]) { const got = await source.receiptsOwnedBy(owner); if (got.contextSlot != null) slots.push(got.contextSlot); for (const a of got) listed.set(a.address, a); }
       known = [...new Set([...Object.keys(state.fingerprints), ...archive.addresses(), ...listed.keys()])].sort();
+      const failures = []; let inARow = 0;
       for (const address of known) {
-        let account = listed.get(address);
-        if (account === undefined) { // not listed: either it was never a receipt, or it has gone or changed hands. Look it up directly, once; "absent" is then remembered until the next sweep
-          if (!sweepDue && state.fingerprints[address] === "absent") { skipped++; continue; }
-          const a = await source.account(address); looked++; account = a ? { address, ...a } : null; }
-        const fp = fingerprint(account);
-        if (!sweepDue && state.fingerprints[address] === fp && store.entry(address)) { skipped++; continue; }
-        const d = await processAddress(ctx, address, account); store.saveEntry(address, d); state.fingerprints[address] = fp; store.writeState(state); processed++;
+        try {
+          let account = listed.get(address);
+          if (account === undefined) { // not listed: either it was never a receipt, or it has gone or changed hands. Look it up directly, once; "absent" is then remembered until the next sweep
+            if (!sweepDue && state.fingerprints[address] === "absent") { skipped++; continue; }
+            const a = await source.account(address); looked++; account = a ? { address, ...a } : null; }
+          const fp = fingerprint(account);
+          if (!sweepDue && state.fingerprints[address] === fp && store.entry(address)) { skipped++; continue; }
+          const d = await processAddress(ctx, address, account); processed++;
+          if (d.failed) { failures.push(...d.failed); state.fingerprints[address] = RETRY; inARow++; } // what was last decided about it stays as it was
+          else { store.saveEntry(address, d); state.fingerprints[address] = fp; inARow = 0; }
+          store.writeState(state);
+        } catch (e) { // one receipt that cannot be processed does not stop the others being captured. A rate limit does stop the cycle: nothing more may be sent
+          if (e.name === "RateLimited") throw e; failures.push(`processing ${address}: ${e.message}`); state.fingerprints[address] = RETRY; inARow++;
+        }
+        if (inARow >= FAILURES_BEFORE_CAPTURE_ONLY && !ctx.skipReads) ctx.skipReads = `${FAILURES_BEFORE_CAPTURE_ONLY} receipts in a row failed`;
       }
-    } catch (e) { state.cycles = (state.cycles ?? 0) + 1; store.writeState(state); this.error = { at, message: e.message, rateLimited: e.name === "RateLimited" ? e.retryAt : null }; this.writeStatus({ state: e.name === "RateLimited" ? "rate-limited" : "degraded", at, processed, skipped }); throw e; }
-    const slot = slots.length ? Math.min(...slots) : null; state.lastPoll = { at, slot }; if (sweepDue) state.lastSweep = { at, slot }; state.cycles = (state.cycles ?? 0) + 1;
-    // a line in the ledger once a day even when nothing happened, so that "nothing changed since" is itself on the record
-    if (sweepDue && Date.parse(at) - Date.parse(state.lastHeartbeatAt) >= this.heartbeatMs) { state.lastHeartbeatAt = at; store.ledger.append({ type: "heartbeat", slot, copies: archive.digest().copies }); }
-    store.writeState(state);
-    const descriptors = known.map(a => store.entry(a)).filter(Boolean);
-    // which strategies are closed: every sweep for all of them, and at once for any strategy not seen before
-    const ids = [...new Set(descriptors.filter(d => d.kind === "season").flatMap(d => d.season.entries.map(e => e.strategyId)))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-    // a read that failed is remembered and asked again until it succeeds: this cycle has already counted its sweep, so without this the next poll would skip the read and report success
-    state.registries ??= {}; const want = sweepDue ? ids : ids.filter(id => !state.registries[id] || state.registryRetry?.includes(id));
-    if (want.length) {
-      try { Object.assign(state.registries, await readRegistryStatuses(source, program, want, { strict: true })); state.registriesAt = { at, slot }; delete state.registryRetry; store.writeState(state); }
-      catch (e) { // like any other failed cycle: the status says why, the record on disk stays as it was, and the loop retries
-        state.registryRetry = want; store.writeState(state); this.error = { at, message: e.message, rateLimited: e.name === "RateLimited" ? e.retryAt : null }; this.writeStatus({ state: e.name === "RateLimited" ? "rate-limited" : "degraded", at, processed, skipped }); throw e; }
+      const slot = slots.length ? Math.min(...slots) : null; if (sweepDue) state.lastSweep = { at, slot };
+      // a line in the ledger once a day even when nothing happened, so that "nothing changed since" is itself on the record
+      if (sweepDue && Date.parse(at) - Date.parse(state.lastHeartbeatAt) >= this.heartbeatMs) { state.lastHeartbeatAt = at; store.ledger.append({ type: "heartbeat", slot, copies: archive.digest().copies }); }
+      store.writeState(state);
+      const descriptors = known.map(a => store.entry(a)).filter(Boolean);
+      // which strategies are closed: every sweep for all of them, and at once for any strategy not seen before
+      const ids = [...new Set(descriptors.filter(d => d.kind === "season").flatMap(d => d.season.entries.map(e => e.strategyId)))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+      // a read that failed is remembered and asked again until it succeeds: this cycle has already counted its sweep, so without this the next poll would skip the read and report success
+      state.registries ??= {}; const want = sweepDue ? ids : ids.filter(id => !state.registries[id] || state.registryRetry?.includes(id));
+      if (want.length) {
+        try { Object.assign(state.registries, await readRegistryStatuses(source, program, want, { strict: true })); state.registriesAt = { at, slot }; delete state.registryRetry; store.writeState(state); }
+        catch (e) { state.registryRetry = want; store.writeState(state); throw e; }
+      }
+      // anything that could not be read: say so and publish nothing. Every first copy this cycle could save has been saved, and the registries above are not asked for again
+      if (failures.length) throw new Error(failures.length === 1 ? failures[0] : `${failures[0]} (and ${failures.length - 1} more read failure(s) in this cycle)`);
+      const registries = Object.fromEntries(ids.map(id => [id, state.registries[id]]).filter(([, v]) => v));
+      const record = assembleRecord(descriptors, { archive, genesis: this.genesis, program, now: this.now, source, ctx, currentTo: { slot, at }, registries, registriesAt: state.registriesAt ?? null,
+        extra: { service: { cycle: state.cycles, lastSweep: state.lastSweep, sweepIntervalMs: this.sweepMs, thisCycle: { sweep: sweepDue, processed, skipped, lookedUp: looked, ms: Date.now() - t0 } } } });
+      step("writing the record", () => store.writeService("record.json", record));
+      if (this.publishTo) step("writing the published copy of the record (--out)", () => { fs.mkdirSync(path.dirname(this.publishTo), { recursive: true }); const tmp = this.publishTo + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(record, null, 1) + "\n"); fs.renameSync(tmp, this.publishTo); });
+      state.lastPoll = { at, slot }; store.writeState(state);
+      this.last = record; this.error = null;
+      // the mirror does not make the record wrong, so its failure raises the backup alarm and does not fail the cycle
+      await this.mirrorOrAlarm(sweepDue || ctx.firstCopies > 0 || ctx.newFlags.length > 0 || store.ledger.head !== this.lastSyncHead);
+      this.writeStatus({ state: this.backupInfo.alarms.length ? "backup-alarm" : "ok", at, processed, skipped, sweep: sweepDue, newFirstCopies: ctx.firstCopies, newFlags: ctx.newFlags.length, ms: Date.now() - t0 });
+      return { processed, skipped, lookedUp: looked, sweep: sweepDue, newFirstCopies: ctx.firstCopies, newFlags: ctx.newFlags, slot, record };
+    } catch (e) { this.failed(e, { at, processed, skipped }); throw e; }
+  }
+
+  /** records why a cycle failed. Each write is attempted on its own: a disk that refuses one must not keep the reason out of the other. If the status cannot be written either, only its age can tell (and the free-space check) */
+  failed(e, { at, processed, skipped }) {
+    this.error = { at, message: e.message, rateLimited: e.name === "RateLimited" ? e.retryAt : null };
+    try { this.store.writeState(this.state); } catch (w) { this.log(`could not save the state after a failed cycle: ${w.message}`); }
+    try { this.writeStatus({ state: e.name === "RateLimited" ? "rate-limited" : "degraded", at, processed, skipped }); } catch (w) { this.log(`could not write the status after a failed cycle: ${w.message}`); }
+  }
+
+  /** a mirror that cannot be written raises an alarm the status and the health check show. It stays until a later sync succeeds, and a failed sync is due again on the very next cycle. Alarms about what a sync FOUND (a copy that differs) are never cleared */
+  async mirrorOrAlarm(due) {
+    if (!this.backupDir || !(due || this.mirrorFailed)) return; const KEY = "backup-sync-failed";
+    try { await this.mirror(true); this.mirrorFailed = false; this.backupInfo.alarms = this.backupInfo.alarms.filter(a => a.key !== KEY); }
+    catch (e) {
+      const first = !this.mirrorFailed; this.mirrorFailed = true; const detail = `the backup mirror could not be synced: ${e.message}`;
+      this.backupInfo.alarms = [...this.backupInfo.alarms.filter(a => a.key !== KEY), { key: KEY, kind: KEY, address: null, detail, at: this.now() }];
+      this.log(`BACKUP ALARM ${KEY}: ${e.message}`); if (first) try { this.store.ledger.append({ type: "backup-alarm", kind: KEY, address: null, detail }); } catch (w) { this.log(`could not put the alarm on the ledger: ${w.message}`); }
     }
-    const registries = Object.fromEntries(ids.map(id => [id, state.registries[id]]).filter(([, v]) => v));
-    const record = assembleRecord(descriptors, { archive, genesis: this.genesis, program, now: this.now, source, ctx, currentTo: { slot, at }, registries, registriesAt: state.registriesAt ?? null,
-      extra: { service: { cycle: state.cycles, lastSweep: state.lastSweep, sweepIntervalMs: this.sweepMs, thisCycle: { sweep: sweepDue, processed, skipped, lookedUp: looked, ms: Date.now() - t0 } } } });
-    store.writeService("record.json", record); if (this.publishTo) { fs.mkdirSync(path.dirname(this.publishTo), { recursive: true }); const tmp = this.publishTo + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(record, null, 1) + "\n"); fs.renameSync(tmp, this.publishTo); }
-    this.last = record; this.error = null;
-    await this.mirror(sweepDue || ctx.firstCopies > 0 || ctx.newFlags.length > 0 || store.ledger.head !== this.lastSyncHead);
-    this.writeStatus({ state: this.backupInfo.alarms.length ? "backup-alarm" : "ok", at, processed, skipped, sweep: sweepDue, newFirstCopies: ctx.firstCopies, newFlags: ctx.newFlags.length, ms: Date.now() - t0 });
-    return { processed, skipped, lookedUp: looked, sweep: sweepDue, newFirstCopies: ctx.firstCopies, newFlags: ctx.newFlags, slot, record };
   }
 
   async mirror(due) {
@@ -82,7 +126,7 @@ export class Ingest {
   }
   writeStatus(extra) {
     const s = this.state; this.store.writeService("status.json", { pid: process.pid, startedAt: this.startedAt, updatedAt: this.now(), pollMs: this.pollMs ?? null, ...extra, currentTo: s.lastPoll ?? null, lastSweep: s.lastSweep ?? null, nextSweepAt: s.lastSweep ? new Date(Date.parse(s.lastSweep.at) + this.sweepMs).toISOString() : null,
-      lastError: this.error, backup: this.backupInfo, archive: this.store.archive.digest(), ledger: this.store.ledger.summary(), cycles: s.cycles ?? 0 });
+      lastError: this.error, backup: this.backupInfo, archive: digestOrNull(this.store.archive), ledger: this.store.ledger.summary(), cycles: s.cycles ?? 0 });
   }
 
   /** the loop. Returns when `signal` aborts (or after one cycle with `once`). A rate limit waits until the time the endpoint named; any other failure backs off, up to five minutes, and tries again: the record stays at its last good state and the status says it is stale */

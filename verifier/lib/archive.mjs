@@ -19,7 +19,8 @@ export class Archive {
   }
   /** the first final copy, or null. `damaged` if the file no longer agrees with its own hash or belongs elsewhere */
   first(address) {
-    let j; try { j = this.readJson(address, "first-final.json"); } catch { return { damaged: "the first copy cannot be parsed" }; }
+    // only a file that reads but does not parse is damage. A read that fails (a disk error) is thrown: it says nothing about the copy, and calling it damage would raise a flag that is never removed
+    let j; try { j = this.readJson(address, "first-final.json"); } catch (e) { if (!(e instanceof SyntaxError)) throw e; return { damaged: "the first copy cannot be parsed" }; }
     if (!j) return null; const data = Buffer.from(j.data ?? "", "base64");
     if (sha256(data).toString("hex") !== j.sha256 || j.address !== address || j.genesis !== this.genesis || j.program !== this.program) return { damaged: "the first copy does not match its own hash, address, cluster or program" };
     return { ...j, data };

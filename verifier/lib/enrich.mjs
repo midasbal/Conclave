@@ -9,7 +9,9 @@ export const REG_MAGIC = 0x5245_4753, REG_CLOSED_MAGIC = 0x5845_4752, REG_DEAD_M
 /** the season's stake token from its InitPool transaction. `null` if base history holds none. Throws RateLimited (and anything else the caller must not mistake for "none") */
 export async function readPoolMint(source, program, season) {
   const pool = poolAddress(season, program); const sigs = await source.signatures(pool);
-  for (const s of [...sigs].reverse()) { if (s.err) continue; const tx = await source.transaction(s.signature); const e = poolEvents(tx, s.signature, pool, program)[0]; if (e) return e; }
+  let unserved = 0;
+  for (const s of [...sigs].reverse()) { if (s.err) continue; const tx = await source.transaction(s.signature); if (!tx) { unserved++; continue; } const e = poolEvents(tx, s.signature, pool, program)[0]; if (e) return e; }
+  if (unserved) throw new Error(`base did not serve ${unserved} listed transaction(s) of the pool, so whether it holds an InitPool is not known`); // never "there is none" when part of it was not seen
   return null;
 }
 export function stakeToken(found, problem = null) {

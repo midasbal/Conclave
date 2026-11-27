@@ -1,9 +1,9 @@
 // The capture loop over REAL recorded devnet responses (test/fixtures). Where a test needs something that did not happen on devnet (a changed byte, a second delegation, a killed process) it alters a copy and says SYNTHETIC.
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "fs"; import os from "os"; import path from "path"; import { fileURLToPath } from "url"; import { spawn } from "child_process";
 import { Ingest } from "../lib/ingest.mjs"; import { buildRecord } from "../lib/builder.mjs"; import { Store, verifyStore, whoAmI } from "../lib/store.mjs"; import { readLedger } from "../lib/ledger.mjs"; import { RateLimited } from "../lib/chain.mjs";
-import { PROGRAM_ID, DEVNET_GENESIS, poolAddress } from "../lib/chain.mjs"; import { replay, withRecordedRegistries } from "./recorded.mjs";
+import { PROGRAM_ID, DEVNET_GENESIS } from "../lib/chain.mjs"; import { replay, withLaterReads } from "./recorded.mjs";
 const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
-const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => withRecordedRegistries(JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`))));
+const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => withLaterReads(JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`))));
 const ALL = load("all"); const STAGE = Object.fromEntries(["provisional", "provisional-republished", "final", "bond-released"].map(n => [n, load(n)]));
 const tmp = () => (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "ingest-test-")); _made.push(d); return d; })(); const clone = x => JSON.parse(JSON.stringify(x));
 const root = dir => path.join(dir, DEVNET_GENESIS, PROGRAM_ID);
@@ -40,7 +40,7 @@ test("a changed account is the only one processed, and a change to a closed rece
   const dir = tmp(); let a = await open(spy(replay(ALL)), dir); await a.cycle(); const before = a.store.ledger.n; a.close();
   const addr = finalAddress(); const tape = clone(ALL); edit(tape, addr, d => { d[224 + 72] ^= 3; }); /* SYNTHETIC: one rank byte */
   const s = spy(replay(tape)); a = await open(s, dir); const r = await a.cycle(); a.close();
-  assert.deepEqual([r.processed, r.skipped], [1, 74]); assert.deepEqual([...new Set(s.calls.signatures.map(x => x.address))].sort(), [addr, poolAddress(BigInt(JSON.parse(fs.readFileSync(path.join(root(dir), addr, "first-final.json"))).season), PROGRAM_ID)].sort(), "its own history and its pool, nothing else"); assert.deepEqual(r.newFlags.map(f => f.kind), ["record-changed"]);
+  assert.deepEqual([r.processed, r.skipped], [1, 74]); assert.deepEqual([...new Set(s.calls.signatures.map(x => x.address))], [addr], "its own history and nothing else: its pool was read by the first cycle and the token is remembered"); assert.equal(r.record.seasons.find(x => x.address === addr).stakeToken.status, "observed"); assert.deepEqual(r.newFlags.map(f => f.kind), ["record-changed"]);
   const season = r.record.seasons.find(x => x.address === addr); assert.deepEqual(season.entries, JSON.parse(JSON.stringify(replayRecord().seasons.find(x => x.address === addr).entries)), "the record still reads the first copy");
   const l = readLedger(path.join(root(dir), "_service", "ledger.jsonl")); assert.ok(l.ok); assert.ok(l.entries.slice(before).some(e => e.type === "flag" && e.kind === "record-changed" && e.address === addr));
   // put the bytes back: the account changed again, so it is processed again, and the flag is still there and is not raised twice
@@ -100,10 +100,16 @@ test("STALE LOCK: a really concurrent writer is still refused; a lock from anoth
   try {
     await assert.rejects(() => open(spy(replay(ALL)), dir), new RegExp(`another ingest process \\(pid ${child.pid},`), "a live writer in this container is refused");
     const lock = path.join(root(dir), "_service", "lock"); const held = JSON.parse(fs.readFileSync(lock, "utf8")); assert.equal(held.pid, child.pid); assert.ok(held.host, "the lock names its container");
-    const other = { ...held, host: held.host + "-previous-deployment" }; fs.writeFileSync(lock, JSON.stringify(other));
+  } finally { child.kill("SIGKILL"); await new Promise(r => child.on("exit", r)); }
+  // taking over is tried with the real writer gone: the forged locks name a process that is alive and writes nothing, so a takeover cannot put two real writers on one ledger
+  const idle = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  try {
+    const lock = path.join(root(dir), "_service", "lock"); const me = whoAmI(); const held = { pid: idle.pid, startedAt: "2026-01-01T00:00:00Z", host: me.host, boot: me.boot };
+    fs.writeFileSync(lock, JSON.stringify(held)); await assert.rejects(() => open(spy(replay(ALL)), dir), new RegExp(`another ingest process \\(pid ${idle.pid},`), "the same lock from THIS container is refused");
+    fs.writeFileSync(lock, JSON.stringify({ ...held, host: held.host + "-previous-deployment" }));
     const logs = []; const a = await open(spy(replay(ALL)), dir, { log: m => logs.push(m) }); assert.ok(logs.some(m => /written in another container/.test(m))); a.close();
     if (held.boot) { fs.writeFileSync(lock, JSON.stringify({ ...held, boot: "00000000-0000-0000-0000-000000000000" })); const l2 = []; (await open(spy(replay(ALL)), dir, { log: m => l2.push(m) })).close(); assert.ok(l2.some(m => /before the last boot/.test(m))); }
-  } finally { child.kill("SIGKILL"); await new Promise(r => child.on("exit", r)); }
+  } finally { idle.kill("SIGKILL"); await new Promise(r => idle.on("exit", r)); }
   const dir2 = tmp(); const c2 = spawn(process.execPath, [path.join(here, "ingest_child.mjs")], { env: { ...process.env, STORE: dir2, DELAY_MS: "400" }, stdio: ["ignore", "pipe", "inherit"] }); let up = false; c2.stdout.on("data", d => { if (String(d).includes("started")) up = true; });
   const t1 = Date.now(); while (!up && Date.now() - t1 < 30_000) await new Promise(r => setTimeout(r, 20)); c2.kill("SIGKILL"); await new Promise(r => c2.on("exit", r));
   assert.ok(fs.existsSync(path.join(root(dir2), "_service", "lock")), "a SIGKILL leaves its lock behind"); (await open(spy(replay(ALL)), dir2)).close();

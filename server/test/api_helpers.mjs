@@ -1,10 +1,10 @@
 // Fixtures for the API tests. The DATA is real: a store built by running the actual capture loop (verifier/lib/ingest.mjs) over responses recorded from devnet (verifier/test/fixtures). The only stand-in is the upstream RPC
 // the server uses for the one freshness read, a real local HTTP server with a fixed answer. Where a test needs data that did not happen on devnet (a flagged receipt, a test wallet as an owner) it edits a COPY of the store and says SYNTHETIC.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import http from "node:http"; import { fileURLToPath } from "node:url";
-import { Ingest } from "../../verifier/lib/ingest.mjs"; import { replay, withRecordedRegistries } from "../../verifier/test/recorded.mjs"; import { DEVNET_GENESIS, PROGRAM_ID } from "../../verifier/lib/chain.mjs";
+import { Ingest } from "../../verifier/lib/ingest.mjs"; import { replay, withLaterReads } from "../../verifier/test/recorded.mjs"; import { DEVNET_GENESIS, PROGRAM_ID } from "../../verifier/lib/chain.mjs";
 import { createAuth } from "../src/auth.mjs"; import { createApp } from "../src/server.mjs"; import { createApi } from "../src/api/index.mjs"; import { RecordStore, RulesSource } from "../src/api/store.mjs"; import { ChallengeStore } from "../src/api/challenges.mjs"; import { SECRET, listen, clock } from "./helpers.mjs";
 const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
-const here = path.dirname(fileURLToPath(import.meta.url)); export const FIXTURES = path.join(here, "..", "..", "verifier", "test", "fixtures"); export const load = n => withRecordedRegistries(JSON.parse(fs.readFileSync(path.join(FIXTURES, `devnet-${n}.json`))));
+const here = path.dirname(fileURLToPath(import.meta.url)); export const FIXTURES = path.join(here, "..", "..", "verifier", "test", "fixtures"); export const load = n => withLaterReads(JSON.parse(fs.readFileSync(path.join(FIXTURES, `devnet-${n}.json`))));
 export const EXAMPLE_RULES = path.join(here, "..", "..", "verifier", "policy", "rules.example.json"); export const BUILT_AT = "2026-11-27T05:00:00.000Z";
 export const tmp = () => (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "api-test-")); _made.push(d); return d; })();
 /** a store made by the capture loop over a recorded tape. The clock is fixed so that two builds are comparable */
