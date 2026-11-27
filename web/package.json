@@ -16,9 +16,12 @@
     "@fontsource/libre-caslon-display": "5.3.0",
     "@fontsource/libre-caslon-text": "5.3.0",
     "@fontsource/source-serif-4": "5.3.1",
+    "@magicblock-labs/ephemeral-rollups-sdk": "0.18.0",
     "@solana/wallet-adapter-base": "0.9.28",
     "@solana/wallet-adapter-react": "0.15.40",
     "@solana/web3.js": "1.99.0",
+    "bs58": "6.0.0",
+    "buffer": "6.0.3",
     "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1"

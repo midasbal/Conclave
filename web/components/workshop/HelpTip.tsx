@@ -11,8 +11,11 @@ const OPENED = "conclave:helptip-open";
 const GAP = 8;
 const EDGE = 12;
 
-export function HelpTip({ term }: { term: HelpKey }) {
-  const { label, text } = HELP[term];
+/** an explanation from the Workshop's list by its key, or one given outright */
+type Props = { term: HelpKey } | { label: string; text: string };
+
+export function HelpTip(props: Props) {
+  const { label, text } = "term" in props ? HELP[props.term] : props;
   const id = useId();
   const [open, setOpen] = useState(false);
   const pinned = useRef(false);

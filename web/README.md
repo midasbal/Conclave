@@ -25,6 +25,10 @@ npm run build && npm start   # the production build
 
 It cannot seal or enter. When it can, it must not be the first place a draft's privacy is assumed: drafts in local storage are plain text.
 
+## The sealing experiment
+
+`/seal` tests whether a browser wallet can sign what sealing needs: Register and Delegate on Solana, the enclave's login message, and SealStrategy for the rollup, which the page sends itself after `signTransaction`. It is an experiment, not a feature: nothing links to it, it is marked not to be indexed, it seals only a built-in throwaway strategy, and it never closes one. `lib/seal/chain.ts` ports the builders of `client/flows.mjs`. The enclave token is held in memory and sent in a header, never in an address. A rollup blockhash lasts under a minute, so the Seal has to be signed within about 55 seconds. The page does not check the enclave's attestation. It adds `@magicblock-labs/ephemeral-rollups-sdk` for the login and two addresses; remove the route and that package together if the experiment is dropped.
+
 ## Environment
 
 | Variable | |
