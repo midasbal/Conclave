@@ -1,3 +1,8 @@
+// HISTORICAL: written for an earlier build, NOT the deployed program. Do not read it as current behaviour.
+// It asserts that the HUB pays each sealed strategy's rent. Since the Phase 6 build the strategy's own registry pays it (program/LIFECYCLE.md, "Phase 6").
+// It proved strategy reclaim and its guards on the reclaim build of 2026-11-26.
+// Kept as the record of what was proved then. It calls the current client helpers, but its rent expectations were not updated: it does not reproduce that run, and is not expected to pass today.
+//
 // Devnet proof of strategy reclaim and the two guards, real signatures through the TEE, real stake tokens. Every transaction signature is written to evidence/proof3b_<mode>.txt.
 //   node client/proof3b.mjs reclaim   fresh sealed strategies through a paid finals season: the open-entry count rises, CloseStrategy is refused (9130) while anything is open, publish brings it to zero, every strategy closes, the hub is whole and each registry balance returns to its owner
 //   node client/proof3b.mjs cancel    a paid season whose seed never arrives: Cancel, Cleanup refused (9131) until the strategies are passed, then the strategies close

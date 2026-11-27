@@ -30,8 +30,8 @@ export function classifyRegistry(account, program) {
   return { status: "unknown", closed: null, delegated, note: "the registry could not be read" };
 }
 
-/** statuses for strategy ids. `source.accounts` reads them in batches when the source has it. A failure other than a rate limit leaves the status unknown instead of failing the cycle */
-/** strict (the capture loop): a registry that cannot be read is an error, so that nothing already known is overwritten with "unknown" and the failure shows. Without it (the one-shot builder) such a registry is recorded as "unknown", which says so in the record */
+/** statuses for strategy ids. `source.accounts` reads them in batches when the source has it; if the batch read fails they are read one by one. A rate limit is always thrown. Any other failed read depends on `strict`:
+ *  strict (the capture loop): it is an error, so the cycle fails, nothing already known is overwritten with "unknown" and the failure shows. Without it (the one-shot builder) that registry is recorded as "unknown", which says so in the record */
 export async function readRegistryStatuses(source, program, ids, { strict = false } = {}) {
   const out = {}; const addrs = ids.map(id => registryAddress(id, program));
   let got = null; try { got = source.accounts ? await source.accounts(addrs) : null; } catch (e) { if (e.name === "RateLimited") throw e; }

@@ -1,125 +1,125 @@
 # Conclave
 
-A sealed-strategy league on Solana. Players write a secret trading strategy, seal it inside a private rollup, and compete across many synthetic markets generated from a verifiable random seed.
+A sealed-strategy league on Solana. A player writes a trading strategy as a short program for a small deterministic virtual machine and seals it inside a private rollup. When a season locks, a verifiable random seed is drawn, every sealed strategy runs through the same synthetic markets inside the enclave, and a prize pool is paid by rank.
 
-Each strategy is a short program for a small deterministic virtual machine. It is created private from its first instant and only its owner can read it, for as long as it stays open: closing it is the one action that ends this, making that strategy's salt and bytecode permanently and publicly readable from devnet's own transaction history (`program/LIFECYCLE.md`, "Security considerations: sealing disclosure"). When a season locks, a VRF seed is drawn and the league runs every sealed strategy through the same set of seeded worlds inside the enclave. Skill is measured across the whole ensemble of worlds rather than a single live market, scores are computed in fixed-point integer math so any owner can replay their own result locally, and a prize pool is paid out by rank. In a season with finals, the top three by season rank play 15 more episodes on a fresh seed, and season plus finals score decides their order. Every season states its terms (fee, token, length, timing, field size, ruleset) in a public record, and Enter pays only into the terms its entrant read. Prizes are recorded on chain and claimed per entry (the client claims them all automatically). The two-phase finals and per-entry claims are deployed on devnet. So is reclaiming a sealed strategy: its owner can close it once no entry is open, the strategy's registry (which paid for its sealed account) is repaid, and the owner gets back the registry balance, but see the disclosure note above: closing is the owner's own choice, and only it triggers the leak. The season receipt records every entry's owner and code commitment, and a closed strategy's id is retired for good. With this client the field is private before Lock: each entrant alone signs and pays for its own Enter, and on devnet neither the creator, another entrant, a stranger nor an anonymous caller could learn who else had entered, from the accounts or transaction history they tried. A sponsor who signs someone's Enter does see that entry. Live feeds, what the rollup operator can see and timing analysis are untested; see `program/LIFECYCLE.md`.
+It runs on **Solana devnet** only. It has **not been audited**. Account layouts and interfaces can still change.
+
+## How a season works
+
+1. **Seal.** The owner registers a salted commitment on Solana and seals the salt and bytecode into the rollup, where only the owner can read them while the strategy stays open.
+2. **Create and enter.** The creator opens a season and chooses the validator. Its terms (fee, token, length, timing, field size, ruleset, creator) are written to a public record, and an Enter pays only into the exact terms its entrant read.
+3. **Run.** After Lock, a VRF seed picks the market worlds. Anyone can advance the run. Scoring is fixed-point integer arithmetic, so an owner can replay their own result from the seed. With finals, the top three by season rank play 15 more episodes on a fresh seed, and the two totals together decide their order.
+4. **Settle and claim.** The program records what each entry is owed. Each prize or refund is claimed separately, by anyone, to the entrant's own token account.
+5. **Receipt.** Each season leaves a receipt on Solana with every entry's owner and code commitment, the ranks, and score commitments for the published entries.
+
+`program/LIFECYCLE.md` is the full specification: states, bounds, deadlines, instructions and account layouts.
+
+## Integrity model
+
+### What the program enforces, if it runs as written
+
+* **The code cannot be swapped.** A sealed strategy is checked against its public commitment, and the receipt records the commitment that entered.
+* **Entrants pay only into terms they read.** Enter refuses a fee, token or terms hash that does not match the season's record.
+* **The program controls the pool.** Payouts follow the recorded ranks, solvency is checked when amounts are recorded and at every claim, and claims never expire.
+* **Waits have exits.** Each waiting state has a deadline after which anyone can move the season on. These exits are rollup transactions: they assume the validator is still running.
+* **An entry that got in can be published.** A strategy cannot be closed while it has an open entry.
+
+### What you have to trust
+
+* **The validator and its enclave.** They execute the program, hold the secrets and write results back. The season's creator chooses the validator, the receipt does not record which, and no tool here verifies an enclave attestation. Results are not re-executed by anyone else.
+* **The upgrade authority.** The program is upgradeable. One key holds that power; it also controls pause, the stake-token allowlist and bond recovery.
+* **The VRF oracle.** It could withhold a seed it dislikes. In the season phase that leads to refunds; in the finals it voids them and pays by season rank.
+* **The creator,** for the choice of validator, and for the field: one person can create a season and fill it with their own wallets and a token of their own.
+
+### What it does not guarantee
+
+* **Privacy ends when a strategy is closed.** Closing makes its salt and bytecode **permanently readable by anyone** from devnet's transaction history. Only the owner can close it. See "Security considerations: sealing disclosure" in `program/LIFECYCLE.md`.
+* **Privacy against everyone.** What the rollup operator or enclave can see, live feeds, and timing analysis are untested. On devnet, with this client, neither the creator, another entrant, a stranger nor an anonymous caller could learn who had entered before Lock from the accounts and history queries tried. A sponsor who signs someone's Enter does see that entry.
+* **That a ranking means skill.** Nothing on a receipt separates a farmed season from a real one. A leaderboard is only as good as the list of creators and validators it trusts.
 
 ## Records and proofs
 
-`verifier/` is a standalone, read-only tool: it rebuilds a career record from the on-chain receipts, keeps the first final copy of each, applies a separate counting policy, and checks four levels of proof. A capture loop keeps those first copies in a managed, backed-up store (`docs/RECORD_SERVICE.md`), and a public read-only API serves the record (`docs/API.md`). `docs/DEPLOY_RAILWAY.md` covers running the capture daemon and the API together on one Railway service. What each level does and does not show, and what has to be trusted (including the validator, which receipts do not record), is in [`verifier/README.md`](verifier/README.md).
+`verifier/` is a standalone, read-only tool. It rebuilds a career record from receipts, keeps the first final copy of each, applies a separate counting policy, and offers four levels of proof. What each level shows and does not show is in [`verifier/README.md`](verifier/README.md). A capture loop keeps the first copies ([`docs/RECORD_SERVICE.md`](docs/RECORD_SERVICE.md)) and a read-only API serves the record ([`docs/API.md`](docs/API.md)).
 
 ## Status
 
-Early build, running on Solana devnet. Interfaces and account layouts will change. Nothing here has been audited.
+| | |
+|---|---|
+| Program on devnet | Deployed; `program/BUILD_HASH` records the build's SHA-256 |
+| Shown on devnet | Seasons with finals, per-entry claims, refunds, the finals seed-timeout void, strategy reclaim, registry-paid rent, public terms. Some guards and void paths are shown only in the in-process test suite; `program/LIFECYCLE.md` says which were observed |
+| Capture daemon | Built; one-cycle runs against a dedicated devnet RPC completed. It has not run continuously there, or watched a live season through that endpoint |
+| Hosting | Deploy files exist ([`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md)). The image has never been built and nothing is deployed |
+| Leaderboard | No counting rules are configured, so it counts nothing |
+| Web app | Not built |
 
-## Stack
-
-- Solana, with a native (non-Anchor) on-chain program
-- MagicBlock Ephemeral Rollups for fast execution, with ephemeral accounts that exist only inside the rollup
-- MagicBlock Private Ephemeral Rollups (TEE) with the permission program for owner-only account access
-- MagicBlock VRF for the season seed
-- Ephemeral SPL Token for the entry fees and prize pool
+The seasons on devnet so far are this project's own tests.
 
 ## Repository layout
 
-```
-crates/conclave-vm    strategy VM and world generator (no_std, integer only, no floats)
-crates/conclave-lab   local reference simulator, strategy assembler and strategy pool builder
-verifier/             record builder, counting policy and proof verifier over the receipts (read-only)
-crates/conclave-author     strategy source format, assembler with exact work accounting, ensemble simulator (native CLI and WASM); see docs/AUTHORING.md
-strategies/           example strategies in the source format
-crates/conclave-conformance        one pure function that runs a test vector, shared by every build target
-crates/conclave-conformance-tools  corpus generator and fuzzer
-tests/                conformance corpus, runners for WASM and SBF, and the SBF harness program
-program/              the on-chain program (SBF), PANIC_PASS.md documents its hardening
-tests/svm/            in-process SVM suite that runs the compiled program: lifecycle, edge cases, rejections, metering, fuzz
-client/               Node scripts that drive the program on devnet, and the devnet canary (client/canary.mjs)
-scripts/              reproducible build, deployed-equals-artifact check, canary runner
-.github/workflows/    CI (keyless) and the scheduled devnet canary
-```
-
-`conclave-vm` is the single source of truth for execution. The on-chain program and the local simulator both depend on it, so a season replayed locally produces the same scores as the chain.
+| Path | Contents |
+|---|---|
+| `program/` | The on-chain program (native Solana, no Anchor). `PANIC_PASS.md` covers its hardening |
+| `crates/conclave-vm` | The strategy VM and world generator (`no_std`, integer only). The program and the local tools share it |
+| `crates/conclave-author` | Strategy source format, assembler and ensemble simulator, native and WASM ([`docs/AUTHORING.md`](docs/AUTHORING.md)) |
+| `crates/conclave-lab` | Local reference simulator and strategy pool builder |
+| `crates/conclave-conformance`, `-tools` | Test-vector runner, corpus generator and fuzzer |
+| `strategies/` | Example strategies |
+| `client/` | Node scripts that drive the program on devnet, including strategy custody ([`docs/CUSTODY.md`](docs/CUSTODY.md)) and the canary |
+| `verifier/` | Record builder, capture loop, counting policy and proof verifier |
+| `server/` | Record API, and wallet-session auth with a key-holding RPC proxy ([`server/README.md`](server/README.md)) |
+| `deploy/` | Entrypoint that runs the capture loop and the API as one unit |
+| `tests/` | Conformance corpus, in-process SVM suite, client and tooling tests |
+| `scripts/`, `.github/workflows/` | Reproducible build, deployed-equals-artifact check, canary, CI |
 
 ## Building
 
-Toolchain versions used so far:
-
-- Rust stable 1.94 for the host crates
-- Solana CLI 3.1.9 with `cargo-build-sbf` (platform-tools v1.52, rustc 1.89) for the program
-- Node.js 22
-
-Host crates and the local simulator:
+Versions used: Rust 1.94, Solana CLI 3.1.9 with `cargo-build-sbf` (platform-tools v1.52), Node.js 22.
 
 ```
-cargo build --release
-./target/release/conclave-lab          # writes the strategy pool to ./out (override with CONCLAVE_OUT)
-```
-
-On-chain program:
-
-```
-cd program
-cargo build-sbf                        # target/deploy/conclave.so
-```
-
-Client scripts:
-
-```
-cd client
-npm install
+cargo build --release                      # host crates
+./target/release/conclave-lab              # strategy pool, written to ./out (CONCLAVE_OUT)
+(cd program && cargo build-sbf)            # target/deploy/conclave.so
+(cd client && npm ci)
 ```
 
 ## Tests
 
 ```
-tests/conformance.sh                   # host, WASM and SBF must agree bit for bit on the whole corpus
-cargo build --profile fuzz -p conclave-conformance-tools --features cov
-./target/fuzz/cc-fuzz --seconds 60     # random programs, returns and states; reports any panic or divergence
+tests/conformance.sh                       # host, WASM and SBF must agree bit for bit on the corpus
+tests/author.sh                            # assembler and simulator, native against WASM
+tests/svm.sh                               # the real program bytecode in an in-process SVM (SVM_FUZZ_ITERS to fuzz longer)
+(cd server && npm ci && npm test)          # needs the verifier's dependencies installed
+(cd verifier && npm ci && npm test)        # offline, over recorded devnet responses
+cargo build --profile fuzz -p conclave-conformance-tools --features cov && ./target/fuzz/cc-fuzz --seconds 60
+scripts/repro-build.sh --twice --check     # two clean builds, equal to program/BUILD_HASH
+scripts/verify-deployed.sh                 # read-only: devnet bytes equal the artifact
+scripts/canary.sh                          # a minimal live season under a throwaway wallet
 ```
 
-```
-tests/author.sh                      # assembler, simulator and the WASM build against the native CLI and the conformance WASM
-```
+`.github/workflows/ci.yml` lists the exact CI steps; it uses no secrets and no chain. The SVM suite replaces the rollup services (Magic, permission, VRF, eSPL, delegation) with stand-ins that do not move lamports or model privacy. Rent behaviour and enclave privacy are only checked on devnet. `crates/conclave-vm/PANIC_FREEDOM.md` records the bounds that keep VM operations from aborting. `program/REPRODUCIBLE.md` gives the build recipe, its dependence on the build path, and how to check the deployed program against `program/BUILD_HASH`.
 
-The authored path is also part of the conformance gate: `tests/conformance/authored.bin` pins what the assembler emits for every example strategy and runs it on host, WASM and SBF.
-
-```
-tests/svm.sh                           # real program bytecode in an in-process SVM: lifecycle, 1 to 20 entrants, rejections, metering, parsing fuzz
-SVM_FUZZ_ITERS=200000 tests/svm.sh     # longer fuzz
-```
-
-```
-scripts/repro-build.sh --twice --check # two clean SBF builds must hash the same and equal program/BUILD_HASH
-scripts/verify-deployed.sh             # read-only: the program on devnet equals the artifact byte for byte
-scripts/canary.sh                      # minimal v2 season on devnet under the throwaway canary wallet
-```
-
-`docs/AUTHORING.md`, `docs/SEALING.md` and `docs/CAMPAIGN.md` cover writing, testing, sealing and campaigning a strategy. `program/LIFECYCLE.md` describes the season state machine, bounds and deadlines, the two-phase finals, pull payouts and the money guards (cancel and refund, creation bond, hub accounting, solvency) and the access guards (pause, stake-mint allowlist, bond recovery; one authority key for now, multisig deferred). `program/REPRODUCIBLE.md` has the pinned recipe and the one thing to know: the SBF artifact depends on the absolute build path, so the script builds at a canonical path. The canary needs `conclave-keys/canary.json` (or `CANARY_KEY` in the environment) and refuses to run as the payer or the upgrade authority. CI (`.github/workflows/ci.yml`) uses no secrets and no chain. The scheduled canary workflow needs one repository secret, `CANARY_KEY`, set by you.
-
-The SVM suite replaces the rollup-native services (Magic, permission, VRF, eSPL, delegation) with small stand-in programs; the program, System, SPL Token and ATA programs are real. Rent refunds and TEE privacy are checked on devnet only.
-
-The conformance script needs the Solana CLI tools for the SBF leg and runs a local validator. `crates/conclave-vm/PANIC_FREEDOM.md` lists the bound that keeps every VM operation from aborting.
+The scheduled canary needs one repository secret, `CANARY_KEY`. Locally it reads `conclave-keys/canary.json` and refuses to run as the payer or upgrade authority.
 
 ## Keys
 
-No keypair is stored in this repository. The client reads its keys from a folder next to the repository root, `../conclave-keys/` by default, or from the folder named by `CONCLAVE_KEYS`. It expects these files, each a standard Solana keypair JSON:
+No keypair is stored in this repository. The client reads `../conclave-keys/`, or the folder in `CONCLAVE_KEYS`:
 
-- `payer.json`: funds transactions and is the program upgrade authority
-- `conclave-program.json`: the program address keypair
-- `players.json`: a JSON array of keypair arrays used as test players
-- `strategies.json`: written by the client before it sends a registration, it holds each strategy's secret salt and code. Back it up with encrypted recovery bundles (`docs/CUSTODY.md`): once a strategy is closed, a copy of its salt and code is the only way to prove or replay it
+* `payer.json`: pays transactions; the program's upgrade authority
+* `conclave-program.json`: the program address
+* `players.json`: test player keypairs
+* `strategies.json`: each strategy's secret salt and code, written before registration is sent. Back it up with encrypted bundles (`docs/CUSTODY.md`)
 
-Keep that folder outside version control and out of any backup that is shared.
+Keep that folder out of version control and out of shared backups.
 
-## Deploying
-
-The program is deployed as an upgradeable program. With a funded devnet payer:
+## Deploying the program
 
 ```
 solana program deploy program/target/deploy/conclave.so \
   --program-id ../conclave-keys/conclave-program.json \
   -k ../conclave-keys/payer.json -u devnet
 ```
+
+An upgrade can need the program data account extended first, and some require that no season is open. Read the upgrade notes in `program/LIFECYCLE.md` before deploying.
 
 ## License
 

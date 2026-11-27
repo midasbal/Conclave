@@ -2,7 +2,7 @@
 
 One Railway service runs both, in one container, beside one volume: the capture daemon (`verifier/cli.mjs ingest`) writes the store, and the record API (`server/bin/serve.mjs`, record-only mode) reads it. They share a container because a volume can be attached to one service only. `deploy/supervisor.mjs` starts both and, if either one exits for any reason, stops the other and exits non-zero, so Railway restarts the whole unit.
 
-**Status.** Built and tested locally. The capture daemon was dry-run against a real Helius devnet endpoint, from a local machine into a scratch store. **Not yet done: the image build, anything on Railway itself, and the store migration.** Statements about Railway below are marked *(verified)* when they come from Railway's own documentation as read on 2026-11-27, *(staff reply)* when they come from a Railway employee's reply in the community forum, and *(unverified)* when neither.
+**Status.** Tested locally. The current capture daemon completed a one-cycle run against a Helius devnet endpoint from a local machine into an empty scratch store: 322 requests, 41 first copies, no read failed. No season was in progress. **Not done: building the image, anything on Railway, a long-running daemon, watching a live season through this endpoint, and moving the existing store.** Statements about Railway below are marked *(verified)* when they come from Railway's own documentation as read on 2026-11-27, *(staff reply)* when they come from a Railway employee's reply in the community forum, and *(unverified)* when neither.
 
 ## What is in the repository
 
@@ -19,7 +19,7 @@ One Railway service runs both, in one container, beside one volume: the capture 
 3. Set the variables below.
 4. Settings, if `railway.json` is not used: builder Dockerfile; health check path `/health`; restart policy Always.
 
-A volume is mounted as root, and Railway says to set `RAILWAY_RUN_UID=0` if the image runs as another user *(verified)*. This image already runs as root; set the variable anyway, as the platform's own statement of intent.
+A volume is mounted as root, and Railway says to set `RAILWAY_RUN_UID=0` if the image runs as another user *(verified)*. This image runs as root; setting the variable too does no harm.
 
 ## Variables
 
@@ -45,30 +45,30 @@ Not set in this deployment: `CONCLAVE_AUTH_SECRET`, `CONCLAVE_RPC_UPSTREAM`, `CO
 
 ## Cadence and RPC credit
 
-The daemon polls every five minutes and sweeps hourly. We control when seasons settle, and a receipt waits on base until someone calls ReleaseBond, so a slow poll loses nothing.
+Poll every five minutes, sweep hourly. What a slower poll costs is in `docs/RECORD_SERVICE.md`.
 
-**Prices** ([Helius's credits page](https://www.helius.dev/docs/billing/credits), read 2026-11-27): `getProgramAccounts` costs **10 credits**; the other methods the daemon uses (`getSignaturesForAddress`, `getTransaction`, `getAccountInfo`, `getMultipleAccounts`, `getGenesisHash`) cost **1 each**. The [Free plan](https://www.helius.dev/pricing) allows 1M credits a month, 10 requests a second and 5 `getProgramAccounts` a second.
+**Prices** ([Helius credits](https://www.helius.dev/docs/billing/credits), read 2026-11-27): `getProgramAccounts` 10 credits; the other methods the daemon uses, 1 each. The [Free plan](https://www.helius.dev/pricing): 1M credits a month, 10 requests a second, 5 `getProgramAccounts` a second.
 
-**Request counts, measured** in a dry run against a Helius devnet endpoint on 2026-11-27, over a store of 88 listed receipts. The credits are those counts at the listed prices: no response carried a credit header, so the charge itself was not observed.
+**Request counts were measured** on 2026-11-27 over 88 listed receipts. **Credits are calculated** from the listed prices; no response reported a charge. The poll and sweep figures come from an earlier version of the daemon and were not repeated on the current one; the empty-store count was the same on both.
 
 | Cycle | Requests | Credits |
 |---|---|---|
-| A normal poll (two `getProgramAccounts`) | 2 | about 20 |
-| An hourly sweep, including that poll | 59 | about 77 |
+| Poll | 2 | about 20 |
+| Sweep, including its poll | 59 | about 77 |
 | Filling an empty store, once | 322 | about 340 |
 
-A running daemon also asks `getGenesisHash` once per start (1 credit). At the relaxed cadence a day is 264 polls and 24 sweeps: about 7,100 credits, **about 214,000 a month, about 21 percent of the Free plan's 1M**. A poll's cost does not grow with the record; a sweep's does, as receipts accumulate.
+Each start adds one `getGenesisHash`. At 264 polls and 24 sweeps a day: about 214,000 credits a month, about 21 percent of the free 1M. Sweeps grow with the number of receipts.
 
-* **Point the monitor at `/healthz`: it makes no RPC calls.** `/v1/status` reads one slot from the RPC at most once every ten seconds while it is being asked, which is at most about 259,000 credits a month if something asks it continuously.
-* **Unconfirmed: whether devnet calls draw credits on the Free plan.** The pages read do not say, nor that the Free plan includes devnet RPC, nor what happens when the credits run out. The key used in the dry run worked on devnet. Check the provider's dashboard after a day of running.
-* **The delegation-program scan returned** in the dry run: 18.9 s on the first call, 1.1 s and 0.1 s on the next two, against the client's 60 s timeout, with 8 matching accounts. Three samples do not show the worst case, and a result set that small does not show how a large one is served.
-* **The URL must name the parameter:** `https://devnet.helius-rpc.com/?api-key=<key>`. With the key alone after the `?`, Helius answers HTTP 401.
+* **Monitor `/healthz`, which makes no RPC call.** `/v1/status` reads one slot at most every ten seconds while requested: at most about 259,000 credits a month.
+* **Unconfirmed:** whether devnet calls draw credits on the Free plan, whether that plan includes devnet RPC, and what happens when credits run out. The key used worked on devnet. Check the provider's dashboard after a day.
+* **Delegation-program scan:** 1.5 s in the latest run. An earlier session saw 18.9 s on a first call, then 1.1 s and 0.1 s. The client times out at 60 s. Each returned 8 accounts, which says nothing about a large result.
+* **URL form:** `https://devnet.helius-rpc.com/?api-key=<key>`. Without the parameter name Helius answers 401.
 
-## When the RPC fails, at startup or later
+## When the RPC or a read fails
 
-The daemon opens its store from disk and sends nothing while doing so. The check that the RPC serves the expected cluster is the first step of the capture cycle, inside the retry loop. So a refused key, an outage or a rate limit at startup does not stop the process: the API serves the last record on disk, `status.json` says `degraded` (or `rate-limited`) with the reason, `/healthz` answers 503, `/health` stays 200, and the loop retries with backoff (up to five minutes; a rate limit waits as long as the endpoint asked). Nothing is captured until the cluster has been verified, and an RPC for the wrong cluster is retried and refused every time. On a brand-new, empty store there is no record yet, and `/v1` answers 503 until the first cycle succeeds.
+The daemon does not exit. The API keeps serving the last record, `/healthz` answers 503, `/health` stays 200, and the loop retries with backoff of up to five minutes (longer if a rate limit asks). With a five-minute poll, the first retry is five minutes later. **A single receipt that can never be read freezes the published record**; see "When something fails" in `docs/RECORD_SERVICE.md`. An empty store serves 503 on `/v1` until a cycle succeeds.
 
-A configuration error still stops the container at once, by design: a missing `CONCLAVE_VERIFIER_RPC` or store, a value that is not a URL at all, or a volume that fails the preflight.
+A configuration error does stop the container: a missing RPC variable or store, a value that is not a URL, or a volume that fails the preflight.
 
 ## The health endpoints
 
@@ -95,11 +95,11 @@ The wallet-proof challenge under `/v1/proofs/wallet/challenges` is part of the r
 
 ## Client address and the rate limit
 
-Behind Railway's proxy every connection arrives from the proxy, so the connection's own address is useless for telling callers apart, and a header is only worth trusting if the proxy overwrites it. **I could not establish how Railway sets `X-Forwarded-For`.** Railway's page on limits, where it would be documented, returned 404. A Railway employee wrote that the edge strips `X-Forwarded-For`, that its first value is the real connecting IP, and that `X-Real-IP` is a single source of truth *(staff reply, 2026-06-12)*. In the same thread a community member wrote that the edge appends and does not strip, and a later user reported seeing only Railway and CDN addresses in it. The thread is open.
+Behind Railway's proxy every connection arrives from the proxy, so the connection's own address is useless for telling callers apart, and a header is only worth trusting if the proxy overwrites it. **How Railway sets `X-Forwarded-For` is not established.** Railway's page on limits, where it would be documented, returned 404. A Railway employee wrote that the edge strips `X-Forwarded-For`, that its first value is the real connecting IP, and that `X-Real-IP` is a single source of truth *(staff reply, 2026-06-12)*. In the same thread a community member wrote that the edge appends and does not strip, and a later user reported seeing only Railway and CDN addresses in it. The thread is open.
 
-So the default is `CONCLAVE_CLIENT_IP=global`: **one bucket for every caller, and the limit raised** (3,000 a minute for `/v1`, 300 for challenges). No header can buy a caller its own bucket, so nothing can be spoofed, and nobody is throttled by their neighbours at ordinary volume. The cost: one caller who sends 3,000 requests a minute starves everyone for that minute.
+So the default is `CONCLAVE_CLIENT_IP=global`: **one bucket for every caller, with the limit raised** (3,000 a minute for `/v1`, 300 for challenges). No header can buy a caller its own bucket. The cost: one caller sending 3,000 requests a minute starves everyone else for that minute. Other modes are `socket` (the connection's address), `x-real-ip` and `xff-first`.
 
-To switch to per-caller limiting after the dry run (`x-real-ip` or `xff-first`), prove the proxy overwrites the header: with that mode set, send more than `RATE_API_PER_MIN` requests to `/v1/openapi.json` from one machine, each with a different made-up `X-Forwarded-For` (or `X-Real-IP`) value. If you still get `429`, the proxy replaced your header and it is safe. If you never do, the header is yours to forge: go back to `global`.
+To switch to per-caller limiting once deployed (`x-real-ip` or `xff-first`), prove the proxy overwrites the header: with that mode set, send more than `RATE_API_PER_MIN` requests to `/v1/openapi.json` from one machine, each with a different made-up `X-Forwarded-For` (or `X-Real-IP`) value. If you still get `429`, the proxy replaced your header and it is safe. If you never do, the header is yours to forge: go back to `global`.
 
 ## The routes that spend RPC credit per request
 
@@ -126,4 +126,4 @@ They are answered from a cache (`CONCLAVE_GPA_CACHE_SECONDS`, 60), identical con
 * **No off-platform backup.** The store lives on the volume. The committed `record-snapshots/` file is the manual cold copy, and the old store on the previous host stays untouched until you decide otherwise.
 * Moving the existing store onto the volume (`store restore --snapshot` into an empty store, then `store verify`) is a separate step.
 * More than one instance (the wallet-proof challenges, rate buckets and the lock all assume one).
-* The credit charge as the provider counts it, and the delegation-program scan from Railway or with a larger result set: not observed yet.
+* Not observed: the credit charge as the provider counts it, hard links on a Railway volume, and the scan from Railway or with a large result.

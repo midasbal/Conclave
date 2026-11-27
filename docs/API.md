@@ -1,16 +1,16 @@
 # The record API (v1)
 
-A public, read-only HTTP API over the record the capture loop writes (`docs/RECORD_SERVICE.md`). It is what the Phase 7 app reads. It is served by the existing server (`server/`), under `/v1`.
+A public, read-only HTTP API under `/v1`, served by `server/` from the record the capture loop writes (`docs/RECORD_SERVICE.md`). The web app, not yet built, will read it.
 
 * **It reads the store, not the chain.** A request costs one stat of two files unless the loop has written a new record. The single exception is the freshness field of `/v1/status`, which asks the RPC for one finalized slot (cached ten seconds).
-* **It holds no token and no secret.** It never talks to the rollup, never sees a wallet key, and has no field that could carry a strategy's salt or bytecode (see Honesty).
+* **The `/v1` code uses no token and no secret.** It never talks to the rollup, never sees a wallet key, and has no field that could carry a strategy's salt or bytecode. (A full server in the same process also holds an auth secret for its login routes; record-only mode needs none.)
 * **Everything in it comes from public receipts**, plus two facts read from public base data: the stake token of a season (its `InitPool` transaction) and whether a strategy has been closed (its registry account). The receipt itself carries neither.
 
 ## The contract
 
 The contract is `server/src/api/schema.mjs`: JSON Schema for every response and request, and the route table. Nothing else describes the API. The router takes its routes and cache policy from it, `server/openapi.v1.json` (OpenAPI 3.1) is generated from it (`node server/bin/gen-openapi.mjs`) and committed, and `GET /v1/openapi.json` serves it. Every object is closed (`additionalProperties: false`): a field that is not in the schema is a test failure, so the API cannot grow a field, or lose one, without this file and the committed OpenAPI document changing in the same commit.
 
-The contract tests (`server/test/api.contract.test.mjs`, `api.proofs.test.mjs`) build a real store with the real capture loop over responses recorded from devnet, start the real server, and validate **every page of the record** (280 responses) against the schema with ajv, a complete validator. The server's own small request validator is checked against ajv on every response and on corrupted copies.
+The contract tests (`server/test/api.contract.test.mjs`, `api.proofs.test.mjs`) build a store with the real capture loop over responses recorded from devnet, start the server, and validate every page of that record against the schema with ajv. The server's own small request validator is checked against ajv on every response and on corrupted copies.
 
 ## Permalinks
 
@@ -58,13 +58,13 @@ The data is public and changes at most once per capture-loop poll, so it is shar
 | proofs list, OpenAPI | `public, max-age=3600` |
 | every proof request, every challenge, every error | `no-store` |
 
-Any origin may read (`Access-Control-Allow-Origin: *`; nothing is credentialed), with a matching preflight. `/v1` has its own rate limits (default 300 a minute per client address; 30 a minute for issuing challenges). How the client address is found is `CONCLAVE_CLIENT_IP`: the connection's own address by default; `global` (one bucket for everybody, with the limits raised) for a platform proxy whose headers are not established; `x-real-ip` or `xff-first` only for a proxy known to overwrite that header (`docs/DEPLOY_RAILWAY.md`). A credential in a URL is refused, as on every route.
+Any origin may read (`Access-Control-Allow-Origin: *`; nothing is credentialed), with a matching preflight. `/v1` has its own rate limits (default 300 a minute per client address; 30 a minute for issuing challenges). `CONCLAVE_CLIENT_IP` sets how a caller is identified (`docs/DEPLOY_RAILWAY.md`). A credential in a URL is refused, as on every route.
 
-## Honesty, in the responses themselves
+## What every response keeps to
 
-These are properties of the responses, enforced by the schema and checked by tests over the whole record.
+Enforced by the schema and checked by tests over the recorded data.
 
-* **The fee always carries its stake token.** The receipt records a fee as a bare number. Every `fee` object has a `token`: the mint recovered from the season's `InitPool` transaction on base (`status: "observed"`, with where it was recovered from), or `mint: null` with `status: "unknown"` and the reason. In the recorded devnet data the token is named for 23 seasons; the other 6 were abandoned before any pool was made, so they have no token to name, and say so. A `unit` sentence says what the number is in.
+* **The fee always carries its stake token.** The receipt records a fee as a bare number. Every `fee` object has a `token`: the mint recovered from the season's `InitPool` transaction on base (`status: "observed"`, with where it was recovered from), or `mint: null` with `status: "unknown"` and the reason. A season abandoned before its pool was made has no token to name, and says so. A `unit` sentence says what the number is in.
 * **The validator is a trust input.** Every season's validator has `trustInput: true`, the sources it was recovered from, and a notice: it is chosen by the creator, is not on the receipt, and no attestation has been checked.
 * **A strategy is never returned without the sealing-disclosure notice**, and a closed one carries the stronger form: its salt and bytecode are permanently readable by anyone from devnet's own transaction history. The API **never serves or links them**: no field of any response is named `salt`, `code`, `bytecode` or `source` (a test walks the whole schema), no route looks up a strategy's transactions, and a test scans every response for any signature that is not one of a receipt's own history events. Whether a strategy is closed comes from its registry on base; a delegated registry shows base's last view, and the response says so.
 * **A ranking is never more than it is.** The leaderboard returns the excluded seasons with their reasons and the rules as configured. The policy sets no wallet or fee minimum, and says that counts do not prove a field is not one person.
@@ -92,6 +92,8 @@ Each result has `verified`, every check, `blockers`, what the level `establishes
 
 ## Running it
 
+Deployment, health checks, record-only mode and rate-limit settings are in `docs/DEPLOY_RAILWAY.md`.
+
 ```
 node verifier/cli.mjs ingest --store DIR --backup DIR        # the capture loop (docs/RECORD_SERVICE.md)
 CONCLAVE_STORE_DIR=DIR CONCLAVE_RULES_FILE=rules.json node server/bin/serve.mjs
@@ -102,11 +104,11 @@ CONCLAVE_STORE_DIR=DIR CONCLAVE_RULES_FILE=rules.json node server/bin/serve.mjs
 | `CONCLAVE_RECORD_ONLY=1` | serve the record API alone: no auth secret and no upstream needed, and the login, player and chain-proxy routes answer `403 disabled_in_record_only_mode` |
 | `CONCLAVE_STORE_DIR` | the store the capture loop writes. Without it `/v1` answers `404 store_not_configured` |
 | `CONCLAVE_RULES_FILE` | the counting rules in force, as JSON (`verifier/policy/rules.example.json` shows the form; its trusted creator is this project's own test key, an example only). Without it the leaderboard counts nothing |
-| `CONCLAVE_STALE_AFTER_SECONDS` | when `/v1/status` calls the record stale (default 300) |
+| `CONCLAVE_STALE_AFTER_SECONDS` | when `/v1/status` calls the record stale (default 300; the deploy entrypoint sets twice the poll interval plus 60) |
 | `RATE_API_PER_MIN`, `RATE_CHALLENGE_PER_MIN` | limits per client address |
 
 The server imports the verifier's code (`../verifier`), so the verifier's dependencies must be installed beside it (`cd verifier && npm ci`). The record must be version 2 (written by this version's capture loop): an older record is refused with `503 store_format` rather than misread.
 
 ## Not here
 
-TLS and a reverse proxy, more than one instance (see above), reading the rollup, any account or login. The first full Phase 7 screen to need a field the contract does not have is a change to `schema.mjs`, the generated OpenAPI file and the tests, in one commit.
+TLS and a reverse proxy, more than one instance (see above), reading the rollup, and accounts or logins. A new field is a change to `schema.mjs`, the generated OpenAPI file and the tests in one commit.

@@ -1,3 +1,8 @@
+// HISTORICAL: written for an earlier build, NOT the deployed program. Do not read it as current behaviour.
+// It asserts that the HUB pays each sealed strategy's rent. Since the Phase 6 build the strategy's own registry pays it (program/LIFECYCLE.md, "Phase 6").
+// It proved receipts and identity on the receipts build of 2026-11-26.
+// Kept as the record of what was proved then. It calls the current client helpers, but its rent expectations were not updated: it does not reproduce that run, and is not expected to pass today.
+//
 // Devnet proof of receipts and identity (4A), real signatures through the TEE and on base, real stake tokens. Every signature goes to evidence/proof4a_<mode>.txt.
 //   node client/proof4a.mjs paid     a fresh receipt attacked and then used by a paid finals season: what is visible of the field before Lock, attribution of every entry, a total proved with the derived score salt only,
 //                                    Cleanup attacked, the closed receipt attacked, every strategy closed to its permanent marker, the hub whole

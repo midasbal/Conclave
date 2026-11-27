@@ -29,7 +29,7 @@ A settled season that is still open is always delegated (the program only lets a
 
 ## Running it continuously
 
-`node cli.mjs ingest --store DIR --backup DIR` is the capture loop: a fast poll every minute, a full sweep every fifteen, the first final copy of every receipt saved exactly once into a managed store with a hash-chained ledger, a mirror, and a committable snapshot. Every record it writes says the slot it is current to. How it works, how it is backed up and how to restore: [`docs/RECORD_SERVICE.md`](../docs/RECORD_SERVICE.md). The one-shot `record` below is the same builder run once.
+`node cli.mjs ingest --store DIR [--backup DIR]` runs the same builder as a loop. It saves each first final copy once into a store with a hash-chained ledger. When something cannot be read, it publishes nothing and keeps the last good record. See [`docs/RECORD_SERVICE.md`](../docs/RECORD_SERVICE.md). The one-shot `record` command instead publishes what it could read and notes what it could not.
 
 ## The first final copy
 
@@ -46,7 +46,7 @@ A late reader sees only current bytes. So the first time the builder sees a rece
 
 Flags are permanent: a receipt changed and changed back stays flagged.
 
-**What the archive cannot do.** (The service adds a ledger, a backup mirror and a snapshot: see `docs/RECORD_SERVICE.md`.) It protects you from changes **after** your first copy. It cannot show what happened before. It is a local folder: someone who can edit your disk can rewrite a copy and its hash together. `record` prints two digests. Publish `digest` to commit to your exact copies. Compare `recordDigest` between archives: it blanks the bond field, so two honest archivers agree even if one first saw a receipt before ReleaseBond and the other after. Keep the folder: it cannot be rebuilt.
+**What the archive cannot do.** It protects you from changes **after** your first copy and cannot show what happened before. Someone who can edit your disk can rewrite a copy and its hash together. `record` prints two digests: publish `digest` to commit to your exact copies, and compare `recordDigest` between archives (it blanks the bond field, so archivers who first saw a receipt on either side of ReleaseBond still agree). Keep the folder. A receipt can be read again, but nobody can then show what it said when you first saw it.
 
 ## Three views
 
@@ -66,16 +66,17 @@ They record no owner, and a commitment only where a result was published. Older 
 
 For every season the record gives: field size, distinct entrant wallets, distinct code commitments, published entries, creator, whether the creator also entered, fee per entry, total owed and refunded, kind, finals status and reason, episodes, division, VM rules, bond and forfeit, validator, creation time, and flags.
 
-Two limits come from the receipt itself:
+Three things are not on the receipt:
 
-* **The fee has no unit.** It is `total owed / entries`, in base units of a stake token that the receipt does not name. A fee of 10 may be worth nothing.
-* **The receipt carries no time.** `createdAt` comes from transaction history.
+* **The fee's token.** The fee is `total owed / entries` in base units. The record names the token from the season's `InitPool` transaction (`stakeToken`), or says it is unknown. That is the RPC's account of history, and a fee of 10 may be worth nothing.
+* **The time.** `createdAt` comes from transaction history.
+* **Whether a strategy is closed.** `registries` reports what its registry on base says. A delegated registry shows base's last view.
 
 Ranking is a **separate module**, [`policy/official.mjs`](policy/official.mjs): a pure function of the record and a rules file. It never changes the record. Edit it, or run your own with `rank --policy ./mine.mjs`.
 
-The official policy counts a season only if it is final, has no alarm flag, comes from a creator **on your trusted list**, has an observed validator **on your trusted list**, has a result, and has at least two entries. It orders strategies by the sum, over counted seasons, of the share of other entrants placed below them, then by wins. It lists every excluded season with its reasons.
+The official policy counts a season only if it is final, has no alarm flag, comes from a creator **on your trusted list**, has an observed validator **on your trusted list**, has a result, and has at least two entries. It orders strategies by the **sum**, over counted seasons, of the share of other entrants placed below them, then by wins. Because it is a sum and not an average, a strategy entered in more counted seasons can outrank a stronger one entered in fewer. It lists every excluded season with its reasons.
 
-**It sets no minimum fee or wallet count, on purpose.** The system is permissionless: anyone can create a season and fill it with their own wallets and a token of their own. Such a minimum is only a price for farming, never proof against it. Those numbers are there for a reader to judge with. The trusted-creator list is the whole of the protection. `policy/rules.example.json` trusts this project's own test key to show the mechanics; those seasons are tests. An unknown rule name is an error, so a typo cannot silently relax a rule.
+**It sets no minimum fee or wallet count, on purpose.** The system is permissionless: anyone can create a season and fill it with their own wallets and a token of their own. Such a minimum is only a price for farming, never proof against it. Those numbers are there for a reader to judge with. The trusted creator and validator lists are the whole of the protection. `policy/rules.example.json` trusts this project's own payer key as creator to show the mechanics; those seasons are tests, entered by the project's test wallets. An unknown rule name is an error, so a typo cannot silently relax a rule.
 
 ## The validator is a trust input
 
@@ -120,6 +121,7 @@ Reveal files are secrets: they are written with mode 0600, are never overwritten
 * **Completeness is not provable.** One RPC lists the accounts. It could leave one out. Archived receipts are rechecked individually, but a receipt never listed goes unnoticed. Comparing two RPCs helps.
 * **History is the RPC's word.** Validator and creation time come from it, and old history can be pruned.
 * **Nothing is re-executed** below level 4, and level 4 re-executes one strategy.
+* One node can fail to serve history. A history longer than 5,000 transactions is read as far as that limit and marked incomplete. A pool's `InitPool` is looked for among its newest 1,000 transactions only, so a pool with more could be reported as having none.
 * Only devnet has been read.
 
 ## Tests

@@ -1,4 +1,5 @@
-// HTTP front: open routes (public, coarse), the auth routes, and the gated player routes. Credentials only ever arrive in the Authorization header or a POST body.
+// HTTP front for the whole server: the public record API under /v1 (src/api, served from the capture loop's store), /health (the process is up) and /healthz (200 only if the record service is healthy, else 503),
+// the open routes (public, coarse), the auth routes, and the gated player routes. In record-only mode only /v1, /health and /healthz are served. Credentials only ever arrive in the Authorization header or a POST body.
 import http from "node:http"; import bs58 from "bs58"; import { PublicKey } from "@solana/web3.js"; import { AuthError } from "./auth.mjs"; import { createLimiter } from "./ratelimit.mjs"; import { coarseReceipt, coarseClaims } from "./receipt.mjs";
 
 const PUBLIC_METHODS = new Set(["getSlot", "getLatestBlockhash", "getAccountInfo", "getMultipleAccounts"]);

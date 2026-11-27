@@ -16,7 +16,7 @@ A sealed strategy is opened by two things together: its 32-byte **salt** and its
 
 Writes are durable (temporary file, fsync, rename), one writer at a time, and a write that would drop or change a secret already in the file is refused. A file that cannot be parsed is never replaced. If a process is killed while writing, it can leave `strategies.json.lock`; the next write reports it and does nothing until you remove it.
 
-The canary does not save its disposable strategies in the key file. A canary run that dies midway leaves registries whose salts are gone.
+The canary saves its disposable strategies the same way, before sending, into its own file: `canary-strategies.json` in the key folder. Where there is no key folder, as in CI, it uses a temporary file that is lost with the runner.
 
 ## The recovery bundle (`ID.cvbundle`)
 
@@ -45,26 +45,27 @@ Give the passphrase with `--passphrase-file`, `CONCLAVE_BUNDLE_PASSPHRASE_FILE`,
 
 * `export-all` checks each record against whatever the chain still holds (sealed account, registry, published receipt entries), writes `index.json` with public facts only, and exits non-zero on any disagreement. It reads one sealed account at a time, slowly, because the rollup bans clients that hurry.
 * `recover` needs the owner's wallet and **not** the key file. Without `--id` it finds the owner's strategies through their open registries on base. Only strategies that are still sealed can be recovered. It writes new bundle files, so it needs a folder where they do not already exist, or the same passphrase.
-* `verify --season` needs only the bundle, its passphrase and the public receipt. It replays the bytecode on the receipt's seeds and checks the score commitment, which also works after the strategy is closed. It needs the author module built (see `docs/AUTHORING.md`) and a VM with the receipt's rules. **Showing someone this proof means giving them the salt and the bytecode.** On a format 3 receipt, a season's totals alone can be proved with that season's score salt, which opens neither the code commitment nor any other season. **This premise holds only while the strategy stays open.** Once it is closed, the salt and bytecode are already public to anyone, with no proof and no bundle needed, from devnet's own transaction history; see "Security considerations: sealing disclosure" in `program/LIFECYCLE.md`.
+* `verify --season` needs only the bundle, its passphrase and the public receipt. It replays the bytecode on the receipt's seeds and checks the score commitment, including after the strategy is closed. It needs the author module built (`docs/AUTHORING.md`) and a VM with the receipt's rules. **Showing someone this proof means giving them the salt and the bytecode.** On a format 3 receipt, a season's totals alone can be proved with that season's score salt, which opens neither the code commitment nor another season. That distinction matters only while the strategy is open (see below).
 * `rekey` re-encrypts under a new passphrase. Older copies of the file still open with the old one.
 
 ## Export before close
 
-Closing wipes the sealed salt and code from the account, but not from devnet's own history: see "Security considerations: sealing disclosure" in `program/LIFECYCLE.md`. `closeStrategy` in `client/flows.mjs` therefore refuses to run at all unless its caller passes `{ acknowledgeDisclosure: true }`, and prints `F.DISCLOSURE_WARNING` if it does not. Only once that is given does it require a passphrase and, before sending anything, write a bundle from the sealed account (or accept a matching one), read it back from disk, open it, and check program, cluster, id, owner, salt, bytecode and commitment against the sealed account and the registry. `closeStrategyIx` cannot be built without the ticket this check issues, and refuses if the bundle file has since changed or gone.
+**Closing publishes the strategy.** It wipes the sealed account, but makes the salt and bytecode readable by anyone from devnet's transaction history ("Security considerations: sealing disclosure" in `program/LIFECYCLE.md`). No backup protects against that.
 
-**The backup protects users of this client only; the disclosure warning does not protect anyone from a decision they make anyway.** Anyone can build the CloseStrategy instruction by hand, or use another client, and close with no backup and no warning. The program cannot know whether a backup exists, or that the owner was told what closing does. The check also cannot know that you will remember the passphrase, or that the file will survive.
+`closeStrategy` in `client/flows.mjs` therefore refuses to run unless the caller passes `{ acknowledgeDisclosure: true }`, and prints `F.DISCLOSURE_WARNING` otherwise. It then requires a passphrase and, before sending anything, writes a bundle from the sealed account (or accepts a matching one), reads it back, opens it, and checks program, cluster, id, owner, salt, bytecode and commitment against the sealed account and the registry. `closeStrategyIx` cannot be built without the ticket this check issues, and refuses if the bundle has since changed or gone.
 
-## How this can still go wrong
+These guards cover users of this client only. Anyone can send CloseStrategy by hand with no backup and no warning, and the program cannot tell. The check also cannot ensure you will keep the file or remember the passphrase.
 
-* **Closing a strategy is not just losing a copy: it is publishing the salt and bytecode.** This is not a bundle, backup, key file or passphrase failure; it happens even with every copy intact, and nothing listed below protects against it. See "Security considerations: sealing disclosure" in `program/LIFECYCLE.md`.
-* Every copy lost: key file, bundles, and the sealed account (closed, or the rollup's state gone). There is no other way back.
-* The passphrase forgotten once the sealed account and key file are gone.
-* Bundles and passphrase kept on one disk. By default both sit in the key folder, beside the key file: that is not yet a backup. Copy the bundles elsewhere, and keep the passphrase somewhere else again.
-* A weak passphrase on a bundle that someone else obtains.
-* A machine that is already compromised sees the key file, the passphrase and the decrypted bundle.
-* A wallet that is lost cannot sign in to the rollup to recover. Bundles still open (they need only the passphrase) but the strategy cannot be operated.
-* The VM changes: the bundle opens the commitment forever, but replaying an old score needs the VM rules it ran under (the receipt records their fingerprint). Strategies of ruleset 1 do not run on the current VM.
-* A record that was never confirmed on chain can be bundled, but a bundle then shows only that its own salt and code agree.
+## How you can still lose it
+
+* Every copy is lost: key file, bundles, and the sealed account (closed, or the rollup lost its state). There is no other way back.
+* The passphrase is forgotten after the sealed account and key file are gone.
+* Bundles and passphrase sit on one disk. By default both are in the key folder beside the key file, which is not a backup. Keep the bundles somewhere else, and the passphrase somewhere else again.
+* A weak passphrase protects a bundle that someone else obtains.
+* A compromised machine sees the key file, the passphrase and the decrypted bundle.
+* A lost wallet cannot sign in to the rollup to recover. Bundles still open with the passphrase, but the strategy cannot be operated.
+* The VM changes. The bundle always opens the commitment, but replaying an old score needs the VM rules it ran under (the receipt records their fingerprint). Ruleset 1 strategies do not run on the current VM.
+* A bundle of a record that was never confirmed on chain shows only that its own salt and code agree.
 
 ## Tests
 

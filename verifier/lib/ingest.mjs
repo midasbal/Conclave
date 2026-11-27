@@ -1,9 +1,13 @@
 // The capture loop. One cycle:
 //   fast poll   two paged listings of the receipts on base (the program's and the delegation program's). An account whose fingerprint (owner, lamports, bytes) is unchanged costs nothing more. Only changed ones are
-//               processed: delegation record, NEW signatures only (`until` the newest already seen), classification, first final copy, flags, validator. Cheap enough to run every minute.
+//               processed: delegation record, NEW signatures only (`until` the newest already seen), classification, first final copy, flags, validator.
 //   full sweep  every `sweepMs`, and on the first cycle: every known address is processed again, and the history of every one is asked for what is new. This is what catches what a fingerprint cannot, such as an
 //               account delegated and returned between two polls with the same bytes, and anything a poll missed.
 // Both run the SAME per-address code as the one-shot builder (lib/builder.mjs processAddress), so the record is the same record. Nothing here ever replaces a first copy or clears a flag.
+// The interval between polls is the caller's: the CLI defaults to 60 s and a sweep every 15 min, the deploy entrypoint (deploy/supervisor.mjs) to 300 s and 60 min.
+// FAIL CLOSED. A cycle that could not read or write something publishes nothing: the status says degraded (or rate-limited) with the reason, the last record stays, and what failed is read again until it succeeds.
+// First copies are saved before any history or pool read, and one failing receipt does not stop the others being captured. The exception to failing the cycle is the backup mirror, whose failure raises an alarm
+// and leaves the (correct) record published. A receipt that can never be read keeps the record at its last good state (docs/RECORD_SERVICE.md, "When something fails").
 // Reads are paced by the source (lib/chain.mjs). When it reports a rate limit the loop waits until the time it names and sends nothing meanwhile.
 import fs from "fs"; import path from "path";
 import { PROGRAM_ID, DELEGATION_PROGRAM_ID, DEVNET_GENESIS, sha256 } from "./chain.mjs";

@@ -1,7 +1,12 @@
 # Reproducible program build
 
-The deployed program (devnet `HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne`) is `434,928` bytes with sha256
-`1199d62c310a740f5c119565d1911b3ded77e5685c946ad78adeb4a2a4a91e4c`. Anyone can rebuild that file from this source and compare.
+The deployed program (devnet `HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne`) is `524,776` bytes with sha256
+`68d37e0fdf8a79c5d96ab78092f29b2fd954b1f06521d9d6c5ecabbddae499fb`, the hash recorded in `program/BUILD_HASH`. Anyone can rebuild that file from this source and compare. The built file is not committed (`target/` is ignored); the hash is.
+
+Confirming it takes two checks:
+
+1. **Source to hash.** CI's `reproducible-build` job (`.github/workflows/ci.yml`) runs `scripts/repro-build.sh --twice --check`: two clean builds must be identical and equal `program/BUILD_HASH`.
+2. **Hash to chain.** That job does not read the chain. `scripts/verify-deployed.sh`, run after a build, compares the artifact with the program on devnet. The program data account is larger than the program (525,016 bytes at the 2026-11-27 upgrade); the script requires everything after the first 524,776 bytes to be zero.
 
 ## Recipe
 
@@ -25,7 +30,7 @@ scripts/verify-deployed.sh                 # read-only: on-chain bytes equal the
 
 ## The build path matters (observed)
 
-The artifact depends on the absolute path of the workspace. Cargo includes the path of the path dependency (`crates/conclave-vm`) in the package id, and that feeds the symbol hashes. Observed on this machine, same source, same toolchain and lockfile:
+The measurements below were made on an earlier build, so their hashes and sizes are not the current ones. The artifact depends on the absolute path of the workspace. Cargo includes the path of the path dependency (`crates/conclave-vm`) in the package id, and that feeds the symbol hashes. Observed on this machine, same source, same toolchain and lockfile:
 
 | Build | sha256 prefix | Size |
 |---|---|---|
