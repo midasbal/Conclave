@@ -1,0 +1,7 @@
+{
+  "name": "EXAMPLE ONLY: shows the mechanics on the project's own devnet test seasons",
+  "note": "The creator below is the key that ran this project's tests, with its own player wallets. Listing it is not an endorsement: these seasons are tests, not a competition. Write your own list.",
+  "trustedCreators": [{ "key": "APUtAifQjb5jABveRQ2b6SUr9ctRtgnQsje4ma7P8LfW", "note": "this project's devnet test creator" }],
+  "trustedValidators": [{ "key": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo", "note": "the identity MagicBlock's devnet TEE endpoint reported. Its attestation has not been verified by this tool" }],
+  "countVoidedFinals": true
+}

@@ -42,3 +42,6 @@ Thumbs.db
 # local run state
 client/pins_state.json
 client/last_v2_entries.json
+
+# the record builder's local store: first final copies of on-chain receipts (public data, kept locally)
+record-archive/

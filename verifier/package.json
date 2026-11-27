@@ -1,0 +1,8 @@
+{
+  "name": "conclave-verifier",
+  "private": true,
+  "type": "module",
+  "description": "Record builder and proof verifier over the on-chain season receipts. Read-only: it needs no key",
+  "scripts": { "test": "node --test \"test/*.test.mjs\"" },
+  "dependencies": { "@solana/web3.js": "^1.99.0", "bs58": "^6.0.0", "tweetnacl": "^1.0.3" }
+}

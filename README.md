@@ -4,6 +4,10 @@ A sealed-strategy league on Solana. Players write a secret trading strategy, sea
 
 Each strategy is a short program for a small deterministic virtual machine. It is created private from its first instant and only its owner can read it. When a season locks, a VRF seed is drawn and the league runs every sealed strategy through the same set of seeded worlds inside the enclave. Skill is measured across the whole ensemble of worlds rather than a single live market, scores are computed in fixed-point integer math so any owner can replay their own result locally, and a prize pool is paid out by rank. In a season with finals, the top three by season rank play 15 more episodes on a fresh seed, and season plus finals score decides their order. Prizes are recorded on chain and claimed per entry (the client claims them all automatically). The two-phase finals and per-entry claims are deployed on devnet. So is reclaiming a sealed strategy: its owner can close it once no entry is open, the hub gets back the rent it paid, and the owner gets back the registry balance. The season receipt records every entry's owner and code commitment, and a closed strategy's id is retired for good. With this client the field is private before Lock: each entrant alone signs and pays for its own Enter, and on devnet neither the creator, another entrant, a stranger nor an anonymous caller could learn who else had entered, from the accounts or transaction history they tried. A sponsor who signs someone's Enter does see that entry. Live feeds, what the rollup operator can see and timing analysis are untested; see `program/LIFECYCLE.md`.
 
+## Records and proofs
+
+`verifier/` is a standalone, read-only tool: it rebuilds a career record from the on-chain receipts, keeps the first final copy of each, applies a separate counting policy, and checks four levels of proof. What each level does and does not show, and what has to be trusted (including the validator, which receipts do not record), is in [`verifier/README.md`](verifier/README.md).
+
 ## Status
 
 Early build, running on Solana devnet. Interfaces and account layouts will change. Nothing here has been audited.
@@ -21,6 +25,7 @@ Early build, running on Solana devnet. Interfaces and account layouts will chang
 ```
 crates/conclave-vm    strategy VM and world generator (no_std, integer only, no floats)
 crates/conclave-lab   local reference simulator, strategy assembler and strategy pool builder
+verifier/             record builder, counting policy and proof verifier over the receipts (read-only)
 crates/conclave-author     strategy source format, assembler with exact work accounting, ensemble simulator (native CLI and WASM); see docs/AUTHORING.md
 strategies/           example strategies in the source format
 crates/conclave-conformance        one pure function that runs a test vector, shared by every build target

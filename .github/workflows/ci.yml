@@ -50,6 +50,11 @@ jobs:
         run: |
           (cd client && npm ci --no-audit --no-fund)
           cd tests/svm && cargo test --release --test client_flows -- --ignored
+      - name: Verifier against receipts written by the program bytecode (all four proof levels)
+        run: |
+          (cd verifier && npm ci --no-audit --no-fund)
+          (cd client && npm ci --no-audit --no-fund)
+          cd tests/svm && cargo test --release --test verifier_4b -- --ignored
       - name: Bounded VM fuzz (fails on any panic or divergence)
         run: |
           cargo build --profile fuzz -p conclave-conformance-tools --features cov --locked
@@ -69,6 +74,8 @@ jobs:
           (cd server && npm ci --no-audit --no-fund)
       - name: Auth, gating, rate limit, key hygiene and leak-surface tests
         run: cd server && npm test
+      - name: Record builder, counting policy and verifier (offline, over recorded devnet responses)
+        run: cd verifier && npm ci --no-audit --no-fund && npm test
   reproducible-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

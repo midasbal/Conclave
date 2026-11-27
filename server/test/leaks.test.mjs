@@ -2,7 +2,7 @@
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "node:fs"; import path from "node:path"; import util from "node:util"; import { fileURLToPath } from "node:url"; import { Endpoint } from "../../client/endpoint.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 function walk(dir, out = []) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (["node_modules", "target", ".git", "evidence", "out", "test", "conformance"].includes(e.name)) continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p, out); else if (/\.(mjs|js|sh|yml|yaml|md|json|rs|toml)$/.test(e.name) && !/package-lock/.test(e.name)) out.push(p); } return out; }
-const files = [...walk(path.join(ROOT, "client")), ...walk(path.join(ROOT, "server")), ...walk(path.join(ROOT, "scripts")), ...walk(path.join(ROOT, ".github")), ...walk(path.join(ROOT, "program")).filter(f => !f.includes("/src/")), path.join(ROOT, "README.md"), ...fs.readdirSync(path.join(ROOT, "tests")).filter(f => f.endsWith(".sh")).map(f => path.join(ROOT, "tests", f))];
+const files = [...walk(path.join(ROOT, "client")), ...walk(path.join(ROOT, "server")), ...walk(path.join(ROOT, "verifier")), ...walk(path.join(ROOT, "scripts")), ...walk(path.join(ROOT, ".github")), ...walk(path.join(ROOT, "program")).filter(f => !f.includes("/src/")), path.join(ROOT, "README.md"), ...fs.readdirSync(path.join(ROOT, "tests")).filter(f => f.endsWith(".sh")).map(f => path.join(ROOT, "tests", f))];
 const rel = f => path.relative(ROOT, f);
 
 test("nothing builds a URL with a token, key or secret in the query string", () => {
