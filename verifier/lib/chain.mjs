@@ -20,28 +20,39 @@ export const receiptAddress = (season, program) => find([Buffer.from("receipt"),
 export const delegationRecordAddress = address => find([Buffer.from("delegation"), unkey58(address)], DELEGATION_PROGRAM_ID);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-/** The reads the record builder needs, always at FINALIZED commitment. Anything with these methods can stand in as a source (the tests replay recorded devnet responses) */
-export function rpcSource(url = DEFAULT_RPC, { pause = 250, retries = 6 } = {}) {
-  const host = new URL(url).host; let last = 0;
+/** how fast to read, and how long to stay away after a refusal. The rollup (TEE) endpoints have banned this client for hurrying, so they are paced four times slower and a refusal keeps us away ten minutes */
+export const rpcDefaults = host => /tee/i.test(host) ? { pause: 1000, banMs: 10 * 60_000 } : { pause: 250, banMs: 60_000 };
+/** thrown, and never sent past, once an endpoint has said "too many requests" or has banned this client. `retryAt` is when reading may resume */
+export class RateLimited extends Error { constructor(host, retryAt, why) { super(`${host} is rate limiting this client (${why}); no request will be sent before ${new Date(retryAt).toISOString()}`); this.name = "RateLimited"; this.retryAt = retryAt; } }
+/** The reads the record builder needs, always at FINALIZED commitment. Anything with these methods can stand in as a source (the tests replay recorded devnet responses).
+ *  Pacing: one request at a time, at least `pause` ms apart with some jitter (the rollup endpoints that ban a client that hurries are paced four times slower by default). A 429, or an answer that says "banned",
+ *  opens a breaker: for `Retry-After` (or a long default) every call fails at once WITHOUT touching the network, so a loop that keeps trying cannot make a ban worse. */
+export function rpcSource(url = DEFAULT_RPC, { pause, retries = 4, timeoutMs = 60_000, banMs } = {}) {
+  const host = new URL(url).host; const d = rpcDefaults(host); pause ??= d.pause; banMs ??= d.banMs; let last = 0, blockedUntil = 0, sent = 0;
   async function call(method, params) {
     for (let attempt = 0; ; attempt++) {
-      const wait = last + pause - Date.now(); if (wait > 0) await sleep(wait); last = Date.now();
-      let status = 0, body;
-      try { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(60_000) }); status = r.status; body = await r.json(); }
-      catch (e) { if (attempt < retries) { await sleep(1000 * 2 ** attempt); continue; } throw new Error(`${method} on ${host}: no usable answer (HTTP ${status || "none"}, ${e.name})`); }
-      if (status === 429 || status >= 500) { if (attempt < retries) { await sleep(1000 * 2 ** attempt); continue; } }
+      if (Date.now() < blockedUntil) throw new RateLimited(host, blockedUntil, "backing off");
+      const wait = last + pause * (0.9 + Math.random() * 0.2) - Date.now(); if (wait > 0) await sleep(wait); last = Date.now();
+      let status = 0, text = "", retryAfter = null;
+      try { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(timeoutMs) }); status = r.status; retryAfter = r.headers.get("retry-after"); text = await r.text(); sent++; }
+      catch (e) { if (attempt < retries) { await sleep(1000 * 2 ** attempt); continue; } throw new Error(`${method} on ${host}: no usable answer (${e.name})`); }
+      if (status === 429 || /banned|temporarily blocked/i.test(text.slice(0, 300))) { const ms = retryAfter && /^\d+$/.test(retryAfter) ? Math.min(+retryAfter * 1000, 6 * 3600_000) : banMs; blockedUntil = Date.now() + ms; throw new RateLimited(host, blockedUntil, status === 429 ? "HTTP 429" : "banned"); }
+      if (status >= 500) { if (attempt < retries) { await sleep(1000 * 2 ** attempt); continue; } throw new Error(`${method} on ${host}: HTTP ${status}`); }
+      let body; try { body = JSON.parse(text); } catch { throw new Error(`${method} on ${host}: HTTP ${status}, not JSON`); }
       if (body.error) throw new Error(`${method} on ${host}: ${String(body.error.message ?? body.error.code).slice(0, 160)}`);
       return body.result;
     }
   }
   const account = (a, slot) => a ? { owner: a.owner, lamports: a.lamports, data: Buffer.from(a.data[0], "base64"), slot } : null;
-  const byMagic = async owner => { const r = await call("getProgramAccounts", [owner, { encoding: "base64", commitment: "finalized", withContext: true, filters: [{ memcmp: { offset: 0, bytes: key58(RECEIPT_MAGIC) } }] }]); return r.value.map(x => ({ address: x.pubkey, ...account(x.account, r.context.slot) })); };
+  const byMagic = async owner => { const r = await call("getProgramAccounts", [owner, { encoding: "base64", commitment: "finalized", withContext: true, filters: [{ memcmp: { offset: 0, bytes: key58(RECEIPT_MAGIC) } }] }]); const out = r.value.map(x => ({ address: x.pubkey, ...account(x.account, r.context.slot) })); out.contextSlot = r.context.slot; return out; };
   return {
-    host,
+    host, get requestsSent() { return sent; }, get blockedUntil() { return blockedUntil; },
     genesisHash: () => call("getGenesisHash", []),
+    slot: () => call("getSlot", [{ commitment: "finalized" }]),
     receiptsOwnedBy: byMagic,
     async account(address) { const r = await call("getAccountInfo", [address, { encoding: "base64", commitment: "finalized" }]); return r.value ? account(r.value, r.context.slot) : null; },
-    signatures: (address, before) => call("getSignaturesForAddress", [address, { limit: 1000, commitment: "finalized", ...(before ? { before } : {}) }]),
+    /** newest first. `before` pages backwards; `until` stops at a signature already known, so only NEW signatures are fetched */
+    signatures: (address, before, until) => call("getSignaturesForAddress", [address, { limit: 1000, commitment: "finalized", ...(before ? { before } : {}), ...(until ? { until } : {}) }]),
     transaction: signature => call("getTransaction", [signature, { encoding: "json", commitment: "finalized", maxSupportedTransactionVersion: 1 }]),
   };
 }

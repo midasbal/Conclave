@@ -16,9 +16,10 @@ export function replay(tape, only = null) {
   const need = (map, k, what) => { if (!(k in map)) throw new Error(`the recording has no ${what} ${k}`); return map[k]; };
   return { host: "recorded devnet responses",
     async genesisHash() { return tape.genesis; },
-    async receiptsOwnedBy(owner) { return (tape.listed[owner] ?? []).filter(a => !only || only.includes(a)).map(a => ({ address: a, ...unpack(tape.accounts[a]) })); },
+    async receiptsOwnedBy(owner) { const out = (tape.listed[owner] ?? []).filter(a => !only || only.includes(a)).map(a => ({ address: a, ...unpack(tape.accounts[a]) })); out.contextSlot = out.length ? Math.max(...out.map(x => x.slot ?? 0)) : null; return out; },
     async account(a) { return unpack(need(tape.accounts, a, "account")); },
-    async signatures(a, before) { return need(tape.signatures, a + (before ? " " + before : ""), "signature list for"); },
+    async signatures(a, before, until) { return need(tape.signatures, a + (before ? " " + before : ""), "signature list for"); },
+    async slot() { return Math.max(...Object.values(tape.accounts).filter(Boolean).map(x => x.slot ?? 0)); },
     async transaction(s) { return need(tape.transactions, s, "transaction"); },
   };
 }

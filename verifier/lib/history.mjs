@@ -25,14 +25,16 @@ export function receiptEvents(tx, signature, address, program) {
 /** every successful transaction naming the address, with the events in the ones not already examined. `known` is {examined: [signature], events: []} from an earlier run */
 export async function readHistory(source, address, program, known = { examined: [], events: [] }) {
   const seen = new Set(known.examined); const examined = [...known.examined], events = [...known.events]; const fresh = [];
-  let before, complete = true;
+  // `newest` is the newest signature of any kind an earlier read saw: asking for what came after it fetches only what is new
+  let before, complete = true, newest = known.newest ?? null;
   for (let page = 0; ; page++) {
-    const sigs = await source.signatures(address, before); for (const s of sigs) if (!s.err && !seen.has(s.signature)) fresh.push(s);
+    const sigs = await source.signatures(address, before, known.newest ?? undefined); if (page === 0 && sigs.length) newest = sigs[0].signature;
+    for (const s of sigs) if (!s.err && !seen.has(s.signature)) fresh.push(s);
     if (sigs.length < 1000) break; before = sigs.at(-1).signature; if (page >= 4) { complete = false; break; }
   }
   for (const s of fresh.reverse()) { const tx = await source.transaction(s.signature); if (!tx) { complete = false; continue; } events.push(...receiptEvents(tx, s.signature, address, program)); examined.push(s.signature); }
   events.sort((a, b) => a.slot - b.slot);
-  return { examined, events, complete };
+  return { examined, events, complete, newest: complete ? newest : known.newest ?? null };
 }
 
 /** The validator is a TRUST INPUT. The creator chooses it, it is what writes the receipt's results back to base, and the receipt does not record it. This reports what could be observed, and from where */

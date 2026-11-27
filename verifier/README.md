@@ -27,6 +27,10 @@ All reads are at **finalized** commitment, and the cluster's genesis hash is che
 
 A settled season that is still open is always delegated (the program only lets a closed receipt come back), so a provisional result is never "owned by the Conclave program" on base. That is why the delegation record is required.
 
+## Running it continuously
+
+`node cli.mjs ingest --store DIR --backup DIR` is the capture loop: a fast poll every minute, a full sweep every fifteen, the first final copy of every receipt saved exactly once into a managed store with a hash-chained ledger, a mirror, and a committable snapshot. Every record it writes says the slot it is current to. How it works, how it is backed up and how to restore: [`docs/RECORD_SERVICE.md`](../docs/RECORD_SERVICE.md). The one-shot `record` below is the same builder run once.
+
 ## The first final copy
 
 A late reader sees only current bytes. So the first time the builder sees a receipt final, it saves the bytes in the archive folder and **never writes that file again**. The record is built from that copy. On every later run, each archived receipt is looked up again (whether or not the RPC lists it) and compared:
@@ -42,7 +46,7 @@ A late reader sees only current bytes. So the first time the builder sees a rece
 
 Flags are permanent: a receipt changed and changed back stays flagged.
 
-**What the archive cannot do.** It protects you from changes **after** your first copy. It cannot show what happened before. It is a local folder: someone who can edit your disk can rewrite a copy and its hash together. `record` prints two digests. Publish `digest` to commit to your exact copies. Compare `recordDigest` between archives: it blanks the bond field, so two honest archivers agree even if one first saw a receipt before ReleaseBond and the other after. Keep the folder: it cannot be rebuilt.
+**What the archive cannot do.** (The service adds a ledger, a backup mirror and a snapshot: see `docs/RECORD_SERVICE.md`.) It protects you from changes **after** your first copy. It cannot show what happened before. It is a local folder: someone who can edit your disk can rewrite a copy and its hash together. `record` prints two digests. Publish `digest` to commit to your exact copies. Compare `recordDigest` between archives: it blanks the bond field, so two honest archivers agree even if one first saw a receipt before ReleaseBond and the other after. Keep the folder: it cannot be rebuilt.
 
 ## Three views
 

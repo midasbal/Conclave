@@ -8,7 +8,7 @@ import { RELEASE_FIELD } from "./receipt.mjs";
 export const ALARMS = ["record-changed", "redelegated", "account-missing", "owner-changed", "multiple-delegations", "archive-damaged"];
 
 export class Archive {
-  constructor(dir, genesis, program) { this.root = path.join(dir, genesis, program); fs.mkdirSync(this.root, { recursive: true }); this.genesis = genesis; this.program = program; }
+  constructor(dir, genesis, program) { this.root = path.join(dir, genesis, program); fs.mkdirSync(this.root, { recursive: true }); this.genesis = genesis; this.program = program; this.ledger = null; /* set by the service: every first copy and flag is then also written to its hash-chained ledger */ }
   dirOf(address) { if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) throw new Error("not an address"); return path.join(this.root, address); }
   addresses() { return fs.readdirSync(this.root).filter(a => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a)).sort(); }
   readJson(address, name) { try { return JSON.parse(fs.readFileSync(path.join(this.dirOf(address), name), "utf8")); } catch (e) { if (e.code === "ENOENT") return null; throw e; } }
@@ -25,11 +25,13 @@ export class Archive {
     return { ...j, data };
   }
   saveFirst(address, { account, season, observedAt }) {
-    this.writeJson(address, "first-final.json", { version: 1, genesis: this.genesis, program: this.program, address, season, sha256: sha256(account.data).toString("hex"), lamports: account.lamports, finalizedSlot: account.slot ?? null, observedAt, data: account.data.toString("base64") }, { once: true });
+    const sha = sha256(account.data).toString("hex");
+    this.writeJson(address, "first-final.json", { version: 1, genesis: this.genesis, program: this.program, address, season, sha256: sha, lamports: account.lamports, finalizedSlot: account.slot ?? null, observedAt, data: account.data.toString("base64") }, { once: true });
+    this.ledger?.append({ type: "first-copy", address, season, sha256: sha, finalizedSlot: account.slot ?? null, observedAt });
   }
   flags(address) { return this.readJson(address, "flags.json") ?? []; }
   /** sticky and without repeats. Returns true if this flag is new */
-  flag(address, f) { const all = this.flags(address); if (all.some(x => x.kind === f.kind && x.detail === f.detail)) return false; this.writeJson(address, "flags.json", [...all, f]); return true; }
+  flag(address, f) { const all = this.flags(address); if (all.some(x => x.kind === f.kind && x.detail === f.detail)) return false; this.writeJson(address, "flags.json", [...all, f]); this.ledger?.append({ type: "flag", address, kind: f.kind, detail: f.detail, info: !!f.info }); return true; }
   seen(address) { return this.readJson(address, "observed.json") ?? { history: { examined: [], events: [] }, delegationRecords: [] }; }
   saveSeen(address, s) { this.writeJson(address, "observed.json", s); }
   /** hashes over every first copy this archive holds. `sha256` is over the exact bytes. `recordSha256` blanks the one field ReleaseBond zeroes, so two honest archives agree on it even if one first saw a
