@@ -68,6 +68,7 @@ The seasons on devnet so far are this project's own tests.
 | `verifier/` | Record builder, capture loop, counting policy and proof verifier |
 | `server/` | Record API, and wallet-session auth with a key-holding RPC proxy ([`server/README.md`](server/README.md)) |
 | `deploy/` | Entrypoint that runs the capture loop and the API as one unit |
+| `operator/` | The one service that holds a spendable key: it sends a fresh key a little devnet SOL, under a daily cap ([`operator/README.md`](operator/README.md)) |
 | `web/` | Next.js web app: entry page, spectator view of the record, and docs ([`web/README.md`](web/README.md)) |
 | `tests/` | Conformance corpus, in-process SVM suite, client and tooling tests |
 | `scripts/`, `.github/workflows/` | Reproducible build, deployed-equals-artifact check, canary, CI |

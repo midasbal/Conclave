@@ -42,6 +42,10 @@ CONCLAVE_RECORD_ONLY=1 CONCLAVE_STORE_DIR=/path/to/store HOST=127.0.0.1 PORT=879
 CONCLAVE_API_URL=http://127.0.0.1:8791 npm run dev
 ```
 
+## Funding a fresh key
+
+`POST /api/drip` (`app/api/drip/route.ts`) passes a public address to the operator service (`../operator`), which sends it a little devnet SOL. Two more server-only variables: `OPERATOR_API_URL`, the service's base address, and `OPERATOR_SHARED_SECRET`, the same value the service has. Set both in Vercel as for `CONCLAVE_API_URL`. The route forwards nothing but the address and the visitor's IP address, which the operator uses for a soft rate limit. No page calls it yet.
+
 ## Reading the record
 
 `/app` lists seasons and `/app/season/<number>` shows one receipt. Both are rendered per request. Each API address is read at most once a minute (`REVALIDATE_SECONDS` in `lib/record.ts`), and only successful answers are cached. If a refresh fails, the last good answer keeps being served; pages show when the record was built and say so when it is more than 20 minutes old. With nothing cached and no usable answer, the page says what is wrong and shows no sample data. The list asks for the API's largest page, 200 seasons, and says when there are more.
