@@ -10,6 +10,15 @@ players.json
 strategies.json
 *.cvbundle
 *passphrase*.txt
+# the same files by their own names, wherever a copy might land. Not canary*.json: client/canary_codes.json is public and stays tracked
+canary.json
+canary-strategies.json
+*-program.json
+strategies.json*
+*.url
+id.json
+*.key
+record-store*/
 
 # Rust build artifacts
 target/

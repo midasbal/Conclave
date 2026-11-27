@@ -2,7 +2,7 @@
 
 The browser app. So far: the entry page, the shell around it (header, footer, 404), a spectator view of the public record at `/app`, and the docs at `/docs` (`/docs/using` and `/docs/technical`).
 
-The docs are written by hand from the repository's documents and the program. When those change, check the pages under `app/docs/`; `lib/links.ts` also repeats the program id and the build hash.
+The docs are written by hand from the repository's documents and the program. The docs set their prose in Source Serif 4 (`lib/docsFont.ts`), loaded on the docs routes only, with Caslon kept for headings. When the repository's documents or the program change, check the pages under `app/docs/`; `lib/links.ts` also repeats the program id and the build hash.
 
 Next.js (App Router) and TypeScript, with hand-written CSS modules. No component library. It holds no keys. `/app` reads the record API (`../docs/API.md`) from the server.
 
@@ -58,7 +58,7 @@ From the command line: `cd web && npx vercel env add CONCLAVE_API_URL production
 ## Design rules
 
 * One flat theme: warm grey paper, soft ink, and a red that belongs to the seal alone. Text pairs hold at least 5.9:1. No gradients, blur, glow or shadows.
-* Libre Caslon for the page, IBM Plex Mono for what a machine wrote. Both are served from this site.
+* Libre Caslon for the page and the brand, IBM Plex Mono for what a machine wrote, and Source Serif 4 for the long prose of the docs. All are served from this site.
 * One large motion: when the exhibit is first on screen it is sealed, over about three seconds (`components/ReceiptSheet.module.css`). Sections of the entry page enter once as they are scrolled to; links, rows and the Enter button answer pointer and keyboard. With reduced motion nothing moves. Without JavaScript, or if it fails to load, everything is shown at once.
 
 ## Wallets

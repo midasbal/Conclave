@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { WalletMenu } from "./WalletMenu";
-import { links } from "@/lib/links";
 import styles from "./SiteHeader.module.css";
 
 export function SiteNav() {
@@ -17,7 +16,6 @@ export function SiteNav() {
         <Link className="ruled" href="/docs" aria-current={docs ? "page" : undefined}>Docs</Link>
         <Link className="ruled" href="/#season">How it runs</Link>
         <Link className="ruled" href="/#limits">Limits</Link>
-        <a className="ruled" href={links.repo}>Source</a>
       </nav>
       {inside && <WalletMenu />}
     </div>

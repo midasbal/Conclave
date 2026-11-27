@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DocsSwitch } from "@/components/docs/DocsSwitch";
 import { links } from "@/lib/links";
+import { reading } from "@/lib/docsFont";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = { title: "Docs" };
@@ -23,7 +24,7 @@ const DOORS = [
 
 export default function DocsHome() {
   return (
-    <div className={`page ${styles.home}`}>
+    <div className={`page ${styles.home} ${reading.variable}`}>
       <DocsSwitch current="/docs" />
       <header className={styles.head}>
         <h1>Documentation</h1>
@@ -32,15 +33,18 @@ export default function DocsHome() {
         </p>
       </header>
       <div className={styles.doors}>
-        {DOORS.map(d => (
-          <Link key={d.href} href={d.href} className={styles.door}>
-            <h2>{d.title}</h2>
-            <p>{d.body}</p>
-            <ul>{d.covers.map(c => <li key={c}>{c}</li>)}</ul>
-          </Link>
+        {DOORS.map((d, i) => (
+          // the entrance belongs to the wrapper, so that it does not take over the card's own movement under the pointer
+          <div key={d.href} className={styles.slot} data-reveal="" style={{ "--reveal-delay": `${i * 90}ms` } as React.CSSProperties}>
+            <Link href={d.href} className={styles.door}>
+              <h2>{d.title}</h2>
+              <p>{d.body}</p>
+              <ul>{d.covers.map(c => <li key={c}>{c}</li>)}</ul>
+            </Link>
+          </div>
         ))}
       </div>
-      <p className={styles.full}>
+      <p className={styles.full} data-reveal="">
         The full sources are in the <a href={links.repo}>repository</a>: the <a href={links.lifecycle}>program specification</a>, <a href={links.proofs}>records and proofs</a>, and the <a href={links.api}>record API</a>.
       </p>
     </div>

@@ -2,6 +2,8 @@
 // The FAQ uses the browser's own disclosure element: it works from the keyboard and without JavaScript.
 import type { ReactNode } from "react";
 import { DocsSwitch } from "./DocsSwitch";
+import { DocToc } from "./DocToc";
+import { reading } from "@/lib/docsFont";
 import styles from "./DocPage.module.css";
 
 export type Section = { id: string; title: string; body: ReactNode };
@@ -12,23 +14,18 @@ type Props = { path: "/docs/using" | "/docs/technical"; title: string; intro: Re
 
 export function DocPage({ path, title, intro, sections, faqTitle, faq, sources }: Props) {
   const contents = [...sections.map(s => ({ id: s.id, title: s.title })), { id: "faq", title: faqTitle }];
-  const list = (
-    <ol>
-      {contents.map(c => <li key={c.id}><a href={`#${c.id}`}>{c.title}</a></li>)}
-    </ol>
-  );
   return (
-    <div className={`page ${styles.doc}`}>
+    <div className={`page ${styles.doc} ${reading.variable}`}>
       <DocsSwitch current={path} />
       <div className={styles.columns}>
         {/* a rail beside the text on a wide screen; above it, closed until asked for, on a narrow one */}
         <nav className={styles.rail} aria-label="On this page">
           <p>On this page</p>
-          {list}
+          <DocToc entries={contents} />
         </nav>
         <details className={styles.fold}>
           <summary>On this page</summary>
-          <nav aria-label="On this page">{list}</nav>
+          <nav aria-label="On this page"><DocToc entries={contents} /></nav>
         </details>
 
         <article className={styles.article}>
@@ -38,13 +35,13 @@ export function DocPage({ path, title, intro, sections, faqTitle, faq, sources }
           </header>
 
           {sections.map(s => (
-            <section key={s.id} id={s.id} aria-labelledby={`${s.id}-h`}>
+            <section key={s.id} id={s.id} aria-labelledby={`${s.id}-h`} data-reveal="">
               <h2 id={`${s.id}-h`}>{s.title}</h2>
               {s.body}
             </section>
           ))}
 
-          <section id="faq" aria-labelledby="faq-h">
+          <section id="faq" aria-labelledby="faq-h" data-reveal="">
             <h2 id="faq-h">{faqTitle}</h2>
             <div className={styles.faq}>
               {faq.map(item => (
@@ -56,7 +53,7 @@ export function DocPage({ path, title, intro, sections, faqTitle, faq, sources }
             </div>
           </section>
 
-          <footer className={styles.sources}>
+          <footer className={styles.sources} data-reveal="">
             <p>Where this comes from. If this page and a document below disagree, the document and the code are right.</p>
             <ul>{sources.map(s => <li key={s.href}><a href={s.href}>{s.label}</a></li>)}</ul>
           </footer>

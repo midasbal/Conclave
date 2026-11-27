@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DocPage, type Question, type Section } from "@/components/docs/DocPage";
-import { Ledger, Warning } from "@/components/docs/Parts";
+import { Commands, Ledger, Warning } from "@/components/docs/Parts";
 import { ExhibitSheet } from "@/components/Exhibit";
 import { links } from "@/lib/links";
 
@@ -61,9 +61,11 @@ const SECTIONS: Section[] = [
           <strong>You can write and test strategies today without any chain, wallet or network</strong>, using the tools in the repository. The simulator runs the
           same virtual machine the program runs, over many generated markets, and reports the spread of results, not one lucky run.
         </p>
-        <pre><code>{`cargo build --release
-./target/release/conclave-author asm strategies/momentum.cvs   # cost, division, bytecode
-./target/release/conclave-author sim strategies/momentum.cvs   # results over many markets`}</code></pre>
+        <Commands lines={[
+          { cmd: "cargo build --release" },
+          { cmd: "./target/release/conclave-author asm strategies/momentum.cvs", note: "cost, division, bytecode" },
+          { cmd: "./target/release/conclave-author sim strategies/momentum.cvs", note: "results over many markets" },
+        ]} />
         <p>
           Start from the <a href={links.examples}>example strategies</a> and the <a href={links.authoring}>authoring guide</a>. A simulation cannot tell you who you
           will meet in a real season, or promise anything about its markets. There is no editor in this web app.
@@ -130,7 +132,7 @@ const SECTIONS: Section[] = [
     body: (
       <>
         <p>This is a real devnet season, run by the project with its own test wallets.</p>
-        <ExhibitSheet titleId="docs-receipt-title" heading="h3" />
+        <div className="record-type"><ExhibitSheet titleId="docs-receipt-title" heading="h3" /></div>
         <Ledger rows={[
           { term: "Final", text: "Where the entry placed. This decides the prizes." },
           { term: "Season", text: "Where it stood after the season and before the finals. Shown only when finals were played. In a cancelled season there are no ranks, and entries are numbered by seat." },

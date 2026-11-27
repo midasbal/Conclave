@@ -34,7 +34,7 @@ export function SiteFooter() {
             <div key={g.id}>
               <p id={g.id} className={styles.title}>{g.title}</p>
               <ul aria-labelledby={g.id}>
-                {g.items.map(i => <li key={i.href}><a className="ruled" href={i.href}>{i.label}</a></li>)}
+                {g.items.map(i => <li key={i.href}><a className="ruled" href={i.href} target="_blank" rel="noopener noreferrer">{i.label}</a></li>)}
               </ul>
             </div>
           ))}

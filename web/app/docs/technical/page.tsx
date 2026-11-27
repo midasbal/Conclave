@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DocPage, type Question, type Section } from "@/components/docs/DocPage";
-import { Ledger, Warning } from "@/components/docs/Parts";
+import { Commands, Digest, Flow, Ledger, Warning } from "@/components/docs/Parts";
 import { links, explorerAddress, PROGRAM_ID, BUILD_SHA256 } from "@/lib/links";
 
 export const metadata: Metadata = { title: "Technical documentation" };
@@ -22,11 +22,14 @@ const SECTIONS: Section[] = [
           { term: "Record API", text: <>A public HTTP API under <code>/v1</code> that serves that record. Its <a href={links.api}>contract</a> is a closed JSON Schema. This web app reads it from its own server.</> },
         ]} />
         <h3>A season on chain</h3>
-        <pre><code>{`InitReceipt -> CreateSeason -> Enter... -> Lock -> RequestSeed -> Advance...
-  with finals:  -> RequestSeed -> Advance...
-  -> Settle (records what is owed) -> Claim, per entry -> CloseClaims
-  -> Publish... -> Cleanup -> commit and undelegate -> ReleaseBond
-Cancel (records refunds) -> Claim -> CloseClaims, Cleanup`}</code></pre>
+        <Flow label="A season on chain" stages={[
+          { stage: "Open", steps: [{ name: "InitReceipt" }, { name: "CreateSeason" }, { name: "Enter", note: "once per entry" }] },
+          { stage: "Run", steps: [{ name: "Lock" }, { name: "RequestSeed" }, { name: "Advance", note: "repeated" }] },
+          { stage: "With finals", steps: [{ name: "RequestSeed" }, { name: "Advance", note: "repeated" }] },
+          { stage: "Settle", steps: [{ name: "Settle", note: "records what is owed" }, { name: "Claim", note: "per entry" }, { name: "CloseClaims" }] },
+          { stage: "Wind down", steps: [{ name: "Publish", note: "per entry" }, { name: "Cleanup" }, { name: "Commit and undelegate" }, { name: "ReleaseBond" }] },
+          { stage: "If cancelled", steps: [{ name: "Cancel", note: "records refunds" }, { name: "Claim" }, { name: "CloseClaims" }, { name: "Cleanup" }] },
+        ]} />
         <p>
           Settle and Cancel move no tokens. They write a claims account, and each claim is its own transaction that anyone may send. The program checks that the pool
           holds what is owed when amounts are recorded and at every claim. Each season also writes a public <strong>terms record</strong>, and Enter sends the fee, the mint
@@ -58,7 +61,7 @@ Cancel (records refunds) -> Claim -> CloseClaims, Cleanup`}</code></pre>
           So an owner, with the salt, the code and the receipt&rsquo;s seeds, can <strong>replay their own result</strong> on their own machine and compare it with the
           published score commitment:
         </p>
-        <pre><code>{`node client/custody_cli.mjs verify ID.cvbundle --season SEASON`}</code></pre>
+        <Commands lines={[{ cmd: "node client/custody_cli.mjs verify ID.cvbundle --season SEASON" }]} />
         <p>
           Replay cannot check a <em>ranking</em>. Places depend on every competitor&rsquo;s totals, which would take every competitor&rsquo;s salt and code. Nobody else
           re-executes a season. A replay also needs the VM rules the season ran under: strategies of ruleset 1 do not run on the current VM.
@@ -185,10 +188,12 @@ Cancel (records refunds) -> Claim -> CloseClaims, Cleanup`}</code></pre>
     body: (
       <>
         <p>The repository records this SHA-256 for the deployed build, 524,776 bytes:</p>
-        <pre><code>{BUILD_SHA256}</code></pre>
+        <Digest value={BUILD_SHA256} />
         <p>Confirming it takes two checks, and neither is enough alone. Pinned inputs: Solana CLI 3.1.9, platform tools v1.52, and the committed lockfile.</p>
-        <pre><code>{`scripts/repro-build.sh --twice --check   # source to hash: two clean builds
-scripts/verify-deployed.sh               # hash to chain: read-only`}</code></pre>
+        <Commands lines={[
+          { cmd: "scripts/repro-build.sh --twice --check", note: "source to hash: two clean builds" },
+          { cmd: "scripts/verify-deployed.sh", note: "hash to chain: read-only" },
+        ]} />
         <ul>
           <li>The first requires two clean builds to be identical and to equal <code>program/BUILD_HASH</code>. It does not read the chain. A CI job runs the same command.</li>
           <li>The second compares the built file with the program data on devnet. That account is larger than the program, and everything after the program&rsquo;s bytes must be zero.</li>
