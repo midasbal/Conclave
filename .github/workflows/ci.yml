@@ -50,6 +50,8 @@ jobs:
         run: |
           (cd client && npm ci --no-audit --no-fund)
           cd tests/svm && cargo test --release --test client_flows -- --ignored
+      - name: Season terms record, layout and hash (offline)
+        run: node --test tests/terms.test.mjs
       - name: Verifier against receipts written by the program bytecode (all four proof levels)
         run: |
           (cd verifier && npm ci --no-audit --no-fund)

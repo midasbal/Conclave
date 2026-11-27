@@ -74,7 +74,8 @@ export const players = () => readKey("players.json").map(a => Keypair.fromSecret
 // arena / receipt layouts (mirror of program/src/lib.rs)
 export const A = { HDR: 1280, SLOT: 440 };
 export const RC = { SIZE: 224 + 20 * 80, ENT: 224, ESZ: 80 };
-export { parseReceipt, parseReceiptMoney, parseClaims, receiptFormat } from "./layouts.mjs";
+export { parseReceipt, parseReceiptMoney, parseClaims, receiptFormat, parseTerms, termsHash } from "./layouts.mjs";
 /** the season roster: private in the rollup (no members), it holds each entry's code commitment until Settle or Cancel writes it to the receipt */
 export const rosterPda = sid => pda([Buffer.from("roster"), u64(sid)]);
 export const claimsPda = sid => pda([Buffer.from("claims"), u64(sid)]);
+export const termsPda = sid => pda([Buffer.from("terms"), u64(sid)]);

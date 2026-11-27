@@ -66,7 +66,7 @@ Settle and Cancel move no tokens and name no entrant's token account. They write
 | Instruction | Rule |
 |---|---|
 | Claim (tag 22) `[claims, pool, pool_ata, owner_ata, token_program]`, data: slot | Anyone. Pays that entry's amount to its owner's associated token account, once. A claim with nothing left to pay succeeds and moves nothing. No config account is read, so pause cannot block it. No expiry. |
-| CloseClaims (tag 23) `[crank, hub, claims, vault, magic]` | Anyone, only when every recorded amount is paid (9083). Returns the claims rent to the hub. |
+| CloseClaims (tag 23) `[crank, hub, claims, vault, magic, terms]` | Anyone, only when every recorded amount is paid (9083). Returns the claims rent and the season's terms record rent to the hub. The terms account must be named (9150). |
 
 On-chain solvency assertions:
 
@@ -87,7 +87,7 @@ The score commitment is `sha256("CNCL-SCORE-v2", salt, season, id, season_total,
 
 **Deployed on devnet** (see Observed on devnet).
 
-**Who pays.** The hub pays each sealed strategy's rent at Seal (20,000 lamports; 19,744 at the old size). An owner cannot pay it from their own wallet: the rollup refuses to debit an account that is not delegated to it. Observed on the devnet TEE by simulation (a 1 lamport debit of an owner wallet answers `Immutable`, a 0 lamport one succeeds); the validator engine source and MagicBlock's documentation say the same. A rent purse per owner (a delegated program account) could be built but would add custody and four or five new steps. So the hub pays and gets the rent back when the strategy is closed. **A strategy that is never closed keeps the hub's rent.**
+**Who pays.** Since the Phase 6 build the strategy's own **registry** pays the sealed account's rent and its permission's at Seal (20,000 lamports), and is repaid when the strategy is closed. The registry is a program-owned PDA that is already delegated to the rollup (Enter and Publish need that) and already holds the 2,000,000 lamports the owner put in at Register above its rent: the rollup's Magic program, which collects the rent, checks only that the sponsor signed (the program signs for the registry with its own seeds), is writable (the rollup grants write access only to a delegated account) and holds the amount; it checks nothing about the sponsor's owner. An owner's wallet could not be the sponsor (the rollup refuses to debit an account that is not delegated to it: observed on the devnet TEE by simulation, a 1 lamport debit of an owner wallet answers `Immutable`). **A strategy that is never closed keeps 20,000 lamports of its own owner's money, not the hub's.** The hub still pays for seasons (arena, roster, claims account, terms record) and gets that back; strategies of earlier builds were paid for by the hub and still repay it (see Phase 6 below).
 
 **The counter.** Two bytes of the sealed account that no earlier build ever wrote (offsets 6 and 7) hold the number of open entries. An arena slot that holds one unit of that count carries a bit (4).
 
@@ -102,7 +102,7 @@ The count moves down only where the slot's bit is set, and the bit is cleared wi
 
 **Which strategies to name.** The arena is private, so a client works from what it knows. The receipt lists every entry id after Settle or Cancel and marks the published ones. For a settled season name the unpublished entries. Send Cancel with all of the season's strategies, and Cleanup then needs none. Do not name a strategy its owner has already closed.
 
-**CloseStrategy** (tag 24, in the rollup, the owner signs; works while paused): refused while the count is not zero (9130). It wipes and closes the sealed account and its permission, with the rent going to the hub, and marks the registry closed. A closed registry is refused by Seal, Publish and Delegate. Then `Commit` with undelegate (now also accepts a closed registry, still refuses a live one, 9055) and **CloseRegistry** (tag 25, base, anyone may send it) which removes the account and pays all its lamports to the owner recorded on it, who paid them at Register (9132 otherwise). That return is the owner's reason to close.
+**CloseStrategy** (tag 24, in the rollup, the owner signs; works while paused): refused while the count is not zero (9130). It wipes and closes the sealed account and its permission, with the rent going to whoever paid it (the registry, or for a strategy of an earlier build the hub: see Phase 6 below), and marks the registry closed. A closed registry is refused by Seal, Publish and Delegate. Then `Commit` with undelegate (now also accepts a closed registry, still refuses a live one, 9055) and **CloseRegistry** (tag 25, base, anyone may send it) which removes the account and pays all its lamports to the owner recorded on it, who paid them at Register (9132 otherwise). That return is the owner's reason to close.
 
 **What the guard does not do.**
 
@@ -227,7 +227,10 @@ RequestSeed accepts only `5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc` (9110). 
 | 9130 | the strategy has an open entry and cannot be closed |
 | 9131 | Cleanup was not given the strategy of an entry that is still counted |
 | 9132 | not a closed registry of this owner (CloseRegistry) |
-| 9133 | Enter was not given the strategy's own open registry, writable |
+| 9133 | Enter or Seal was not given the strategy's own open registry, writable |
+| 9134 | Seal: the registry does not hold the rent and still stay rent-exempt |
+| 9150 | the terms record is missing, not this season's, malformed, or does not say what the arena does |
+| 9151 | Enter: the fee, the stake mint or the terms hash the entrant sent is not the terms record's |
 | 9140 | this wallet may not delegate this receipt (creator only, fresh only, format 3) |
 | 9141 | Cleanup was not given this season's open receipt, writable |
 | 9142 | not this season's roster |
@@ -240,7 +243,37 @@ Instruction tag 14 (the old StartFinals) is retired and answers InvalidInstructi
 * **Arena** (size unchanged, magic changed to `ARN3` so the new build refuses old arenas). Header: finals seed at 1112 (32 bytes), flags2 at 1144, published count at 1145, season-phase end slot at 1272. Slot (440 bytes, unchanged): season rank u8 at 42, bits at 43 (1 finalist, 2 published), final rank at 44, season total at 48, finals total at 56. Flags: 1 locked, 2 seed requested, 4 seeded, 8 done, 16 settled, 32 season phase done, 64 finals seed requested, 128 finals seeded.
 * **Claims** (new): 72-byte header (state, entry count, capacity, kind, season, mint, owed total, claimed total, rent) plus 48 bytes per seat (owner, owed, done).
 * **Receipt** (1792 to 1824 bytes). Header grows from 192 to 224: finals seed words, finals packs, finals status, qualifier count, finals episodes, total owed. Entry: final rank at 72, season rank at 76, published at 78, finalist at 79.
-* **Sealed strategy** (396 to 404 bytes): the finals total is appended. 396-byte accounts remain valid.
+* **Sealed strategy** (396 to 404 bytes): the finals total is appended. 396-byte accounts remain valid. Bytes 6..8 are the open-entry count in the low 15 bits and the **payer flag** in the top bit (0x8000): set at Seal by this build (the registry paid), never set on a strategy of an earlier build (the hub paid). No size change.
+* **Terms record** (new, 184 bytes, ephemeral, public, PDA `["terms", season]`, rent from the hub): 0 magic `TERM` | 4 version (1) | 8 season | 16 creator | 48 stake mint | 80 fee | 88 episodes u32 | 92 slots per tick u32 | 96 entry window | 104 seed timeout | 112 publish grace | 120 seats | 121 minimum entrants | 122 flags (2 = finals) | 123 division | 128 ruleset pins (48 bytes) | 176 hub rent drawn (outside the hash). The hash an entrant sends to Enter is `sha256("CNCL-TERMS-v1" || bytes 4..176)`.
+
+## Phase 6: the registry pays for a sealed strategy, and every season states its terms in public
+
+Two changes, one upgrade. Both are off the money path of a season: no entrant's fee, claim or prize moves differently.
+
+**1. Registry-paid rent (SealStrategy, tag 3).** Accounts `[owner(s), strat(w), permission(w), vault(w), magic, permission_program, reg(w)]`; the hub is no longer in the instruction. The registry is the sponsor of both the sealed account's create and its permission's, signed with `["reg", id, bump]`. Before anything is created the program refuses a registry that is not writable (9133: in the rollup a registry that was never delegated cannot be written, so a strategy whose registry is not delegated can no longer be sealed, which also closes the earlier gap where it could be sealed and then never enter or be closed), and one that would not stay rent-exempt after paying: it must hold the minimum for its own size plus both rents (9134). After the last CPI the real balance is checked once more against the same minimum, so a rent that came out higher than estimated reverts the whole instruction. The sealed account is marked with the payer flag.
+
+**2. The payer flag and the migration (CloseStrategy, tag 24).** A strategy sealed before this build was paid for by the hub; one sealed after it, by its registry. Closing repays whoever paid, and the sealed account says who: bit 15 of the two bytes at offset 6 (the open-entry count keeps the low 15 bits; reaching 32,767 open entries is refused like any overflow). Flag set: the registry is the sponsor of the permission close and the account close and is repaid. Flag absent: the hub is, exactly as before, and the hub account must be the real hub. The account list of CloseStrategy is unchanged and the hub is passed either way; for a flagged strategy it is not read. Old strategies never gain the flag (nothing but Seal writes it), so the two kinds coexist for as long as old strategies stay open.
+
+**3. The public terms record.** CreateSeason takes one more account, `terms`, and creates it in the same transaction as the arena: the season's fee, stake mint, length, pace, finals flag, entry window, seed timeout, publish grace, seats, minimum entrants, division, ruleset pins and creator, with no permission account, so anyone can read it before paying. The hub pays its rent (7,808 lamports), measured on its own like the claims account's, never drawn from the creator's bond. **Enter** takes it read-only as its last account, and instruction data of exactly 72 bytes: the fee the entrant expects, the stake mint it expects, and the hash of the record it read. Before a single token moves the program checks that the record is this season's, that it says what the arena does on every term (9150), and that the three values the entrant sent are the record's (9151). An entrant therefore pays only into terms it has read, whatever the creator or anyone else does later: the record is written once and nothing rewrites it. **CloseClaims** closes it with the claims account (Cleanup is not touched: at a full field it has 64 bytes of headroom). A season of an earlier build never had a record; CloseClaims accepts that address only when it holds nothing.
+
+| Instruction | Accounts after this build | Data |
+|---|---|---|
+| Seal (3) | owner(s), strat(w), permission(w), vault(w), magic, permission_program, reg(w) | id, salt, code (unchanged) |
+| CreateSeason (5) | the 12 of before, then terms(w) | unchanged |
+| Enter (6) | the 9 of before, then terms | fee u64, mint[32], terms hash[32] (new) |
+| CloseClaims (23) | crank(s), hub(w), claims(w), vault(w), magic, terms(w) | none |
+| CloseStrategy (24) | unchanged | none |
+
+**Upgrading to this build.** (a) The program data account must be extended first: this artifact is larger than the 514,776 bytes the deployed program has room for. (b) Deploy with **no season open**: a season created by the previous build has no terms record, so Enter into it is refused (9150). It can still be wound up with this build (cancel, claims, CloseClaims with nothing at the terms address, Cleanup); `tests/svm/tests/migrate_6.rs` does exactly this with the real previous bytecode. (c) Strategies sealed before the upgrade keep working and are repaid to the hub when closed; new ones are repaid to their registry. (d) Old clients stop working: Seal, CreateSeason, Enter and CloseClaims take different accounts and Enter takes data.
+
+**Deployed on devnet 2026-11-27** (slot 526779926, build sha256 `68d37e0f...`, 524,776 bytes, program data extended by 10,240 to 525,016, on-chain bytes equal to the artifact; upgrade signature `ayJ1Xw6rqpEEQUsXKQUNZFfoYqJUHzPjhsbJb8yp471UsELDpqx6ZZ3QGdN1MFx91QDrH7trjNawbESmEKQ6q3M`). Observed, by `client/proof6_seal.mjs` and `client/proof6.mjs` (45 checks), the canary (37 checks) and the client scripts:
+
+* **The rollup serves the new program a short while after the upgrade.** The first Seal, sent within minutes of the deploy, reached the previous program and failed with `NotEnoughAccountKeys` (it wants the hub as the second account). A simulation, which changes nothing, then showed the new account list accepted and the old one refused (Custom 555), and the same Seal succeeded.
+* **The registry is accepted as the rent sponsor, in one transaction for the sealed account and its permission.** Seal `4GHVxyPZwn6io6tuHUAQt1sjiRhRQe1vkh6x9msjxP5GdtUwXQYCriHfqjgnJTGxutt3gE1gaL364S8hQxGova3m`: the registry went from 3,300,480 to 3,280,480 lamports (the 20,000 it was debited), the hub did not move, and the sealed account carries bytes 6..8 = 0x8000.
+* **Migration.** CloseStrategy of a strategy sealed by the previous build (`5BeNCG8o...`, flag absent): the hub +20,000, its registry unchanged. Of strategies sealed by this build (flag set; `4mzwVPXj...`, `5kCh59AX...`, `2WF7VN4w...`): each registry +20,000 and the hub unchanged.
+* **Terms record.** Created at CreateSeason, readable with no token, equal to what the creator asked for, rent 7,808 from the hub. Enter with a fee other than the record's, a fee of zero, another mint, or a hash with one bit flipped is refused with 9151; with another season's terms record, or an account that is not a terms record, 9150; with the previous build's Enter (no data), InvalidInstructionData. None moved a token or took a seat. The three matching Enters took exactly the fee. The payer flag read 0x8000, then 0x8001 while entered, then 0x8000 after publish. CloseClaims closed the terms record with the claims account, and the hub ended whole (plus the 25% of an abandoned season's bond).
+* **Guards.** An undelegated registry passed read-only is refused by the program (9133, `41f3xWsK...`); passed writable the rollup itself refuses before the program runs (`InvalidWritableAccount`, `5VLCL4of...`). Nothing was created. The same strategy sealed after its registry was delegated.
+* **Not shown on devnet:** 9134 (no instruction can take a registry below its floor, so it is shown in the SVM at the exact boundary only), the open-entry count reaching 32,767, and CloseClaims for a season of the previous build with no terms record (no such claims account was left on devnet; shown on the real previous bytecode in `migrate_6.rs`).
 
 ## Upgrading from the previous build
 

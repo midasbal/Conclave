@@ -30,6 +30,8 @@ const DOM_CODE: &[u8] = b"CNCL-CODE-v1";
 const DOM_SCORE: &[u8] = b"CNCL-SCORE-v3";
 /// the score commitment is keyed by a salt DERIVED from the sealed salt for one season, so an owner can prove a season's totals without giving away the salt behind the code commitment
 const DOM_SCORE_SALT: &[u8] = b"CNCL-SSALT-v1";
+/// the public terms of a season (fee, token, length, timing, field size, ruleset, creator) are committed to by one hash, which an entrant gives to Enter
+const DOM_TERMS: &[u8] = b"CNCL-TERMS-v1";
 
 // ---- layouts ----
 /// arena generation 4 ("ARN4"; same bytes as 3, but every arena of this generation has a roster): an arena written by an older build is refused outright instead of being misread
@@ -42,6 +44,9 @@ pub const CODE_MAX: usize = 4 + 4 * MAX_OPS;
 /// how many live arena slots still hold this strategy (entered, not yet published and not yet released). While it is not zero the strategy cannot be closed.
 /// These two bytes were never written by an earlier build, so every older strategy reads zero.
 pub const S_OPEN: usize = 6;
+/// The same two bytes carry the PAYER FLAG in their top bit: set (0x8000) on a strategy whose sealed account and permission were paid for by its own registry (this build's Seal), so CloseStrategy hands the rent back
+/// to the registry. A strategy sealed by an earlier build never had that bit (its count was at most a few), so it reads as paid by the hub and is refunded to the hub. The count is the low 15 bits.
+pub const S_PAYER_REG: u16 = 0x8000; pub const S_OPEN_MASK: u16 = 0x7FFF;
 pub const S_OWNER: usize = 8; pub const S_ID: usize = 40; pub const S_COMMIT: usize = 48; pub const S_LSEASON: usize = 80; pub const S_LRANK: usize = 88; pub const S_LN: usize = 92; pub const S_LPNL: usize = 96; pub const S_SALT: usize = 104; pub const S_CODE: usize = 136;
 /// the size every sealed strategy has had since ruleset 2; accounts of this size remain valid
 pub const STRAT_MIN_SIZE: usize = S_CODE + CODE_MAX;
@@ -127,12 +132,20 @@ pub const CL_STATE: usize = 4; pub const CL_N: usize = 5; pub const CL_CAP: usiz
 pub const CE_OWNER: usize = 0; pub const CE_OWED: usize = 32; pub const CE_DONE: usize = 40; pub const CE_SIZE: usize = 48;
 pub const CLAIMS_PAYOUT: u8 = 1; pub const CLAIMS_REFUND: u8 = 2;
 pub const fn claims_size(cap: usize) -> usize { CL_HDR + cap * CE_SIZE }
+// ---- terms record (ephemeral, public, PDA ["terms", season], rent from the hub): the season's terms as CreateSeason fixed them, readable by anyone before they pay ----
+// 0 magic | 4 version u8 (1) | 8 season u64 | 16 creator[32] | 48 mint[32] | 80 fee u64 | 88 episodes u32 | 92 slots per tick u32 | 96 entry window u64 | 104 seed timeout u64 | 112 publish grace u64
+// | 120 seats u8 | 121 minimum entrants u8 | 122 flags u8 (finals bit) | 123 division u8 | 128 ruleset pins[PINS_LEN] | then hub rent drawn u64 (not part of the hash)
+pub const M_TERMS: u32 = 0x4D52_4554; pub const TM_VERSION: usize = 4; pub const TM_SEASON: usize = 8; pub const TM_CREATOR: usize = 16; pub const TM_MINT: usize = 48; pub const TM_FEE: usize = 80; pub const TM_NEPS: usize = 88; pub const TM_SPT: usize = 92;
+pub const TM_WINDOW: usize = 96; pub const TM_SEEDTO: usize = 104; pub const TM_GRACE: usize = 112; pub const TM_MAXS: usize = 120; pub const TM_MINS: usize = 121; pub const TM_FLAGS: usize = 122; pub const TM_DIV: usize = 123; pub const TM_PINS: usize = 128;
+pub const TM_RENT: usize = TM_PINS + PINS_LEN; pub const TERMS_SIZE: usize = TM_RENT + 8; pub const TERMS_VERSION: u8 = 1;
+/// what Enter's instruction data carries: the fee, the stake mint and the hash of the terms the entrant read
+pub const ENTER_DATA: usize = 8 + 32 + 32;
 // ---- error codes (fixed; documented in LIFECYCLE.md) ----
 pub const E_NOT_RECORDED: u32 = 9080; pub const E_CLAIM_SLOT: u32 = 9081; pub const E_CLAIMS_ACCT: u32 = 9082; pub const E_OUTSTANDING: u32 = 9083; pub const E_CLAIM_DEST: u32 = 9084; pub const E_RECORDED: u32 = 9085;
 pub const E_EPISODES: u32 = 9100; pub const E_SPT: u32 = 9101; pub const E_RUN_TOO_LONG: u32 = 9102; pub const E_SEASON_FLAGS: u32 = 9103; pub const E_SHORT_SEASON_FOR_FINALS: u32 = 9104; pub const E_GRACE_TOO_SHORT: u32 = 9105;
 pub const E_QUEUE: u32 = 9110; pub const E_SEED_STATE: u32 = 9111; pub const E_SEED_LATE: u32 = 9112; pub const E_DEADLINE: u32 = 9113; pub const E_NOT_RUNNING: u32 = 9114; pub const E_NOT_SETTLEABLE: u32 = 9115; pub const E_SETTLE_STATE: u32 = 9116;
 pub const E_STRAT_OPEN: u32 = 9130; pub const E_ENTRY_HELD: u32 = 9131; pub const E_REG_NOT_CLOSED: u32 = 9132;
-pub const E_ENTRY_REGISTRY: u32 = 9133; pub const E_ROSTER: u32 = 9142; pub const E_DELEGATE_RECEIPT: u32 = 9140; pub const E_CLEANUP_RECEIPT: u32 = 9141;
+pub const E_ENTRY_REGISTRY: u32 = 9133; pub const E_REG_RENT: u32 = 9134; pub const E_TERMS_ACCT: u32 = 9150; pub const E_TERMS_MISMATCH: u32 = 9151; pub const E_ROSTER: u32 = 9142; pub const E_DELEGATE_RECEIPT: u32 = 9140; pub const E_CLEANUP_RECEIPT: u32 = 9141;
 pub const E_PUBLISHED: u32 = 9120; pub const E_PUBLISH_EARLY: u32 = 9121; pub const E_CLEANUP_STATE: u32 = 9122; pub const E_CLEANUP_UNPUBLISHED: u32 = 9123;
 fn fail<T>(code: u32) -> Result<T, ProgramError> { Err(ProgramError::Custom(code)) }
 pub fn arena_size(maxs: usize) -> usize { HDR + maxs * SLOT }
@@ -160,6 +173,22 @@ fn check_arena(a: &AccountInfo, pid: &Pubkey) -> ProgramResult {
     if a.owner != pid || a.try_data_len()? < HDR { return Err(ProgramError::InvalidAccountData); }
     let d = a.try_borrow_data()?; let (maxs, ns) = (usize::from(d[A_MAXS]), usize::from(d[A_NS]));
     if rd32(&d, 0) != M_ARENA || maxs == 0 || maxs > MAX_SLOTS || ns > maxs || d.len() < arena_size(maxs) || usize::from(d[A_DIV]) >= DIVISIONS.len() { return Err(ProgramError::InvalidAccountData); } Ok(()) }
+/// the open-entry count (low 15 bits) and the payer flag (top bit) of a sealed account
+fn open_raw(s: &[u8]) -> u16 { u16::from_le_bytes([s[S_OPEN], s[S_OPEN + 1]]) }
+/// stores a new count and keeps the payer flag as it was; a count that would reach the flag bit is an overflow
+fn set_open(s: &mut [u8], n: u16) -> ProgramResult { if n > S_OPEN_MASK { return Err(ProgramError::ArithmeticOverflow); } let raw = (open_raw(s) & S_PAYER_REG) | n; s[S_OPEN..S_OPEN + 2].copy_from_slice(&raw.to_le_bytes()); Ok(()) }
+/// the hash an entrant commits to: everything in the terms record except its rent field
+fn terms_hash(t: &[u8]) -> Result<[u8; 32], ProgramError> { Ok(hashv(&[DOM_TERMS, t.get(TM_VERSION..TM_RENT).ok_or(bad!())?]).to_bytes()) }
+/// the terms record of `season`: the PDA, program-owned, the terms magic and version
+fn check_terms(t: &AccountInfo, pid: &Pubkey, season: &[u8]) -> ProgramResult {
+    if Pubkey::find_program_address(&[b"terms", season], pid).0 != *t.key || t.owner != pid || t.try_data_len()? < TERMS_SIZE { return fail(E_TERMS_ACCT); }
+    let d = t.try_borrow_data()?; if rd32(&d, 0) != M_TERMS || d[TM_VERSION] != TERMS_VERSION || &d[TM_SEASON..TM_SEASON + 8] != season { return fail(E_TERMS_ACCT); } Ok(()) }
+/// the terms record says exactly what the arena will do: every term it states is the arena's own
+#[inline(never)]
+fn terms_match_arena(t: &[u8], a: &[u8]) -> bool {
+    pk(t, TM_CREATOR) == pk(a, A_AUTH) && pk(t, TM_MINT) == pk(a, A_MINT) && rd64(t, TM_FEE) == rd64(a, A_FEE) && rd32(t, TM_NEPS) == rd32(a, A_NEPS) && rd32(t, TM_SPT) == rd32(a, A_SPT)
+        && rd64(t, TM_WINDOW) == rd64(a, A_WINDOW) && rd64(t, TM_SEEDTO) == rd64(a, A_SEEDTO) && rd64(t, TM_GRACE) == rd64(a, A_PUBGRACE) && t[TM_MAXS] == a[A_MAXS] && t[TM_MINS] == a[A_MINS]
+        && t[TM_FLAGS] == a[A_F2] & F2_HASFIN && t[TM_DIV] == a[A_DIV] && t[TM_PINS..TM_PINS + PINS_LEN] == a[A_PINS..A_PINS + PINS_LEN] && t[TM_SEASON..TM_SEASON + 8] == a[A_SEASON..A_SEASON + 8] }
 fn check_strat(a: &AccountInfo, pid: &Pubkey) -> ProgramResult { if a.owner != pid || a.try_data_len()? < STRAT_MIN_SIZE || rd32(&a.try_borrow_data()?, 0) != M_STRAT { return Err(ProgramError::InvalidAccountData); } Ok(()) }
 fn check_reg(a: &AccountInfo, pid: &Pubkey) -> ProgramResult { if a.owner != pid || a.try_data_len()? < REG_SIZE || rd32(&a.try_borrow_data()?, 0) != M_REG { return Err(ProgramError::InvalidAccountData); } Ok(()) }
 // the open-entry helpers and the two close instructions are never inlined: the dispatcher's stack frame is already large, and inlining them into it overflowed the 4 KiB SBF frame
@@ -168,7 +197,7 @@ fn check_reg(a: &AccountInfo, pid: &Pubkey) -> ProgramResult { if a.owner != pid
 #[inline(never)]
 fn release_entry(arena: &mut [u8], i: usize, strat: &AccountInfo) -> ProgramResult {
     let o = HDR + i * SLOT; if arena[o + SL_BITS] & B_COUNTED == 0 { return Ok(()); }
-    { let mut s = strat.try_borrow_mut_data()?; let n = u16::from_le_bytes([s[S_OPEN], s[S_OPEN + 1]]).checked_sub(1).ok_or(ProgramError::InvalidAccountData)?; s[S_OPEN..S_OPEN + 2].copy_from_slice(&n.to_le_bytes()); }
+    { let mut s = strat.try_borrow_mut_data()?; let n = (open_raw(&s) & S_OPEN_MASK).checked_sub(1).ok_or(ProgramError::InvalidAccountData)?; set_open(&mut s, n)?; }
     arena[o + SL_BITS] &= !B_COUNTED; Ok(()) }
 /// For an arena whose unpublished entries will never publish (cancelled, or being destroyed): each account named must be the strategy of one of its slots, and that slot is released
 #[inline(never)]
@@ -277,28 +306,11 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
                 _ => Err(bad!()),
             }
         }
-        // 3 SealStrategy (TEE): [owner(s), hub(w), strat(w), permission(w), vault(w), magic, permission_program, reg]; data: id u64, salt[32], code
-        3 => {
-            let (owner, hub, strat, perm, vault, magic, pp, reg) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
-            if !owner.is_signer { return Err(ProgramError::MissingRequiredSignature); }
-            need(41)?; let idb = &rest[0..8]; let salt = &rest[8..40]; let code = &rest[40..];
-            validate(code).map_err(vm_err)?; // ruleset v2: version tag, structure, work cap
-            let (sp, sbump) = Pubkey::find_program_address(&[b"strat", idb], pid); if sp != *strat.key { return Err(bad!()); }
-            let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if hp != *hub.key { return Err(bad!()); }
-            let commit = hashv(&[DOM_CODE, salt, code]).to_bytes();
-            check_reg(reg, pid)?;
-            { let r = reg.try_borrow_data()?; let (rp, _) = Pubkey::find_program_address(&[b"reg", idb], pid);
-              if rp != *reg.key || &r[R_OWNER..R_OWNER + 32] != owner.key.as_ref() || r[R_COMMIT..R_COMMIT + 32] != commit { return Err(bad!()); } }
-            let hs: &[&[u8]] = &[b"hub", &[hbump]]; let ss: &[&[u8]] = &[b"strat", idb, &[sbump]];
-            EphemeralAccount::new(hub, strat, vault).with_signer_seeds(&[hs, ss]).create(STRAT_SIZE as u32)?;
-            if strat.try_data_len()? < STRAT_SIZE { return Err(ProgramError::AccountDataTooSmall); } // the ER must have created it at the size we asked for
-            { let mut d = strat.try_borrow_mut_data()?; d[0..4].copy_from_slice(&M_STRAT.to_le_bytes()); d[4..6].copy_from_slice(&(code.len() as u16).to_le_bytes()); d[S_OWNER..S_OWNER + 32].copy_from_slice(owner.key.as_ref()); d[S_ID..S_ID + 8].copy_from_slice(idb);
-              d[S_COMMIT..S_COMMIT + 32].copy_from_slice(&commit); d[S_SALT..S_SALT + 32].copy_from_slice(salt); d[S_CODE..S_CODE + code.len()].copy_from_slice(code); }
-            CreateEphemeralPermissionCpi { payer: hub.clone(), permissioned_account: strat.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(),
-                args: EphemeralMembersArgs { is_private: true, members: owner_member(owner.key) } }.invoke_signed(&[hs, ss])
-        }
+        // 3 SealStrategy (TEE): [owner(s), strat(w), permission(w), vault(w), magic, permission_program, reg(w)]; data: id u64, salt[32], code. The OWNER'S REGISTRY pays the sealed account's rent and its permission's, and gets them
+        // back at CloseStrategy. The hub is not involved. The registry must be writable, which the rollup grants only to an account that is delegated to it: an undelegated registry cannot seal.
+        3 => seal(pid, accts, rest),
         5 => create_season(pid, accts, rest), // see create_season
-        6 => enter(pid, accts), // see enter
+        6 => enter(pid, accts, rest), // see enter
         // 7 Lock (TEE): [signer(s), arena(w)]. The creator may lock at any time; ANYONE may lock once the entry window has elapsed, so an absent creator cannot strand a season.
         // A field below the minimum at lock is cancelled instead (refunds follow via Cancel); the creator cannot cancel early this way, only after the window.
         7 => { let (auth, arena) = (next_account_info(it)?, next_account_info(it)?); check_arena(arena, pid)?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
@@ -426,14 +438,18 @@ fn process(pid: &Pubkey, accts: &[AccountInfo], data: &[u8]) -> ProgramResult {
             { let mut c = claims.try_borrow_mut_data()?; let e = CL_HDR + i * CE_SIZE; c[e + CE_DONE] = 1; let paid = rd64(&c, CL_CLAIMED).checked_add(amt).ok_or(ProgramError::ArithmeticOverflow)?; wr64(&mut c, CL_CLAIMED, paid); }
             token_transfer(pe, dest, pool, tp, amt, &[&[b"pool", &sid, &[pbump]]])
         }
-        // 23 CloseClaims (permissionless, works while paused): [crank(s), hub(w), claims(w), vault(w), magic]. Only once every amount recorded has been paid; the rent goes back to the hub.
+        // 23 CloseClaims (permissionless, works while paused): [crank(s), hub(w), claims(w), vault(w), magic, terms(w)]. Only once every amount recorded has been paid; the rent of the claims account and of the season's
+        // terms record goes back to the hub. The terms record must be named (9150): a season of an earlier build never had one, and its address then holds nothing.
         23 => {
             let (crank, hub, claims, vault, magic) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
-            if !crank.is_signer { return Err(ProgramError::MissingRequiredSignature); } let _sid = check_claims(claims, pid)?; let _ = magic;
+            let terms = next_account_info(it)?;
+            if !crank.is_signer { return Err(ProgramError::MissingRequiredSignature); } let sid = check_claims(claims, pid)?; let _ = magic;
             { let c = claims.try_borrow_data()?; if c[CL_STATE] != 1 { return fail(E_NOT_RECORDED); } let n = usize::from(c[CL_N]);
               if (0..n).any(|i| c[CL_HDR + i * CE_SIZE + CE_DONE] == 0) || rd64(&c, CL_CLAIMED) != rd64(&c, CL_OWED) { return fail(E_OUTSTANDING); } }
             let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if hp != *hub.key { return Err(bad!()); }
             let hs: &[&[u8]] = &[b"hub", &[hbump]];
+            if terms.lamports() == 0 && terms.data_is_empty() { if Pubkey::find_program_address(&[b"terms", &sid], pid).0 != *terms.key { return fail(E_TERMS_ACCT); } } // no terms record: only at the address it would have, and only if nothing is there
+            else { check_terms(terms, pid, &sid)?; EphemeralAccount::new(hub, terms, vault).with_signer_seeds(&[hs]).close()?; }
             EphemeralAccount::new(hub, claims, vault).with_signer_seeds(&[hs]).close()
         }
         // 24 CloseStrategy (TEE) and 25 CloseRegistry (base): see close_strategy and close_registry
@@ -526,25 +542,61 @@ fn publish_entry(d: &mut [u8], i: usize, strat: &AccountInfo, reg: &AccountInfo,
     release_entry(d, i, strat)?; d[o + SL_BITS] |= B_PUBLISHED; d[A_PUBN] = d[A_PUBN].checked_add(1).ok_or(bad!())?; Ok(())
 }
 
+/// ephemeral rent of a sealed account's permission with one member (68 bytes + 33 per member), as devnet showed it: 20,000 lamports with the sealed account itself
+const PERM_LEN: u32 = 68 + 33;
+/// 3 SealStrategy: see the dispatcher. The registry is the rent sponsor of both the sealed account and its permission, signed for with its own seeds, and the strategy is marked as registry-funded.
+#[inline(never)]
+fn seal(pid: &Pubkey, accts: &[AccountInfo], rest: &[u8]) -> ProgramResult {
+    let it = &mut accts.iter();
+    let (owner, strat, perm, vault, magic, pp, reg) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
+    if !owner.is_signer { return Err(ProgramError::MissingRequiredSignature); }
+    if rest.len() < 41 { return Err(ProgramError::InvalidInstructionData); } let idb = &rest[0..8]; let salt = &rest[8..40]; let code = &rest[40..];
+    validate(code).map_err(vm_err)?; // ruleset v2: version tag, structure, work cap
+    let (sp, sbump) = Pubkey::find_program_address(&[b"strat", idb], pid); if sp != *strat.key { return Err(bad!()); }
+    let commit = hashv(&[DOM_CODE, salt, code]).to_bytes();
+    check_reg(reg, pid)?;
+    // the registry pays, so it must be writable here. The rollup grants write access only to an account delegated to it, so this is also the refusal of a registry that was never delegated (9133), before anything is created
+    if !reg.is_writable { return fail(E_ENTRY_REGISTRY); }
+    let (rp, rbump) = Pubkey::find_program_address(&[b"reg", idb], pid);
+    { let r = reg.try_borrow_data()?; if rp != *reg.key || &r[R_OWNER..R_OWNER + 32] != owner.key.as_ref() || r[R_COMMIT..R_COMMIT + 32] != commit { return Err(bad!()); } }
+    // the registry must stay rent-exempt after paying: what it holds must cover the minimum for its own size plus both ephemeral rents (9134). Checked before the first CPI, and again from the real balance after the last
+    let floor = Rent::get()?.minimum_balance(reg.try_data_len()?); let need = ephemeral_rollups_sdk::ephemeral_accounts::rent(STRAT_SIZE as u32).saturating_add(ephemeral_rollups_sdk::ephemeral_accounts::rent(PERM_LEN));
+    if reg.lamports() < floor.saturating_add(need) { return fail(E_REG_RENT); }
+    let rs: &[&[u8]] = &[b"reg", idb, &[rbump]]; let ss: &[&[u8]] = &[b"strat", idb, &[sbump]];
+    EphemeralAccount::new(reg, strat, vault).with_signer_seeds(&[rs, ss]).create(STRAT_SIZE as u32)?;
+    if strat.try_data_len()? < STRAT_SIZE { return Err(ProgramError::AccountDataTooSmall); } // the ER must have created it at the size we asked for
+    { let mut d = strat.try_borrow_mut_data()?; d[0..4].copy_from_slice(&M_STRAT.to_le_bytes()); d[4..6].copy_from_slice(&(code.len() as u16).to_le_bytes()); d[S_OWNER..S_OWNER + 32].copy_from_slice(owner.key.as_ref()); d[S_ID..S_ID + 8].copy_from_slice(idb);
+      d[S_COMMIT..S_COMMIT + 32].copy_from_slice(&commit); d[S_SALT..S_SALT + 32].copy_from_slice(salt); d[S_CODE..S_CODE + code.len()].copy_from_slice(code);
+      d[S_OPEN..S_OPEN + 2].copy_from_slice(&S_PAYER_REG.to_le_bytes()); } // no entry yet, and the registry paid
+    CreateEphemeralPermissionCpi { payer: reg.clone(), permissioned_account: strat.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(),
+        args: EphemeralMembersArgs { is_private: true, members: owner_member(owner.key) } }.invoke_signed(&[rs, ss])?;
+    if reg.lamports() < floor { return fail(E_REG_RENT); } // from the real balance, whatever the rent turned out to be
+    Ok(())
+}
 /// 24 CloseStrategy (TEE, the owner; works while paused): [owner(s), hub(w), strat(w), permission(w), vault(w), magic, permission_program, reg(w)]
 /// Only with no open entry (9130), so a strategy cannot be closed out of a result it still owes the record, or while a Publish still needs its salt. Closes the sealed account and its permission and marks
-/// the registry closed. Sealed accounts are paid for by the hub (an owner wallet cannot be debited inside the rollup), so their rent returns to the hub; the owner's own rent is in the registry and comes back at CloseRegistry.
+/// the registry closed. The rent goes back to WHOEVER PAID IT, which the sealed account itself says: a strategy sealed by this build carries the payer flag and its registry is repaid (the registry signs with its own seeds);
+/// one sealed by an earlier build has no flag and the hub, which paid its rent, is repaid. The hub account is read only on that second path. The owner's own rent is in the registry and comes back at CloseRegistry.
 #[inline(never)]
 fn close_strategy(pid: &Pubkey, accts: &[AccountInfo]) -> ProgramResult {
     let it = &mut accts.iter();
     let (owner, hub, strat, perm, vault, magic, pp, reg) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
     if !owner.is_signer { return Err(ProgramError::MissingRequiredSignature); } check_strat(strat, pid)?;
-    let (id, open) = { let s = strat.try_borrow_data()?; if &s[S_OWNER..S_OWNER + 32] != owner.key.as_ref() { return Err(ProgramError::MissingRequiredSignature); } (arr::<8>(&s, S_ID)?, u16::from_le_bytes([s[S_OPEN], s[S_OPEN + 1]])) };
+    let (id, raw) = { let s = strat.try_borrow_data()?; if &s[S_OWNER..S_OWNER + 32] != owner.key.as_ref() { return Err(ProgramError::MissingRequiredSignature); } (arr::<8>(&s, S_ID)?, open_raw(&s)) };
     let (sp, sbump) = Pubkey::find_program_address(&[b"strat", &id], pid); if sp != *strat.key { return Err(bad!()); }
-    if open != 0 { return fail(E_STRAT_OPEN); }
-    let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if hp != *hub.key { return Err(bad!()); }
-    check_reg(reg, pid)?; if Pubkey::find_program_address(&[b"reg", &id], pid).0 != *reg.key || !reg.is_writable { return Err(bad!()); }
+    if raw & S_OPEN_MASK != 0 { return fail(E_STRAT_OPEN); }
+    let reg_paid = raw & S_PAYER_REG != 0;
+    let (rp, rbump) = Pubkey::find_program_address(&[b"reg", &id], pid);
+    check_reg(reg, pid)?; if rp != *reg.key || !reg.is_writable { return Err(bad!()); }
     if &reg.try_borrow_data()?[R_OWNER..R_OWNER + 32] != owner.key.as_ref() { return Err(ProgramError::MissingRequiredSignature); }
+    // the sponsor that paid: the registry (flag set) or the hub (no flag)
+    let (hp, hbump) = Pubkey::find_program_address(&[b"hub"], pid); if !reg_paid && hp != *hub.key { return Err(bad!()); }
     wr32(&mut reg.try_borrow_mut_data()?, 0, M_REG_CLOSED);
     strat.try_borrow_mut_data()?.fill(0); // salt and code are wiped before the account is handed back, and nothing later in this transaction can read it as a strategy
-    let hs: &[&[u8]] = &[b"hub", &[hbump]]; let ss: &[&[u8]] = &[b"strat", &id, &[sbump]];
-    ephemeral_rollups_sdk::access_control::instructions::CloseEphemeralPermissionCpi { payer: hub.clone(), authority: strat.clone(), permissioned_account: strat.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(), authority_is_signer: false }.invoke_signed(&[hs, ss])?;
-    EphemeralAccount::new(hub, strat, vault).with_signer_seeds(&[hs]).close()
+    let sponsor = if reg_paid { reg } else { hub };
+    let rs: &[&[u8]] = &[b"reg", &id, &[rbump]]; let hs: &[&[u8]] = &[b"hub", &[hbump]]; let ss: &[&[u8]] = &[b"strat", &id, &[sbump]]; let ps: &[&[u8]] = if reg_paid { rs } else { hs };
+    ephemeral_rollups_sdk::access_control::instructions::CloseEphemeralPermissionCpi { payer: sponsor.clone(), authority: strat.clone(), permissioned_account: strat.clone(), permission: perm.clone(), vault: vault.clone(), magic_program: magic.clone(), permission_program: pp.clone(), authority_is_signer: false }.invoke_signed(&[ps, ss])?;
+    EphemeralAccount::new(sponsor, strat, vault).with_signer_seeds(&[ps]).close()
 }
 /// 25 CloseRegistry (base, permissionless, like ReleaseBond): [anyone(s), reg(w), owner(w)]. Shrinks a closed registry that is back from the rollup to a permanent marker and returns the rest of its lamports to the owner recorded on it, who paid for it at Register.
 #[inline(never)]
@@ -558,17 +610,30 @@ fn close_registry(pid: &Pubkey, accts: &[AccountInfo]) -> ProgramResult {
     reg.try_borrow_mut_data()?.fill(0); reg.resize(MARKER_SIZE)?; wr32(&mut reg.try_borrow_mut_data()?, 0, M_REG_DEAD); move_lamports(reg, owner, pay)
 }
 
-/// 6 Enter (TEE): [owner(s), strat(w), arena(w), owner_ata(w), pool_ata(w), token_program, config, reg(w), roster(w)]. Counts the entry on the strategy: it cannot be closed until this entry is published or released.
+/// Enter's terms check: the record is this season's, hashes to what the entrant sent, and states the fee and mint the entrant expected; the arena agrees with the record on every term
+#[inline(never)]
+fn check_entry_terms(terms: &AccountInfo, pid: &Pubkey, arena: &[u8], rest: &[u8]) -> ProgramResult {
+    check_terms(terms, pid, &arena[A_SEASON..A_SEASON + 8])?; let t = terms.try_borrow_data()?;
+    if !terms_match_arena(&t, arena) { return fail(E_TERMS_ACCT); }
+    let (fee, mint, hash) = (ru64(rest, 0)?, &rest[8..40], &rest[40..72]);
+    if rd64(&t, TM_FEE) != fee || &t[TM_MINT..TM_MINT + 32] != mint || terms_hash(&t)?.as_slice() != hash { return fail(E_TERMS_MISMATCH); }
+    Ok(())
+}
+/// 6 Enter (TEE): [owner(s), strat(w), arena(w), owner_ata(w), pool_ata(w), token_program, config, reg(w), roster(w), terms]; data: expected fee u64, expected stake mint[32], terms hash[32].
+/// Counts the entry on the strategy: it cannot be closed until this entry is published or released.
+/// The entrant pays only into terms it has read: the season's public terms record must exist, hash to what the entrant sent, state the fee and mint the entrant expected, and agree with the arena field by field (9150, 9151).
 /// The strategy's registry must be given WRITABLE (9133). Publish writes it, and the rollup refuses any transaction that marks writable an account it does not hold, changed or not (observed on the devnet TEE),
 /// so a strategy whose registry was never delegated here, and could therefore never be published, cannot enter.
 #[inline(never)]
-fn enter(pid: &Pubkey, accts: &[AccountInfo]) -> ProgramResult {
+fn enter(pid: &Pubkey, accts: &[AccountInfo], rest: &[u8]) -> ProgramResult {
+    if rest.len() != ENTER_DATA { return Err(ProgramError::InvalidInstructionData); }
     let it = &mut accts.iter();
     let (owner, strat, arena, oe, pe, tp, cfgacc) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
-    let reg = next_account_info(it)?; let roster = next_account_info(it)?;
+    let reg = next_account_info(it)?; let roster = next_account_info(it)?; let terms = next_account_info(it)?;
     check_config(cfgacc, pid)?; if cfg_paused(cfgacc)? { return Err(ProgramError::Custom(9060)); } // paused: no new money enters; everything that unwinds a season stays open
     check_arena(arena, pid)?; check_strat(strat, pid)?;
     let s = strat.try_borrow_data()?; let mut d = arena.try_borrow_mut_data()?; check_pins(&d)?;
+    check_entry_terms(terms, pid, &d, rest)?; // before a single token moves
     if !owner.is_signer || &s[S_OWNER..S_OWNER + 32] != owner.key.as_ref() || d[A_FLAGS] & F_LOCKED != 0 { return Err(ProgramError::MissingRequiredSignature); }
     if Clock::get()?.slot >= rd64(&d, A_CREATED).saturating_add(rd64(&d, A_WINDOW)) { return Err(ProgramError::Custom(9030)); } // the entry window is closed
     let (sp, _) = Pubkey::find_program_address(&[b"strat", &s[S_ID..S_ID + 8]], pid); if sp != *strat.key { return Err(bad!()); }
@@ -588,7 +653,7 @@ fn enter(pid: &Pubkey, accts: &[AccountInfo]) -> ProgramResult {
     d[o + SL_CODE..o + SL_CODE + l].copy_from_slice(code); d[A_NS] = d[A_NS].checked_add(1).ok_or(bad!())?;
     // the commitment of the code just copied, from the same sealed account
     { let at = RO_HDR + ns * RO_ESZ; roster.try_borrow_mut_data()?.get_mut(at..at + RO_ESZ).ok_or(bad!())?.copy_from_slice(&s[S_COMMIT..S_COMMIT + 32]); }
-    drop(s); { let mut s = strat.try_borrow_mut_data()?; let n = u16::from_le_bytes([s[S_OPEN], s[S_OPEN + 1]]).checked_add(1).ok_or(ProgramError::ArithmeticOverflow)?; s[S_OPEN..S_OPEN + 2].copy_from_slice(&n.to_le_bytes()); }
+    drop(s); { let mut s = strat.try_borrow_mut_data()?; let n = (open_raw(&s) & S_OPEN_MASK).checked_add(1).ok_or(ProgramError::ArithmeticOverflow)?; set_open(&mut s, n)?; }
     d[o + SL_BITS] |= B_COUNTED; Ok(())
 }
 /// 15 Cleanup (permissionless): [crank(s), hub(w), arena(w), permission(w), vault(w), magic, permission_program, receipt(w), roster(w), roster_permission(w), then strat(w) for every entry still counted] closes the ephemeral arena + its permission, refunding rent to the hub sponsor.
@@ -656,7 +721,8 @@ fn cancel(pid: &Pubkey, accts: &[AccountInfo]) -> ProgramResult {
         for i in 0..ns { let e = RC_ENT + i * RC_ESZ; let id: [u8; 8] = arr::<8>(&d, HDR + i * SLOT + SL_ID)?; r[e..e + 8].copy_from_slice(&id); } }
     release_named(&mut d, pid, it)
 }
-/// 5 CreateSeason (TEE): [authority(s), hub(w), arena(w), permission(w), vault(w), magic, permission_program, receipt(w), config, claims(w), roster(w), roster_permission(w)]
+/// 5 CreateSeason (TEE): [authority(s), hub(w), arena(w), permission(w), vault(w), magic, permission_program, receipt(w), config, claims(w), roster(w), roster_permission(w), terms(w)]
+/// The last account is the public terms record, written once here and closed with the claims account.
 /// data: season u64, neps u32, spt u32, fee u64, mint[32], maxs u8, flags u8, division u8, window u64 (entry window, slots), seed_timeout u64 (slots after lock), publish_grace u64 (slots after settle), min_entrants u8
 /// The receipt must be fresh and carry the creator's bond (lamports posted at InitReceipt); a receipt opens exactly one arena, so a season id can never be created twice against one bond.
 #[inline(never)]
@@ -664,7 +730,7 @@ fn create_season(pid: &Pubkey, accts: &[AccountInfo], rest: &[u8]) -> ProgramRes
     let it = &mut accts.iter();
     let (auth, hub, arena, perm, vault, magic, pp, rc, cfgacc) = (next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?, next_account_info(it)?);
     let claims = next_account_info(it)?;
-    let (roster, rperm) = (next_account_info(it)?, next_account_info(it)?);
+    let (roster, rperm) = (next_account_info(it)?, next_account_info(it)?); let terms = next_account_info(it)?;
     if !auth.is_signer || rest.len() < 84 { return Err(ProgramError::MissingRequiredSignature); }
     let sid = &rest[0..8]; let maxs = rest[56] as usize; let division = rest[58] as usize; let (neps_in, spt_in) = (ru32(rest, 8)?, ru32(rest, 12)?); if maxs == 0 || maxs > MAX_SLOTS || division >= DIVISIONS.len() { return Err(bad!()); }
     // bounds: a season must be able to finish well inside its deadline, whatever the creator asks for
@@ -710,7 +776,22 @@ fn create_season(pid: &Pubkey, accts: &[AccountInfo], rest: &[u8]) -> ProgramRes
     EphemeralAccount::new(hub, claims, vault).with_signer_seeds(&[hs, csd]).create(claims_size(maxs) as u32)?;
     if claims.try_data_len()? < claims_size(maxs) { return Err(ProgramError::AccountDataTooSmall); }
     { let crent = hub1.saturating_sub(hub.lamports()); let mut c = claims.try_borrow_mut_data()?; c[0..4].copy_from_slice(&M_CLAIMS.to_le_bytes()); c[CL_CAP] = maxs as u8; c[CL_SEASON..CL_SEASON + 8].copy_from_slice(sid); wr64(&mut c, CL_RENT, crent); }
+    write_terms(pid, hub, terms, vault, rest, auth.key, hbump)?;
     let mut r = rc.try_borrow_mut_data()?; r[RC_STATE] = 1; wr64(&mut r, RC_RENT, rent); Ok(())
+}
+/// the public terms record, created with the arena from the same inputs and paid for by the hub like the claims account: its rent is measured on its own and returns at CloseClaims, never touching the bond
+#[inline(never)]
+fn write_terms<'a>(pid: &Pubkey, hub: &AccountInfo<'a>, terms: &AccountInfo<'a>, vault: &AccountInfo<'a>, rest: &[u8], creator: &Pubkey, hbump: u8) -> ProgramResult {
+    let sid = &rest[0..8]; let (tp, tbump) = Pubkey::find_program_address(&[b"terms", sid], pid); if tp != *terms.key { return fail(E_TERMS_ACCT); }
+    let hs: &[&[u8]] = &[b"hub", &[hbump]]; let tsd: &[&[u8]] = &[b"terms", sid, &[tbump]]; let hub0 = hub.lamports();
+    EphemeralAccount::new(hub, terms, vault).with_signer_seeds(&[hs, tsd]).create(TERMS_SIZE as u32)?;
+    if terms.try_data_len()? < TERMS_SIZE { return Err(ProgramError::AccountDataTooSmall); }
+    let trent = hub0.saturating_sub(hub.lamports()); let mut t = terms.try_borrow_mut_data()?;
+    t[0..4].copy_from_slice(&M_TERMS.to_le_bytes()); t[TM_VERSION] = TERMS_VERSION; t[TM_SEASON..TM_SEASON + 8].copy_from_slice(sid); t[TM_CREATOR..TM_CREATOR + 32].copy_from_slice(creator.as_ref()); t[TM_MINT..TM_MINT + 32].copy_from_slice(&rest[24..56]);
+    t[TM_FEE..TM_FEE + 8].copy_from_slice(&rest[16..24]); t[TM_NEPS..TM_NEPS + 4].copy_from_slice(&rest[8..12]); t[TM_SPT..TM_SPT + 4].copy_from_slice(&rest[12..16]);
+    t[TM_WINDOW..TM_WINDOW + 8].copy_from_slice(&rest[59..67]); t[TM_SEEDTO..TM_SEEDTO + 8].copy_from_slice(&rest[67..75]); t[TM_GRACE..TM_GRACE + 8].copy_from_slice(&rest[75..83]);
+    t[TM_MAXS] = rest[56]; t[TM_MINS] = rest[83]; t[TM_FLAGS] = rest[57] & F2_HASFIN; t[TM_DIV] = rest[58]; t[TM_PINS..TM_PINS + PINS_LEN].copy_from_slice(&pins_bytes());
+    wr64(&mut t, TM_RENT, trent); Ok(())
 }
 /// 10 Settle (permissionless): [crank(s), arena(w), receipt(w), claims(w), pool_pda, pool_ata, roster, then optional (strat(w), reg(w)) pairs for entries 0, 1, 2, ...]
 /// Allowed when nothing is left to run, or when the finals are void (their seed or their run missed its deadline). Final ranks are fixed, and what each entry is OWED is recorded in the claims account: no token moves

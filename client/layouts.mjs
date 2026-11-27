@@ -23,3 +23,12 @@ export const M_CLAIMS = 0x534d4c43;
 export function parseClaims(d) { if (!d || d.length < 72 || d.readUInt32LE(0) !== M_CLAIMS) return null; const n = Math.min(d[5], Math.floor((d.length - 72) / 48));
   const out = { recorded: d[4] === 1, n, kind: d[7] === 2 ? "refund" : d[7] === 1 ? "payout" : "none", season: d.readBigUInt64LE(8), mint: d.subarray(16, 48), owed: d.readBigUInt64LE(48), claimed: d.readBigUInt64LE(56), entries: [] };
   for (let i = 0; i < n; i++) { const e = 72 + i * 48; out.entries.push({ slot: i, owner: d.subarray(e, e + 32), owed: d.readBigUInt64LE(e + 32), done: d[e + 40] === 1 }); } return out; }
+// ---- the season's public terms record (ephemeral, no permission, PDA ["terms", season]): what CreateSeason fixed, readable by anyone BEFORE they pay ----
+// 0 magic | 4 version u8 (1) | 8 season u64 | 16 creator[32] | 48 mint[32] | 80 fee u64 | 88 episodes u32 | 92 slots per tick u32 | 96 entry window u64 | 104 seed timeout u64 | 112 publish grace u64
+// | 120 seats u8 | 121 minimum entrants u8 | 122 flags u8 (2 = finals) | 123 division u8 | 128 ruleset pins[48] | 176 hub rent drawn u64 (not part of the hash). 184 bytes.
+import { createHash } from "node:crypto";
+export const M_TERMS = 0x4d524554, TERMS_SIZE = 184, TERMS_VERSION = 1, TERMS_HASH_FROM = 4, TERMS_HASH_TO = 176, TERMS_DOMAIN = "CNCL-TERMS-v1";
+/** the 32-byte hash an entrant sends to Enter: sha256("CNCL-TERMS-v1" || bytes 4..176 of the record). The program recomputes it from the record and refuses any other (9151). Null when the bytes are not a terms record */
+export function termsHash(d) { if (!d || d.length < TERMS_SIZE || d.readUInt32LE(0) !== M_TERMS || d[4] !== TERMS_VERSION) return null; return createHash("sha256").update(TERMS_DOMAIN).update(d.subarray(TERMS_HASH_FROM, TERMS_HASH_TO)).digest(); }
+export function parseTerms(d) { const hash = termsHash(d); if (!hash) return null; return { season: d.readBigUInt64LE(8), creator: d.subarray(16, 48), mint: d.subarray(48, 80), fee: d.readBigUInt64LE(80), episodes: d.readUInt32LE(88), slotsPerTick: d.readUInt32LE(92), entryWindowSlots: d.readBigUInt64LE(96), seedTimeoutSlots: d.readBigUInt64LE(104), publishGraceSlots: d.readBigUInt64LE(112),
+  seats: d[120], minEntrants: d[121], finals: (d[122] & 2) !== 0, division: d[123], pins: Buffer.from(d.subarray(128, 176)), hubRent: d.readBigUInt64LE(176), hash }; }

@@ -6,7 +6,10 @@ use solana_instruction::{AccountMeta, Instruction};
 
 const NAMES: [&str; 5] = ["Mom20th", "EMAcross", "TrendSwitch", "SwitchTwo", "SwitchFade"];
 fn env(n: usize) -> Env { let mut e = Env::new(n); e.model_rent(); e }
+/// sealed by this build: the owner's registry pays and the payer flag is set
 fn sealed(e: &mut Env, n: usize) -> Vec<Strat> { (0..n).map(|i| { let o = i % e.players.len(); e.register_and_seal(o, NAMES[i % 5], code_of(NAMES[i % 5])) }).collect() }
+/// sealed as the previous build did: the hub paid, no payer flag
+fn sealed_old(e: &mut Env, n: usize) -> Vec<Strat> { let v = sealed(e, n); for s in &v { e.as_previous_build(s); } v }
 /// a season holding these strategies, still unlocked
 fn open(e: &mut Env, sid: u64, sts: &[Strat], fee: u64, finals: bool) -> Season { let mut s = e.season(sid); assert!(e.init_pool(&s).is_ok()); let r = e.create_season(&mut s, if finals { 15 } else { 2 }, fee, 20, finals, 2); assert!(r.is_ok(), "CreateSeason {}", err_string(&r)); for st in sts { let r = e.enter(&mut s, st); assert!(r.is_ok(), "Enter {}", err_string(&r)); } s }
 fn start(e: &mut Env, s: &mut Season, byte: u8) { assert!(e.lock(s).is_ok()); assert!(e.request_seed(s).is_ok()); assert!(e.deliver_seed(s, seed_of(byte)).is_ok()); }
@@ -16,14 +19,16 @@ fn errs(r: &Res, what: &str) { assert!(r.is_err() && !failed_to_complete(r), "{}
 fn counts(e: &Env, sts: &[Strat]) -> Vec<u16> { sts.iter().map(|s| e.open_count(s.id)).collect() }
 /// the owner's close is refused because an entry is open, and nothing at all changes
 fn close_refused_open(e: &mut Env, st: &Strat, when: &str) { let (k, rk) = (e.strat_pda(st.id), e.reg_pda(st.id)); let (s0, r0, h0) = (e.data(&k), e.data(&rk), e.lamports(&e.hub)); let r = e.close_strategy(st); rejects(&r, 9130, when); assert_eq!((e.data(&k), e.data(&rk), e.lamports(&e.hub)), (s0, r0, h0), "{}: a refused close changes nothing", when); }
-/// close succeeds: exactly this strategy's rent returns to the hub, the sealed account is gone, the registry is marked closed
-fn close_ok(e: &mut Env, st: &Strat, rent: u64) { let k = e.strat_pda(st.id); let ow = e.players[st.owner].pubkey(); let (h0, v0, o0) = (e.lamports(&e.hub), e.vault_total(), e.lamports(&ow)); let r = e.close_strategy(st); assert!(r.is_ok(), "CloseStrategy: {}", err_string(&r));
-    assert_eq!(e.lamports(&e.hub) - h0, rent, "the hub gets back exactly what it paid"); assert_eq!(v0 - e.vault_total(), rent); assert_eq!(e.lamports(&ow), o0, "the owner paid nothing for the sealed account and receives nothing for it"); assert!(e.svm.get_account(&k).map_or(true, |a| a.data.is_empty()), "the sealed account is gone"); assert_eq!(rd32(&e.data(&e.reg_pda(st.id)), 0), M_REG_CLOSED); }
+/// close succeeds: exactly this strategy's rent returns to WHOEVER PAID IT (the registry if the payer flag is set, the hub if not), the other is untouched, the sealed account is gone, the registry is marked closed
+fn close_ok(e: &mut Env, st: &Strat, rent: u64) { let k = e.strat_pda(st.id); let rk = e.reg_pda(st.id); let ow = e.players[st.owner].pubkey(); let by_reg = e.registry_paid(st.id); let (h0, r0, v0, o0) = (e.lamports(&e.hub), e.lamports(&rk), e.vault_total(), e.lamports(&ow)); let r = e.close_strategy(st); assert!(r.is_ok(), "CloseStrategy: {}", err_string(&r));
+    let (dh, dr) = (e.lamports(&e.hub) - h0, e.lamports(&rk) - r0); if by_reg { assert_eq!((dr, dh), (rent, 0), "the registry that paid gets back exactly what it paid, and the hub is not touched"); } else { assert_eq!((dh, dr), (rent, 0), "the hub that paid gets back exactly what it paid, and the registry is not touched"); }
+    assert_eq!(v0 - e.vault_total(), rent); assert_eq!(e.lamports(&ow), o0, "the owner paid nothing for the sealed account and receives nothing for it"); assert!(e.svm.get_account(&k).map_or(true, |a| a.data.is_empty()), "the sealed account is gone"); assert_eq!(rd32(&e.data(&rk), 0), M_REG_CLOSED); }
 
 #[test] fn the_rent_model_reproduces_what_devnet_showed() {
-    assert_eq!(STRAT_RENT, 20_000); let mut e = env(5); let h = e.lamports(&e.hub); let st = sealed(&mut e, 1); assert_eq!(h - e.lamports(&e.hub), 20_000, "a new sealed strategy");
-    let h = e.lamports(&e.hub); let s = open(&mut e, 1, &st, 0, false); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.arena)] + e.rent_held.as_ref().unwrap()[&(true, s.arena)], 328_576, "a 20-seat arena and its permission"); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.claims)], 34_944, "its claims account"); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.roster)] + e.rent_held.as_ref().unwrap()[&(true, s.roster)], 27_008, "a 20-seat roster and its permission (no members)"); assert_eq!(h - e.lamports(&e.hub), 328_576 + 34_944 + 27_008);
-}
+    assert_eq!(STRAT_RENT, 20_000); let mut e = env(5); let h = e.lamports(&e.hub); let id = { let s = e.register(1, "x", code_of("Mom20th")); s.id }; let r0 = e.lamports(&e.reg_pda(id)); let st = e.strategies.last().unwrap().clone(); assert!(e.seal(&st).is_ok());
+    assert_eq!((r0 - e.lamports(&e.reg_pda(id)), h - e.lamports(&e.hub)), (20_000, 0), "a new sealed strategy is paid for by its registry, and the hub pays nothing");
+    let h = e.lamports(&e.hub); let st = vec![st]; let s = open(&mut e, 1, &st, 0, false); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.arena)] + e.rent_held.as_ref().unwrap()[&(true, s.arena)], 328_576, "a 20-seat arena and its permission"); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.claims)], 34_944, "its claims account"); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.roster)] + e.rent_held.as_ref().unwrap()[&(true, s.roster)], 27_008, "a 20-seat roster and its permission (no members)");
+    assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.terms)], eph_rent(tm::SIZE), "the terms record"); assert_eq!(eph_rent(tm::SIZE), 7_808); assert_eq!(h - e.lamports(&e.hub), 328_576 + 34_944 + 27_008 + 7_808, "the season: arena, claims, roster and terms record, drawn from the hub (the 363,520 observed, plus the roster of a later build, plus the terms record)"); }
 
 // ================= the counter, on every path =================
 #[test] fn the_count_goes_up_at_enter_and_down_at_publish_whether_inline_or_separate() {
@@ -85,8 +90,8 @@ fn close_ok(e: &mut Env, st: &Strat, rent: u64) { let k = e.strat_pda(st.id); le
 }
 
 #[test] fn the_count_cannot_overflow() {
-    let mut e = env(5); let st = sealed(&mut e, 1); let k = e.strat_pda(st[0].id); e.set_data(&k, |d| d[S_OPEN..S_OPEN + 2].copy_from_slice(&u16::MAX.to_le_bytes()));
-    let mut s = e.season(47); assert!(e.init_pool(&s).is_ok()); assert!(e.create_season(&mut s, 2, 10, 20, false, 2).is_ok()); let bal = e.balance(&e.players[0].pubkey()); errs(&e.enter(&mut s, &st[0]), "Enter at the maximum count"); assert_eq!(e.open_count(st[0].id), u16::MAX); assert_eq!(e.balance(&e.players[0].pubkey()), bal, "and no fee moved"); assert_eq!(e.data(&s.arena)[ar::NS], 0);
+    let mut e = env(5); let st = sealed(&mut e, 1); let k = e.strat_pda(st[0].id); e.set_data(&k, |d| d[S_OPEN..S_OPEN + 2].copy_from_slice(&u16::MAX.to_le_bytes())); /* the flag and the largest count the low 15 bits hold */
+    let mut s = e.season(47); assert!(e.init_pool(&s).is_ok()); assert!(e.create_season(&mut s, 2, 10, 20, false, 2).is_ok()); let bal = e.balance(&e.players[0].pubkey()); errs(&e.enter(&mut s, &st[0]), "Enter at the maximum count"); assert_eq!((e.open_raw(st[0].id), e.open_count(st[0].id)), (u16::MAX, S_OPEN_MASK), "flag and count unchanged"); assert_eq!(e.balance(&e.players[0].pubkey()), bal, "and no fee moved"); assert_eq!(e.data(&s.arena)[ar::NS], 0);
 }
 
 #[test] fn enter_needs_the_strategy_writable() {
@@ -137,18 +142,21 @@ fn rc_entry(e: &Env, s: &Season, i: usize) -> (u64, u32) { let d = e.data(&s.rec
 }
 
 #[test] fn only_the_owner_closes_and_the_rent_cannot_be_redirected() {
-    let mut e = env(5); let st = sealed(&mut e, 2); let (a_, b) = (st[0].clone(), st[1].clone()); let kp = e.player(a_.owner);
+    for old in [false, true] {
+    let mut e = env(5); let st = if old { sealed_old(&mut e, 2) } else { sealed(&mut e, 2) }; let (a_, b) = (st[0].clone(), st[1].clone()); let kp = e.player(a_.owner);
     let go = |e: &mut Env, ix: Instruction, who: usize| { e.fresh_blockhash(); let k = e.player(who); e.send(&[ix], &[&k]) };
-    let h0 = e.lamports(&e.hub);
+    let (h0, r0) = (e.lamports(&e.hub), e.lamports(&e.reg_pda(a_.id)));
     let ix = e.close_strategy_ix(a_.id, 3); errs(&go(&mut e, ix, 3), "another wallet");
     let mut ix = e.close_strategy_ix(a_.id, a_.owner); ix.accounts[0] = AccountMeta::new_readonly(kp.pubkey(), false); e.fresh_blockhash(); errs(&e.send(&[ix], &[]), "no owner signature");
-    let mut ix = e.close_strategy_ix(a_.id, a_.owner); ix.accounts[1] = AccountMeta::new(kp.pubkey(), false); errs(&go(&mut e, ix, a_.owner), "the owner naming itself as the rent sponsor");
+    // a strategy the hub paid for can only repay the hub: naming anything else as the sponsor is refused. One the registry paid for ignores the hub slot altogether: the registry is the sponsor, and nothing can be redirected
+    if old { let mut ix = e.close_strategy_ix(a_.id, a_.owner); ix.accounts[1] = AccountMeta::new(kp.pubkey(), false); errs(&go(&mut e, ix, a_.owner), "the owner naming itself as the rent sponsor of a hub-funded strategy"); }
     let mut ix = e.close_strategy_ix(a_.id, a_.owner); ix.accounts[7] = AccountMeta::new(e.reg_pda(b.id), false); errs(&go(&mut e, ix, a_.owner), "another strategy's registry");
     let mut ix = e.close_strategy_ix(a_.id, a_.owner); ix.accounts[7].is_writable = false; errs(&go(&mut e, ix, a_.owner), "a registry that cannot be written (in the rollup: one that is not delegated here)");
     let ix = e.close_strategy_ix(b.id, a_.owner); errs(&go(&mut e, ix, a_.owner), "someone else's strategy");
-    assert_eq!(e.lamports(&e.hub), h0); assert_eq!(counts(&e, &st), [0, 0]); for s in &st { assert_eq!(rd32(&e.data(&e.reg_pda(s.id)), 0), M_REG); }
-    close_ok(&mut e, &a_, STRAT_RENT);
-}
+    assert_eq!((e.lamports(&e.hub), e.lamports(&e.reg_pda(a_.id))), (h0, r0), "a refused close moves nothing"); assert_eq!(counts(&e, &st), [0, 0]); for s in &st { assert_eq!(rd32(&e.data(&e.reg_pda(s.id)), 0), M_REG); }
+    if !old { let w = e.players[3].pubkey(); let mut ix = e.close_strategy_ix(a_.id, a_.owner); ix.accounts[1] = AccountMeta::new(w, false); let h = e.lamports(&w); let r = go(&mut e, ix, a_.owner); assert!(r.is_ok(), "{}", err_string(&r)); assert_eq!(e.lamports(&w), h, "naming a wallet where the hub goes redirects nothing: the registry that paid is repaid"); assert_eq!(e.lamports(&e.reg_pda(a_.id)) - r0, STRAT_RENT, "the registry, which paid 20,000 at Seal, is repaid it"); }
+    else { close_ok(&mut e, &a_, STRAT_RENT); }
+    } }
 
 #[test] fn a_closed_strategy_cannot_be_entered_resealed_or_closed_again_and_close_works_while_paused() {
     let mut e = env(5); let st = sealed(&mut e, 2); assert!(e.admin(0, &[]).is_ok()); close_ok(&mut e, &st[0], STRAT_RENT); close_ok(&mut e, &st[1], STRAT_RENT); assert!(e.admin(1, &[]).is_ok());
@@ -166,7 +174,7 @@ fn rc_entry(e: &Env, s: &Season, i: usize) -> (u64, u32) { let d = e.data(&s.rec
 
 // ================= older strategies =================
 #[test] fn an_older_strategy_reads_as_zero_and_closes_for_its_own_rent() {
-    let mut e = env(5); let st = sealed(&mut e, 1);
+    let mut e = env(5); let st = sealed_old(&mut e, 1);
     // the 396-byte form: same fields, 8 bytes shorter, and the hub paid 19,744 for it. Bytes 6..8 were never written by any earlier build.
     let k = e.strat_pda(st[0].id); let mut acc = e.svm.get_account(&k).unwrap(); acc.data.truncate(STRAT_MIN_SIZE); e.svm.set_account(k, acc).unwrap(); e.rent_held.as_mut().unwrap().insert((false, k), eph_rent(STRAT_MIN_SIZE)); let mut h = e.svm.get_account(&e.hub).unwrap(); h.lamports += eph_rent(404) - eph_rent(396); e.svm.set_account(e.hub, h).unwrap();
     assert_eq!(e.open_count(st[0].id), 0); let mut s = open(&mut e, 80, &st, 10, false); assert_eq!(e.open_count(st[0].id), 1); close_refused_open(&mut e, &st[0], "old strategy, entered"); play(&mut e, &mut s, 8); assert!(e.settle_publishing(&s, 1).is_ok()); assert_eq!(e.open_count(st[0].id), 0); close_ok(&mut e, &st[0], 19_744);
@@ -206,10 +214,13 @@ fn rc_entry(e: &Env, s: &Season, i: usize) -> (u64, u32) { let d = e.data(&s.rec
 }
 
 // ================= the hub is made whole =================
-/// seal, a whole season, close everything, close the strategies: the hub is back to the lamport, nothing is left in the vault, and entries in equal claims out
-fn whole_cycle(sid: u64, n: usize, finals: bool, ending: &str) {
+/// seal, a whole season, close everything, close the strategies: the hub is back to the lamport, nothing is left in the vault, and entries in equal claims out.
+/// `old`: the strategies were sealed by the previous build (the hub paid their rent); otherwise the registries paid.
+fn whole_cycle(sid: u64, n: usize, finals: bool, ending: &str, old: bool) {
     let mut e = env(20.max(n)); let hub0 = e.lamports(&e.hub); let tokens: Vec<u64> = e.players.iter().map(|p| e.balance(&p.pubkey())).collect(); assert_eq!(e.vault_total(), 0);
-    let st = sealed(&mut e, n); assert_eq!(hub0 - e.lamports(&e.hub), n as u64 * STRAT_RENT);
+    let regs0: Vec<(u64, u64)> = vec![]; let _ = regs0;
+    let st = if old { sealed_old(&mut e, n) } else { sealed(&mut e, n) }; let strat_rent = n as u64 * STRAT_RENT;
+    assert_eq!(hub0 - e.lamports(&e.hub), if old { strat_rent } else { 0 }, "who pays at Seal");
     if ending == "cancelled" { e.params.seedto = 100; }
     let mut s = open(&mut e, sid, &st, 10, finals);
     match ending {
@@ -219,12 +230,18 @@ fn whole_cycle(sid: u64, n: usize, finals: bool, ending: &str) {
     }
     e.claim_all(&s); e.assert_books(&s, 0); let (_, owed, claimed) = e.claim_totals(&s); assert_eq!((owed, claimed), (10 * n as u64, 10 * n as u64), "entries in = claims out"); assert_eq!(e.pool_balance(&s), 0);
     let after: u64 = e.players.iter().map(|p| e.balance(&p.pubkey())).sum(); assert_eq!(after, tokens.iter().sum::<u64>());
-    assert!(e.close_claims(&s).is_ok()); assert!(e.cleanup(&s).is_ok()); assert!(e.commit_undelegate(&[s.receipt]).is_ok()); assert!(e.release_bond(&s).is_ok());
-    assert_eq!(hub0 - e.lamports(&e.hub), n as u64 * STRAT_RENT, "after the season closes, only the live strategies are still holding the hub's rent: this is what a never-closed strategy keeps");
+    assert!(e.close_claims(&s).is_ok()); assert!(e.svm.get_account(&s.terms).map_or(true, |a| a.data.is_empty()), "the terms record closed with the claims account"); assert!(e.cleanup(&s).is_ok()); assert!(e.commit_undelegate(&[s.receipt]).is_ok()); assert!(e.release_bond(&s).is_ok());
+    let reg_total = |e: &Env| -> u64 { st.iter().map(|t| e.lamports(&e.reg_pda(t.id))).sum() }; let regs_open = reg_total(&e);
+    assert_eq!(hub0 - e.lamports(&e.hub), if old { strat_rent } else { 0 }, "after the season closes, the season's rent (arena, roster, claims, terms) is back, and the live strategies hold only the rent of whoever paid it");
     for t in &st { close_ok(&mut e, t, STRAT_RENT); assert!(e.commit_undelegate(&[e.reg_pda(t.id)]).is_ok()); let r = e.close_registry(t); assert!(r.is_ok(), "{}", err_string(&r)); }
-    assert_eq!(e.lamports(&e.hub), hub0, "the hub is whole, strategy rent included"); assert_eq!(e.vault_total(), 0, "nothing left in the rollup vault");
+    assert_eq!(e.lamports(&e.hub), hub0, "the hub is whole, strategy rent included when it paid it"); assert_eq!(e.vault_total(), 0, "nothing left in the rollup vault"); let _ = regs_open;
 }
-#[test] fn hub_whole_after_a_paid_two_phase_season_and_closing_its_strategies() { whole_cycle(100, 5, true, "settled"); }
-#[test] fn hub_whole_after_a_full_twenty_seat_season() { whole_cycle(101, 20, true, "settled"); }
-#[test] fn hub_whole_after_a_voided_finals_season() { whole_cycle(102, 4, true, "voided"); }
-#[test] fn hub_whole_after_a_cancelled_season() { whole_cycle(103, 5, false, "cancelled"); }
+#[test] fn hub_whole_after_a_paid_two_phase_season_and_closing_its_strategies() { whole_cycle(100, 5, true, "settled", true); }
+#[test] fn hub_whole_after_a_full_twenty_seat_season() { whole_cycle(101, 20, true, "settled", true); }
+#[test] fn hub_whole_after_a_voided_finals_season() { whole_cycle(102, 4, true, "voided", true); }
+#[test] fn hub_whole_after_a_cancelled_season() { whole_cycle(103, 5, false, "cancelled", true); }
+/// the same four, with registry-funded strategies: the hub pays for the seasons and nothing else, and is whole when they close
+#[test] fn hub_whole_with_registry_paid_strategies_after_a_paid_two_phase_season() { whole_cycle(104, 5, true, "settled", false); }
+#[test] fn hub_whole_with_registry_paid_strategies_after_a_full_twenty_seat_season() { whole_cycle(105, 20, true, "settled", false); }
+#[test] fn hub_whole_with_registry_paid_strategies_after_a_voided_finals_season() { whole_cycle(106, 4, true, "voided", false); }
+#[test] fn hub_whole_with_registry_paid_strategies_after_a_cancelled_season() { whole_cycle(107, 5, false, "cancelled", false); }

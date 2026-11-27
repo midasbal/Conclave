@@ -38,7 +38,7 @@ await F.initReceipt(c, sid); await F.initPool(c, sid);
 let allSealed = true; for (const e of entries) { const r = await F.seal(c, e.o, e.id, e.salt, e.code); if (r.err) { allSealed = false; log("seal error", e.name, JSON.stringify(r.err)); } } check("3 strategies sealed in the TEE", allSealed);
 const cs = await F.createSeason(c, sid, { neps: NEPS, fee: 0, maxs: 20, finals: true, division: 2 }); check("CreateSeason", !cs.err, cs.sig + (cs.err ? " " + JSON.stringify(cs.err) : ""));
 // fee 0: no tokens move, so the throwaway wallet needs no token account; its (absent) ATA is passed read-only, the pool eATA is the real delegated one
-const t0 = Date.now(); for (;;) { const e = await F.simErr(c, [F.enterIx(c, sid, 0, entries[0].id, true)], [O]); if (!e) break; if (Date.now() - t0 > 90_000) { check("pool token account usable within 90s", false, e); summary(); await L.sleep(5000); } await L.sleep(500); }
+const t0 = Date.now(); for (;;) { const e = await F.simErr(c, [F.enterIx(c, sid, 0, entries[0].id, true, await F.termsExpect(c, sid))], [O]); if (!e) break; if (Date.now() - t0 > 90_000) { check("pool token account usable within 90s", false, e); summary(); await L.sleep(5000); } await L.sleep(500); }
 log(`pool token account usable after ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 const en = await F.enter(c, sid, entries.map(e => [e.o, e.id]), log, true); check("3 entries accepted", en.every(r => !r.err));
 // the client closes nothing without a verified recovery bundle. The canary's strategies are disposable, so theirs go to a temporary folder under a passphrase that is thrown away: this still runs the real export, reopen and check
@@ -74,16 +74,16 @@ if (pubClaims) for (const x of claimsChecks(pubClaims, R, { fee: 0 })) check("ow
 // ---- D. cleanup and sponsor accounting
 const cc = await L.sendTee(c.URL, [F.closeClaimsIx(c, sid)], [O]); check("CloseClaims", !cc.err, cc.sig + (cc.err ? " " + JSON.stringify(cc.err) : ""));
 const cl = await L.sendTee(c.URL, [F.cleanupIx(c, sid)], [O]); check("Cleanup", !cl.err, cl.sig + (cl.err ? " " + JSON.stringify(cl.err) : ""));
-// CloseClaims and Cleanup refund the claims account and the arena. Until they are closed below, the three sealed strategies are all the hub is still out of (20,000 each).
-const hub1 = await F.hubLamports(c); check("sponsor hub: arena and claims rent refunded, only the 3 sealed strategies still hold hub rent", hub1 !== null && hub0 - hub1 === 3 * 20_000, `${hub0} -> ${hub1} (${hub1 - hub0})`);
+// CloseClaims and Cleanup refund the claims account, the terms record and the arena. The three sealed strategies were paid for by their own registries (this build), so the hub is already whole.
+const hub1 = await F.hubLamports(c); check("sponsor hub: arena, claims and terms rent refunded, and the sealed strategies never touched it (their registries paid)", hub1 !== null && hub1 === hub0, `${hub0} -> ${hub1} (${hub1 - hub0})`);
 // ---- E. the creator bond comes back: undelegate the closed receipt, release on base, exact amount
 { const cu = await L.sendTee(c.URL, [F.commitUndelegateIx([L.receiptPda(sid)])], [O]); check("Commit+undelegate the closed receipt", !cu.err, cu.sig + (cu.err ? " " + JSON.stringify(cu.err) : ""));
   let acc = null; for (let t = 0; t < 60; t++) { acc = await L.base.getAccountInfo(L.receiptPda(sid)); if (acc && acc.owner.equals(L.PROGRAM) && acc.data[144] === 2) break; await L.sleep(1500); }
   if (check("receipt back on base in state closed", !!acc && acc.owner.equals(L.PROGRAM))) { const RR = L.parseReceipt(acc.data); const l0 = acc.lamports; const rel = await L.sendBase([F.releaseBondIx(sid, O.publicKey)], [O]); const l1 = await L.base.getBalance(L.receiptPda(sid));
     check("bond released exactly: nothing forfeited, arena rent drawn equals reclaimed", BigInt(l0 - l1) === RR.release && RR.forfeit === 0n && RR.release === RR.bond && RR.rentDrawn === RR.rentReclaimed && RR.rentDrawn > 0n, `${rel} bond ${RR.bond} drawn ${RR.rentDrawn} reclaimed ${RR.rentReclaimed} released ${l0 - l1}`); } }
-// ---- F. retire the strategies: the sealed rent goes back to the hub, each registry's balance back to this wallet. (The over-cap registry of step A was never sealed, so there is nothing to close and it stays.)
+// ---- F. retire the strategies: the sealed rent goes back to each strategy's registry, and each registry's balance back to this wallet. (The over-cap registry of step A was never sealed, so there is nothing to close and it stays.)
 for (const e of entries) { const held = (await L.base.getAccountInfo(L.regPda(e.id)))?.lamports; const w0 = await L.base.getBalance(O.publicKey); const r = await F.closeStrategy(c, 0, e.id, backup); let marker = null; for (let t = 0; !r.err && t < 20 && !(marker = await F.registryMarker(e.id)); t++) await L.sleep(1000); const got = (await L.base.getBalance(O.publicKey)) - w0;
   check(`${e.name}: strategy closed, registry shrunk to its permanent marker, the rest of its balance back to the wallet`, !r.err && !!marker && got > 0, r.err ? JSON.stringify(r.err) : `${r.sigs.join(" ")} | the registry held ${held}, the marker keeps ${marker?.lamports}; wallet +${got} net of this step\'s fee`); }
-{ const hub2 = await F.hubLamports(c); check("sponsor hub is whole: exactly what it held before the run, strategy rent included", hub2 === hub0, `${hub0} -> ${hub2}`); }
+{ const hub2 = await F.hubLamports(c); check("sponsor hub is whole: exactly what it held before the run", hub2 === hub0, `${hub0} -> ${hub2}`); }
 function summary() { const bad = checks.filter(x => !x.ok); L.base.getBalance(O.publicKey).then(b => { log(`== CANARY ${bad.length ? "FAILED: " + bad.map(x => x.name).join("; ") : "PASSED"} (${checks.length - bad.length}/${checks.length} checks) | wallet spent ${((bal0 - b) / 1e9).toFixed(5)} SOL, now ${(b / 1e9).toFixed(4)}`); process.exit(bad.length ? 1 : 0); }); }
 summary();
