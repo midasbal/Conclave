@@ -7,10 +7,11 @@ export function SiteFooter() {
       <div className={`page ${styles.inner}`}>
         <p className={styles.status}>Solana devnet. Not audited.</p>
         <nav aria-label="Project" className={styles.nav}>
-          <a href={links.repo}>Repository</a>
-          <a href={links.lifecycle}>Program specification</a>
-          <a href={links.proofs}>Records and proofs</a>
-          <a href={links.api}>Record API</a>
+          <a className="ruled" href={links.repo}>Repository</a>
+          <a className="ruled" href={links.lifecycle}>Program specification</a>
+          <a className="ruled" href={links.proofs}>Records and proofs</a>
+          <a className="ruled" href={links.api}>Record API</a>
+          <a className="ruled" href={links.x}>@wjmdiary on X</a>
         </nav>
       </div>
     </footer>

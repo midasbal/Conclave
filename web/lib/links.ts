@@ -3,6 +3,7 @@ const file = (p: string) => `${REPO}/blob/main/${p}`;
 
 export const links = {
   repo: REPO,
+  x: "https://x.com/wjmdiary",
   lifecycle: file("program/LIFECYCLE.md"),
   disclosure: file("program/LIFECYCLE.md#security-considerations-sealing-disclosure"),
   proofs: file("verifier/README.md"),
@@ -10,3 +11,4 @@ export const links = {
 };
 
 export const explorerAddress = (address: string) => `https://explorer.solana.com/address/${address}?cluster=devnet`;
+export const explorerTransaction = (signature: string) => `https://explorer.solana.com/tx/${signature}?cluster=devnet`;

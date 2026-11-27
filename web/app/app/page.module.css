@@ -1,0 +1,53 @@
+.record { padding-block: clamp(2.25rem, 6vh, 4rem) clamp(4rem, 10vh, 6.5rem); }
+
+.head { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 1.5rem 3rem; align-items: end; padding-bottom: 2rem; }
+.head h1 { font-size: clamp(2.6rem, 6vw, 4.4rem); line-height: 1.02; margin-bottom: 0.9rem; }
+.head > div:first-child p { max-width: 38rem; }
+.head > div:last-child { justify-self: end; justify-items: end; text-align: right; }
+
+.filters { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; border-bottom: 3px solid var(--ink); }
+.filters a { display: inline-flex; align-items: baseline; gap: 0.5rem; padding: 0.55rem 1.15rem 0.45rem; text-decoration: none; border: 1px solid transparent; border-bottom: 0; transition: background-color 160ms var(--ease), color 160ms var(--ease); }
+.filters a span { font-family: var(--font-mono), monospace; font-size: 0.78rem; }
+.filters a:hover { background: var(--wash); border-color: var(--rule); }
+.filters a[aria-current] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.filters p { margin-left: auto; align-self: center; font-size: 0.9rem; color: var(--ink-soft); }
+
+/* one grid shared by the column heads and every row, so the register lines up like a ledger */
+.register { background: var(--sheet); border: 1px solid var(--ink); border-top: 0; }
+.register ol { list-style: none; margin: 0; padding: 0; }
+.columns, .row { display: grid; grid-template-columns: 8.5rem 6.75rem minmax(0, 1fr) 7.25rem 8.5rem 6rem; gap: 0 1.25rem; align-items: baseline; padding-inline: 1.25rem; }
+.columns { padding-block: 0.65rem 0.5rem; border-bottom: 1px solid var(--ink); font-family: var(--font-mono), monospace; font-size: 0.72rem; font-weight: 500; }
+.row { position: relative; padding-block: 0.85rem 0.8rem; text-decoration: none; border-bottom: 1px solid var(--rule); transition: background-color 150ms var(--ease); }
+.register li:last-child .row { border-bottom: 0; }
+/* the row under the pointer or the keyboard gets a bar of ink at its edge and its number is ruled */
+.row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--ink); transform: scaleY(0); transition: transform 180ms var(--ease); }
+.row:hover, .row:focus-visible { background: var(--wash); text-decoration: none; }
+.row:hover::before, .row:focus-visible::before { transform: scaleY(1); }
+.row:focus-visible { outline-offset: -3px; }
+.number { font-family: var(--font-display), Georgia, serif; font-size: 1.45rem; line-height: 1.2; }
+.row:hover .number, .row:focus-visible .number { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+.opened, .field, .fee { font-family: var(--font-mono), monospace; font-size: 0.8rem; }
+.cancelled { color: var(--ink-soft); font-style: italic; }
+.status { font-size: 0.95rem; }
+.status i { font-style: italic; }
+.flagged { border: 1px solid var(--ink); padding: 0.05rem 0.45rem; }
+
+.none { padding: 2.5rem 0; font-style: italic; color: var(--ink-soft); }
+.key { max-width: 46rem; margin-top: 1.5rem; font-size: 0.9rem; color: var(--ink-soft); }
+.key strong { color: var(--ink); }
+
+@media (max-width: 62rem) {
+  .head { grid-template-columns: minmax(0, 1fr); }
+  .head > div:last-child { justify-self: start; justify-items: start; text-align: left; }
+  .columns { display: none; }
+  .register { border-top: 0; }
+  /* each row becomes a small entry: number and receipt on the first line, what happened on the second, the figures under it */
+  .row { grid-template-columns: repeat(3, minmax(0, auto)); grid-template-areas: "number number status" "outcome outcome outcome" "opened field fee"; justify-content: space-between; gap: 0.25rem 0.75rem; padding-inline: 1rem; }
+  .number { grid-area: number; }
+  .status { grid-area: status; justify-self: end; }
+  .outcome, .cancelled { grid-area: outcome; }
+  .opened { grid-area: opened; }
+  .field { grid-area: field; }
+  .fee { grid-area: fee; justify-self: end; }
+}
+@media (max-width: 24rem) { .filters a { padding-inline: 0.75rem; } .opened, .field, .fee { font-size: 0.72rem; } }

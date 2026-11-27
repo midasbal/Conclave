@@ -1,15 +1,18 @@
-/* One flat theme: ledger paper and a near-black ink. The red belongs to the seal and to nothing else. */
+/* One flat theme: warm grey paper and a soft near-black ink, low enough in brightness and contrast to read for a long while.
+   Text pairs hold at least 5.9:1. The red belongs to the seal and to nothing else. */
 :root {
-  --paper: #e5e8e2;
-  --sheet: #f1f3ee;
-  --ink: #111a16;
-  --ink-soft: #424e47;
-  --rule: #aab3ab;
-  --seal: #9e231a;
+  --paper: #d9d2c3;
+  --sheet: #e3ded1;
+  --ink: #2b2721;
+  --ink-soft: #4c463b;
+  --rule: #aca28f;
+  --wash: #d6cfbe; /* a row or button under the pointer, on a sheet */
+  --seal: #862819;
 
   --measure: 34rem;
   --page: 74rem;
   --gutter: clamp(1.25rem, 4vw, 3rem);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   color-scheme: light;
 }
 
@@ -30,8 +33,14 @@ body {
 main { flex: 1; }
 h1, h2, h3 { font-family: var(--font-display), Georgia, serif; font-weight: 400; margin: 0; text-wrap: balance; }
 p { margin: 0; text-wrap: pretty; }
-a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.22em; }
-a:hover { text-decoration-thickness: 2px; }
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.22em; transition: text-underline-offset 180ms var(--ease), text-decoration-thickness 180ms var(--ease); }
+a:hover { text-decoration-thickness: 2px; text-underline-offset: 0.3em; }
+
+/* a navigation link: no line until it is pointed at or focused, then one is ruled under it from the left */
+.ruled { position: relative; text-decoration: none; padding-block: 0.3rem; }
+.ruled::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: currentColor; transform: scaleX(0); transform-origin: left center; transition: transform 240ms var(--ease); }
+.ruled:hover { text-decoration: none; }
+.ruled:hover::after, .ruled:focus-visible::after, .ruled[aria-current="page"]::after { transform: scaleX(1); }
 :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 ::selection { background: var(--ink); color: var(--paper); }
 
@@ -44,7 +53,21 @@ a:hover { text-decoration-thickness: 2px; }
 .room { display: grid; gap: clamp(3rem, 8vh, 5rem); padding-block: clamp(3rem, 10vh, 7rem); }
 .notice { display: grid; gap: 1.25rem; max-width: var(--measure); }
 .notice h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); line-height: 1.06; }
+.plain-button { font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--ink); padding: 0.5rem 1.2rem; cursor: pointer; }
+.plain-button:hover { background: var(--ink); color: var(--paper); }
+
+/* Sections come into view once, as they are scrolled to. Only a page whose script is running hides anything first (the .js class, set before paint and
+   withdrawn again if the script never reports in), so without JavaScript, or if it fails, everything is simply there. */
+.js [data-reveal] { opacity: 0; transform: translateY(18px); transition: opacity 620ms var(--ease), transform 620ms var(--ease); transition-delay: var(--reveal-delay, 0ms); }
+.js [data-reveal][data-shown] { opacity: 1; transform: none; }
+/* whatever holds the keyboard focus is never left faded out, wherever it is on the screen */
+.js [data-reveal]:focus-within { opacity: 1; transform: none; transition: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  *, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; }
+  .js [data-reveal] { opacity: 1; transform: none; }
+}
+@media print {
+  .js [data-reveal] { opacity: 1; transform: none; }
 }

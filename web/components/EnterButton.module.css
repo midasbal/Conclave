@@ -1,0 +1,9 @@
+.enter { display: inline-flex; align-items: stretch; gap: 1px; text-decoration: none; color: var(--paper); transition: gap 260ms var(--ease), transform 90ms ease-out; }
+.enter:hover { text-decoration: none; }
+.label, .leaf { background: var(--ink); display: grid; place-items: center; }
+.label { padding: 0.85rem 2.4rem 0.75rem 2.6rem; font-family: var(--font-display), Georgia, serif; font-size: 1.5rem; line-height: 1.2; }
+.leaf { width: 3.6rem; }
+.leaf svg { transition: transform 260ms var(--ease); }
+.enter:hover, .enter:focus-visible { gap: 8px; }
+.enter:hover .leaf svg, .enter:focus-visible .leaf svg { transform: translateX(4px); }
+.enter:active { gap: 1px; transform: translateY(2px); }

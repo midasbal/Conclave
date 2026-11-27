@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SealMark } from "./SealMark";
-import { links } from "@/lib/links";
+import { SiteNav } from "./SiteNav";
 import styles from "./SiteHeader.module.css";
 
 export function SiteHeader() {
@@ -11,11 +11,7 @@ export function SiteHeader() {
           <SealMark />
           <span>Conclave</span>
         </Link>
-        <nav aria-label="Main" className={styles.nav}>
-          <Link href="/#season">How a season runs</Link>
-          <Link href="/#limits">Limits</Link>
-          <a href={links.repo}>Source</a>
-        </nav>
+        <SiteNav />
       </div>
     </header>
   );

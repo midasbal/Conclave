@@ -1,7 +1,11 @@
 .header { border-bottom: 1px solid var(--ink); }
-.inner { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem 2rem; flex-wrap: wrap; padding-block: 1.1rem; }
-.brand { display: inline-flex; align-items: center; gap: 0.7rem; text-decoration: none; font-family: var(--font-display), Georgia, serif; font-size: 1.65rem; line-height: 1; }
+.inner { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem 2rem; flex-wrap: wrap; padding-block: 0.95rem; }
+.brand { display: inline-flex; align-items: center; gap: 0.7rem; text-decoration: none; font-family: var(--font-display), Georgia, serif; font-size: 1.75rem; line-height: 1; }
+.brand:hover { text-decoration: none; }
 .brand span { padding-top: 0.1em; }
-.nav { display: flex; gap: clamp(1rem, 3vw, 2.25rem); font-size: 0.95rem; }
-.nav a { text-decoration: none; padding-block: 0.25rem; border-bottom: 1px solid transparent; }
-.nav a:hover { border-bottom-color: var(--ink); }
+/* pointing at the mark presses its seal */
+.brand svg { transition: transform 200ms var(--ease); }
+.brand:hover svg, .brand:focus-visible svg { transform: translateY(1px) scale(0.96); }
+.tools { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem clamp(1.25rem, 3vw, 2.5rem); }
+.nav { display: flex; flex-wrap: wrap; gap: 0.25rem clamp(1rem, 2.6vw, 2.25rem); font-size: 0.95rem; }
+@media (max-width: 26rem) { .nav { column-gap: 0.85rem; font-size: 0.875rem; } }

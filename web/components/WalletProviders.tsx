@@ -7,11 +7,13 @@ import type { ReactNode } from "react";
 
 const ENDPOINT = "https://api.devnet.solana.com";
 const NONE: never[] = [];
+const IGNORE = () => {};
 
 export function WalletProviders({ children }: { children: ReactNode }) {
   return (
     <ConnectionProvider endpoint={ENDPOINT}>
-      <WalletProvider wallets={NONE} autoConnect={false}>{children}</WalletProvider>
+      {/* a refused or failed connection is told to the visitor by the menu that asked; the library would otherwise also log it as an error */}
+      <WalletProvider wallets={NONE} autoConnect={false} onError={IGNORE}>{children}</WalletProvider>
     </ConnectionProvider>
   );
 }

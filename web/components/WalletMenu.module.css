@@ -1,0 +1,25 @@
+.root { position: relative; }
+.trigger { display: inline-flex; align-items: center; gap: 0.6rem; font: inherit; font-size: 0.95rem; color: var(--ink); background: transparent; border: 1px solid var(--ink); border-radius: 0; padding: 0.4rem 0.85rem 0.35rem 1rem; cursor: pointer; transition: background-color 160ms var(--ease), color 160ms var(--ease); }
+.trigger:hover, .trigger[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
+.caret { transition: transform 200ms var(--ease); }
+.trigger[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.panel { position: absolute; z-index: 5; top: calc(100% + 8px); right: 0; width: min(19rem, calc(100vw - 2 * var(--gutter))); background: var(--sheet); border: 1px solid var(--ink); border-top-width: 5px; animation: drop 180ms var(--ease) both; }
+/* with no wallet to land on, the panel itself takes focus: its outline is drawn on its own edge, not as a second frame around it */
+.panel:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; }
+.panel ul { list-style: none; margin: 0; padding: 0; }
+.item { display: flex; align-items: center; gap: 0.75rem; width: 100%; font: inherit; font-size: 1rem; text-align: left; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 0.75rem 1rem; cursor: pointer; }
+.item:hover, .item:focus-visible { background: var(--ink); color: var(--paper); outline-offset: -4px; }
+.item:focus-visible { outline: 2px solid var(--paper); }
+.item:disabled { cursor: progress; opacity: 0.6; }
+.who { display: grid; gap: 0.3rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--rule); font-style: italic; }
+.who .mono { font-style: normal; overflow-wrap: anywhere; }
+.mono { font-family: var(--font-mono), monospace; font-size: 0.8rem; }
+.none { padding: 0.9rem 1rem; border-bottom: 1px solid var(--rule); }
+.note { padding: 0.7rem 1rem 0.8rem; font-size: 0.85rem; line-height: 1.5; color: var(--ink-soft); }
+.problem { padding: 0 1rem 0.8rem; font-size: 0.9rem; }
+.problem:empty { display: none; }
+
+/* on a narrow screen the trigger can sit at the left edge, so the menu opens rightwards from it */
+@media (max-width: 36rem) { .panel { right: auto; left: 0; } }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
