@@ -118,6 +118,26 @@ The count moves down only where the slot's bit is set, and the bit is cleared wi
 
 **Done on devnet on 2026-11-26** (build sha256 `0ea300bf...`, 504,536 bytes, program data extended by 12,648 bytes, on-chain bytes equal to the artifact). Every receipt of a build that requires one was closed beforehand, so no season was open.
 
+## Security considerations: sealing disclosure
+
+**The real guarantee is narrower than "private": a strategy is private only while it is open.**
+
+**The mechanism.** The salt and bytecode exist as plaintext in exactly one place: the `SealStrategy` instruction's own data (`idb | salt[32] | code`, tag 3). The rollup redacts that transaction's body to anyone who is not a member of the strategy's permission. That permission is created once, at Seal, with the owner as its only member, and destroyed once, at `CloseStrategy` (tag 24); no instruction ever replaces its member list. Once that permission is gone, the rollup's redaction has nothing left to key off, and the Seal transaction's full body, salt and bytecode included, becomes readable by anyone, with no token at all, from devnet's own transaction history. Observed on devnet: four already-closed strategies, read by four different viewers each (anonymous, a fresh stranger token, the owner's own token, another player's token), all returned the full plaintext body; the same lookup on an open strategy stays redacted to everyone but the owner.
+
+**The scope, stated plainly.** Sealing, entering, running, settling, claiming and cleanup never put a secret into a transaction body, and never touch a strategy's permission. **Only `CloseStrategy` does either.** So the only action that ends a strategy's privacy is closing it.
+
+**Who controls it.** Only the strategy's own owner can close it, by signing CloseStrategy, and the guard in "Strategy reclaim" above (9130) refuses that while any entry is still open. **No rival, and no season outcome, can force a strategy's code public.** The decision, and its timing, belong entirely to the owner.
+
+**What it means downstream:**
+
+* The retire-and-reclaim flow (Strategy reclaim, above) is the normal way to close a strategy and recover its rent. Every strategy retired that way is handed to the world for free, whether or not anyone ever asks for a proof.
+* `verify --season` in `client/custody_cli.mjs`, and the verifier's level 3 and level 4 proofs (`verifier/README.md`), let an owner choose to reveal a score salt or a sealed salt and bytecode. That choice is moot once the strategy is closed: the salt and bytecode are already public through this mechanism, with no bundle and no reveal needed.
+* README.md's and this file's description of a sealed strategy as "private" holds only up to the moment it is closed.
+
+**No fix for this exists on MagicBlock's current TEE.** Nothing in the SDK or the TEE's RPC surface delivers a secret into the rollup's execution without it passing through a recorded transaction, and the one encryption primitive the SDK offers (`encrypt_ed25519_recipient`, keyed to the validator's own identity) is wired into base-layer delegation scheduling and SPL private transfers, not into redaction of a rollup transaction's own history; adopting it would add no trust beyond what the TEE already requires, and would not change what gets recorded once the program actually executes with the plaintext. A program-level mitigation is left as future work; it was not attempted here.
+
+**Minimal honest mitigation, done here (client only, no program change):** `closeStrategy` in `client/flows.mjs` refuses to run at all unless its caller passes `{ acknowledgeDisclosure: true }`, and states this section's guarantee in full (`F.DISCLOSURE_WARNING`) if it does not. This cannot stop a close built by hand or by another client; it only stops this client from doing one silently.
+
 ## Receipts and identity
 
 **Deployed on devnet** (sha256 `7bd612e7...`); what was seen there is at the end of this section. Everything in this section replaces what the rest of this file says where they differ.

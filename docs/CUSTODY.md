@@ -7,7 +7,7 @@ A sealed strategy is opened by two things together: its 32-byte **salt** and its
 | Copy | Lasts until |
 |---|---|
 | The key file, `strategies.json` in the key folder | you lose the file or the disk |
-| The sealed account in the rollup, readable only by the owner | the strategy is closed (it is wiped), or the rollup loses its state |
+| The sealed account in the rollup, readable only by the owner | the strategy is closed (it is wiped, but see below), or the rollup loses its state |
 | A recovery bundle | you lose the file, or its passphrase |
 
 ## The key file
@@ -45,17 +45,18 @@ Give the passphrase with `--passphrase-file`, `CONCLAVE_BUNDLE_PASSPHRASE_FILE`,
 
 * `export-all` checks each record against whatever the chain still holds (sealed account, registry, published receipt entries), writes `index.json` with public facts only, and exits non-zero on any disagreement. It reads one sealed account at a time, slowly, because the rollup bans clients that hurry.
 * `recover` needs the owner's wallet and **not** the key file. Without `--id` it finds the owner's strategies through their open registries on base. Only strategies that are still sealed can be recovered. It writes new bundle files, so it needs a folder where they do not already exist, or the same passphrase.
-* `verify --season` needs only the bundle, its passphrase and the public receipt. It replays the bytecode on the receipt's seeds and checks the score commitment, which also works after the strategy is closed. It needs the author module built (see `docs/AUTHORING.md`) and a VM with the receipt's rules. **Showing someone this proof means giving them the salt and the bytecode.** On a format 3 receipt, a season's totals alone can be proved with that season's score salt, which opens neither the code commitment nor any other season; see `program/LIFECYCLE.md`.
+* `verify --season` needs only the bundle, its passphrase and the public receipt. It replays the bytecode on the receipt's seeds and checks the score commitment, which also works after the strategy is closed. It needs the author module built (see `docs/AUTHORING.md`) and a VM with the receipt's rules. **Showing someone this proof means giving them the salt and the bytecode.** On a format 3 receipt, a season's totals alone can be proved with that season's score salt, which opens neither the code commitment nor any other season. **This premise holds only while the strategy stays open.** Once it is closed, the salt and bytecode are already public to anyone, with no proof and no bundle needed, from devnet's own transaction history; see "Security considerations: sealing disclosure" in `program/LIFECYCLE.md`.
 * `rekey` re-encrypts under a new passphrase. Older copies of the file still open with the old one.
 
 ## Export before close
 
-Closing wipes the sealed salt and code. `closeStrategy` in `client/flows.mjs` therefore requires a passphrase, and before sending anything it writes a bundle from the sealed account (or accepts a matching one), reads it back from disk, opens it, and checks program, cluster, id, owner, salt, bytecode and commitment against the sealed account and the registry. `closeStrategyIx` cannot be built without the ticket this check issues, and refuses if the bundle file has since changed or gone.
+Closing wipes the sealed salt and code from the account, but not from devnet's own history: see "Security considerations: sealing disclosure" in `program/LIFECYCLE.md`. `closeStrategy` in `client/flows.mjs` therefore refuses to run at all unless its caller passes `{ acknowledgeDisclosure: true }`, and prints `F.DISCLOSURE_WARNING` if it does not. Only once that is given does it require a passphrase and, before sending anything, write a bundle from the sealed account (or accept a matching one), read it back from disk, open it, and check program, cluster, id, owner, salt, bytecode and commitment against the sealed account and the registry. `closeStrategyIx` cannot be built without the ticket this check issues, and refuses if the bundle file has since changed or gone.
 
-**This protects users of this client only.** Anyone can build the CloseStrategy instruction by hand, or use another client, and close with no backup. The program cannot know whether one exists. The check also cannot know that you will remember the passphrase, or that the file will survive.
+**The backup protects users of this client only; the disclosure warning does not protect anyone from a decision they make anyway.** Anyone can build the CloseStrategy instruction by hand, or use another client, and close with no backup and no warning. The program cannot know whether a backup exists, or that the owner was told what closing does. The check also cannot know that you will remember the passphrase, or that the file will survive.
 
 ## How this can still go wrong
 
+* **Closing a strategy is not just losing a copy: it is publishing the salt and bytecode.** This is not a bundle, backup, key file or passphrase failure; it happens even with every copy intact, and nothing listed below protects against it. See "Security considerations: sealing disclosure" in `program/LIFECYCLE.md`.
 * Every copy lost: key file, bundles, and the sealed account (closed, or the rollup's state gone). There is no other way back.
 * The passphrase forgotten once the sealed account and key file are gone.
 * Bundles and passphrase kept on one disk. By default both sit in the key folder, beside the key file: that is not yet a backup. Copy the bundles elsewhere, and keep the passphrase somewhere else again.

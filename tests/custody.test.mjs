@@ -76,7 +76,11 @@ test("export before close: no CloseStrategy without a bundle written, reopened a
   const out = C.exportForClose({ file: path.join(tmp(), "e.cvbundle"), passphrase: PASS, program: chain.program, cluster: s.fields.cluster, id: s.id, owner: chain.owner, sealedData: s.sealed, registryData: s.reg }); assert.equal(build(out).data[0], 24);
   assert.ok(C.openBundle(fs.readFileSync(out.file), PASS).salt.equals(s.salt)); });
 
-test("closeStrategy without a passphrase stops before anything is read or sent", async () => { await assert.rejects(F.closeStrategy({ players: [Keypair.generate()] }, 0, 5n), /passphrase is required/); await assert.rejects(F.closeStrategy({ players: [Keypair.generate()] }, 0, 5n, {}), /passphrase is required/); });
+test("closeStrategy without acknowledging the disclosure stops before anything is read or sent, and the message states the real guarantee", async () => {
+  for (const backup of [undefined, {}, { passphrase: PASS }, { passphrase: PASS, acknowledgeDisclosure: false }, { passphrase: PASS, acknowledgeDisclosure: "true" }]) await assert.rejects(F.closeStrategy({ players: [Keypair.generate()] }, 0, 5n, backup), /acknowledgeDisclosure: true/, JSON.stringify(backup));
+  assert.match(F.DISCLOSURE_WARNING, /permanently and publicly readable/); assert.match(F.DISCLOSURE_WARNING, /anyone/); assert.match(F.DISCLOSURE_WARNING, /No rival/); assert.match(F.DISCLOSURE_WARNING, /No fix/i); assert.match(F.DISCLOSURE_WARNING, /forgo its registry rent/);
+});
+test("closeStrategy, once the disclosure is acknowledged, still requires a passphrase before anything is read or sent", async () => { await assert.rejects(F.closeStrategy({ players: [Keypair.generate()] }, 0, 5n, { acknowledgeDisclosure: true }), /passphrase is required/); await assert.rejects(F.closeStrategy({ players: [Keypair.generate()] }, 0, 5n, { acknowledgeDisclosure: true, passphrase: null }), /passphrase is required/); });
 
 // ---------------------------------------- the key file ----------------------------------------
 const keyfile = dir => path.join(dir, "strategies.json"); const rec = (id, salt = "cd".repeat(32)) => ({ id: String(id), owner: 0, name: "n", salt, code: "0200000000000000" });
