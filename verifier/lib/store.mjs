@@ -8,11 +8,15 @@
 //   <dir>/<genesis>/<program>/_service/record.json, status.json   the current record and the service's own health
 //   <dir>/<genesis>/<program>/_service/lock                 which process is writing
 // Only the first copies, flags, observations and the ledger are irreplaceable. Everything under entries/ and the record can be rebuilt from them and base.
-import fs from "fs"; import path from "path"; import crypto from "crypto";
+import fs from "fs"; import os from "os"; import path from "path"; import crypto from "crypto";
 import { Archive } from "./archive.mjs"; import { Ledger, readLedger } from "./ledger.mjs"; import { sha256 } from "./chain.mjs";
 
 const atomic = (file, text) => { const tmp = `${file}.${crypto.randomBytes(5).toString("hex")}.tmp`; const fd = fs.openSync(tmp, "wx"); try { fs.writeSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } fs.renameSync(tmp, file); };
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+/** who is writing, as far as this machine can tell: the container (its host name) and the boot (the kernel boot id). A pid alone cannot say: in a container our own process runs at a low pid, and a lock left by a killed predecessor can carry the very same number */
+export const whoAmI = () => { let boot = ""; try { boot = fs.readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim(); } catch { /* not Linux: the host name alone is used */ } return { host: os.hostname(), boot }; };
+/** lock files this process holds right now: a second open of the same store inside one process is a genuine concurrent writer, whatever its pid */
+const heldHere = new Set();
 
 export class Store {
   constructor(dir, genesis, program, { now = () => new Date().toISOString(), log = () => {} } = {}) {
@@ -20,17 +24,27 @@ export class Store {
     fs.mkdirSync(this.entriesDir, { recursive: true }); this.ledger = new Ledger(path.join(this.svc, "ledger.jsonl"), { now, log }); this.archive.ledger = this.ledger; this.locked = false; this.cache = new Map();
   }
   get lockFile() { return path.join(this.svc, "lock"); }
-  /** one writer at a time. A lock left by a process that is gone is taken over; one held by a live process is refused */
+  /** one writer at a time. A lock is stale, and taken over, when its writer cannot be the one running now: the process is gone; or it carries OUR pid but this process did not take it (a predecessor killed by SIGKILL or the out-of-memory killer in a container, where processes start at low pids and the same number comes round again); or it was written by another container or another boot. A lock held by a live process of this container, or by this process itself, is refused.
+   *  What this does not do: tell a live writer in a DIFFERENT container from a dead one. Two live containers on one volume are prevented by the platform (Railway lets one deployment mount a service's volume at a time), not by this lock. */
   lock() {
+    const me = whoAmI();
     for (let i = 0; i < 2; i++) {
-      try { const fd = fs.openSync(this.lockFile, "wx"); fs.writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: this.now() })); fs.closeSync(fd); this.locked = true; return; }
+      try { const fd = fs.openSync(this.lockFile, "wx"); fs.writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: this.now(), host: me.host, boot: me.boot })); fs.closeSync(fd); this.locked = true; heldHere.add(this.lockFile); return; }
       catch (e) { if (e.code !== "EEXIST") throw e; let held; try { held = JSON.parse(fs.readFileSync(this.lockFile, "utf8")); } catch { held = null; }
-        if (held?.pid && alive(held.pid)) throw new Error(`another ingest process (pid ${held.pid}, since ${held.startedAt}) is writing this store`);
-        this.log(`lock: taking over a lock left by a process that is gone (pid ${held?.pid ?? "unknown"})`); fs.rmSync(this.lockFile, { force: true }); }
+        const refuse = () => { throw new Error(`another ingest process (pid ${held.pid}, since ${held.startedAt}) is writing this store`); };
+        let why = null;
+        if (!held?.pid) why = "unreadable";
+        else if (heldHere.has(this.lockFile)) refuse(); // this very process already holds it: a second writer, whatever the number says
+        else if (held.host && held.host !== me.host) why = `written in another container (${held.host})`;
+        else if (held.boot && me.boot && held.boot !== me.boot) why = "written before the last boot";
+        else if (held.pid === process.pid) why = `its pid ${held.pid} is our own, and this process never took it (the process that did was killed)`;
+        else if (alive(held.pid)) refuse();
+        else why = `its process (pid ${held.pid}) is gone`;
+        this.log(`lock: taking over a stale lock (${why})`); fs.rmSync(this.lockFile, { force: true }); }
     }
     throw new Error("could not take the store lock");
   }
-  unlock() { if (this.locked) { fs.rmSync(this.lockFile, { force: true }); this.locked = false; } }
+  unlock() { if (this.locked) { fs.rmSync(this.lockFile, { force: true }); this.locked = false; heldHere.delete(this.lockFile); } }
   readState() { try { return JSON.parse(fs.readFileSync(path.join(this.svc, "state.json"), "utf8")); } catch (e) { if (e.code === "ENOENT") return { version: 1, fingerprints: {}, cycles: 0 }; throw e; } }
   writeState(s) { atomic(path.join(this.svc, "state.json"), JSON.stringify(s, null, 1) + "\n"); }
   entry(address) { if (this.cache.has(address)) return this.cache.get(address); try { const e = JSON.parse(fs.readFileSync(path.join(this.entriesDir, address + ".json"), "utf8")); this.cache.set(address, e); return e; } catch (e) { if (e.code === "ENOENT") return null; throw e; } }

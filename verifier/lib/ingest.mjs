@@ -68,13 +68,13 @@ export class Ingest {
     this.lastSyncHead = this.store.ledger.head;
   }
   writeStatus(extra) {
-    const s = this.state; this.store.writeService("status.json", { pid: process.pid, startedAt: this.startedAt, updatedAt: this.now(), ...extra, currentTo: s.lastPoll ?? null, lastSweep: s.lastSweep ?? null, nextSweepAt: s.lastSweep ? new Date(Date.parse(s.lastSweep.at) + this.sweepMs).toISOString() : null,
+    const s = this.state; this.store.writeService("status.json", { pid: process.pid, startedAt: this.startedAt, updatedAt: this.now(), pollMs: this.pollMs ?? null, ...extra, currentTo: s.lastPoll ?? null, lastSweep: s.lastSweep ?? null, nextSweepAt: s.lastSweep ? new Date(Date.parse(s.lastSweep.at) + this.sweepMs).toISOString() : null,
       lastError: this.error, backup: this.backupInfo, archive: this.store.archive.digest(), ledger: this.store.ledger.summary(), cycles: s.cycles ?? 0 });
   }
 
   /** the loop. Returns when `signal` aborts (or after one cycle with `once`). A rate limit waits until the time the endpoint named; any other failure backs off, up to five minutes, and tries again: the record stays at its last good state and the status says it is stale */
   async run({ pollMs = 60_000, once = false, signal, onCycle = () => {} } = {}) {
-    let failures = 0;
+    let failures = 0; this.pollMs = pollMs; // the status says how often it expects to be updated, so a health check can tell a late loop from a slow one
     while (!signal?.aborted) {
       let wait = pollMs;
       try { const r = await this.cycle(); failures = 0; onCycle(r); }

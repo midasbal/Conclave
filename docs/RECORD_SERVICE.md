@@ -107,7 +107,8 @@ node verifier/cli.mjs store restore --store NEW --snapshot FILE  # both refuse a
 
 ## Operations
 
-* One writer per store. A second `ingest` on the same store is refused while the first is alive; a lock left by a process that has gone is taken over.
+* One writer per store. A second `ingest` on the same store is refused while the first is alive; a stale lock is taken over: its process is gone, or it was written by another container or boot, or it carries this process's own pid (a container restarts at low pids and a killed predecessor's number can come round again). The lock cannot tell a live writer in a different container from a dead one; where that matters the platform must (`docs/DEPLOY_RAILWAY.md`).
+* Cadence: `--poll-seconds` and `--sweep-minutes` default to 60 and 15, or to `CONCLAVE_POLL_SECONDS` and `CONCLAVE_SWEEP_MINUTES` when set. The Railway deployment runs 300 and 60. `status.json` records the poll interval (`pollMs`) so a health check can tell a late loop from a slow one.
 * A kill at any moment loses nothing: the first copy is written before its ledger line, and the next start adds any line that is missing. A ledger line cut short by the kill is dropped on the next start; any other damage refuses to start.
 * SIGTERM and SIGINT finish the cycle in progress, then stop and release the lock.
 * The HTTP API over the record is in `docs/API.md`. **Not built here:** reading the rollup, and more than one instance.

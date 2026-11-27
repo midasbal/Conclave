@@ -1,6 +1,6 @@
 // The capture loop over REAL recorded devnet responses (test/fixtures). Where a test needs something that did not happen on devnet (a changed byte, a second delegation, a killed process) it alters a copy and says SYNTHETIC.
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "fs"; import os from "os"; import path from "path"; import { fileURLToPath } from "url"; import { spawn } from "child_process";
-import { Ingest } from "../lib/ingest.mjs"; import { buildRecord } from "../lib/builder.mjs"; import { Store, verifyStore } from "../lib/store.mjs"; import { readLedger } from "../lib/ledger.mjs"; import { RateLimited } from "../lib/chain.mjs";
+import { Ingest } from "../lib/ingest.mjs"; import { buildRecord } from "../lib/builder.mjs"; import { Store, verifyStore, whoAmI } from "../lib/store.mjs"; import { readLedger } from "../lib/ledger.mjs"; import { RateLimited } from "../lib/chain.mjs";
 import { PROGRAM_ID, DEVNET_GENESIS, poolAddress } from "../lib/chain.mjs"; import { replay } from "./recorded.mjs";
 const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
 const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`)));
@@ -83,6 +83,30 @@ test("the sweep is due on the first cycle and then every sweepMs", async () => {
 test("one writer at a time: a second process is refused, and a lock left by a dead process is taken over", async () => {
   const dir = tmp(); const a = await open(spy(replay(ALL)), dir); await assert.rejects(() => open(spy(replay(ALL)), dir), /another ingest process \(pid \d+/); a.close(); const b = await open(spy(replay(ALL)), dir); b.close();
   fs.writeFileSync(path.join(root(dir), "_service", "lock"), JSON.stringify({ pid: 2 ** 22 + 12345, startedAt: "x" })); const c = await open(spy(replay(ALL)), dir); c.close();
+});
+
+// A container restarts the process at a low pid again and again. After a SIGKILL or an out-of-memory kill the lock file stays, and its pid can be the very number the next process has.
+test("STALE LOCK: a leftover lock that carries our own pid is taken over, so a killed container restarts instead of crash-looping", async () => {
+  const dir = tmp(); const a0 = await open(spy(replay(ALL)), dir); a0.close(); const me = whoAmI(); const lock = path.join(root(dir), "_service", "lock");
+  fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: "2026-01-01T00:00:00Z", host: me.host, boot: me.boot })); // what a predecessor with this same pid left behind
+  const logs = []; const a = await open(spy(replay(ALL)), dir, { log: m => logs.push(m) }); assert.ok(logs.some(m => /taking over a stale lock \(its pid \d+ is our own/.test(m)), logs.join("|")); assert.equal(JSON.parse(fs.readFileSync(lock, "utf8")).pid, process.pid);
+  await assert.rejects(() => open(spy(replay(ALL)), dir), /another ingest process \(pid \d+/, "while this process really holds the lock, a second writer in it is still refused"); a.close(); assert.ok(!fs.existsSync(lock), "released on close");
+  // an old-format lock (no host, no boot) with our pid is stale too
+  fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: "x" })); (await open(spy(replay(ALL)), dir)).close();
+});
+test("STALE LOCK: a really concurrent writer is still refused; a lock from another container or another boot is stale; a dead writer is taken over", async () => {
+  const dir = tmp(); const child = spawn(process.execPath, [path.join(here, "ingest_child.mjs")], { env: { ...process.env, STORE: dir, DELAY_MS: "400" }, stdio: ["ignore", "pipe", "inherit"] }); let started = false; child.stdout.on("data", d => { if (String(d).includes("started")) started = true; });
+  const t0 = Date.now(); while (!started && Date.now() - t0 < 30_000) await new Promise(r => setTimeout(r, 20)); assert.ok(started, "the child took the lock");
+  try {
+    await assert.rejects(() => open(spy(replay(ALL)), dir), new RegExp(`another ingest process \\(pid ${child.pid},`), "a live writer in this container is refused");
+    const lock = path.join(root(dir), "_service", "lock"); const held = JSON.parse(fs.readFileSync(lock, "utf8")); assert.equal(held.pid, child.pid); assert.ok(held.host, "the lock names its container");
+    const other = { ...held, host: held.host + "-previous-deployment" }; fs.writeFileSync(lock, JSON.stringify(other));
+    const logs = []; const a = await open(spy(replay(ALL)), dir, { log: m => logs.push(m) }); assert.ok(logs.some(m => /written in another container/.test(m))); a.close();
+    if (held.boot) { fs.writeFileSync(lock, JSON.stringify({ ...held, boot: "00000000-0000-0000-0000-000000000000" })); const l2 = []; (await open(spy(replay(ALL)), dir, { log: m => l2.push(m) })).close(); assert.ok(l2.some(m => /before the last boot/.test(m))); }
+  } finally { child.kill("SIGKILL"); await new Promise(r => child.on("exit", r)); }
+  const dir2 = tmp(); const c2 = spawn(process.execPath, [path.join(here, "ingest_child.mjs")], { env: { ...process.env, STORE: dir2, DELAY_MS: "400" }, stdio: ["ignore", "pipe", "inherit"] }); let up = false; c2.stdout.on("data", d => { if (String(d).includes("started")) up = true; });
+  const t1 = Date.now(); while (!up && Date.now() - t1 < 30_000) await new Promise(r => setTimeout(r, 20)); c2.kill("SIGKILL"); await new Promise(r => c2.on("exit", r));
+  assert.ok(fs.existsSync(path.join(root(dir2), "_service", "lock")), "a SIGKILL leaves its lock behind"); (await open(spy(replay(ALL)), dir2)).close();
 });
 
 test("SYNTHETIC: a process killed in the middle of a cycle loses nothing and duplicates nothing", async () => {

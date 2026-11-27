@@ -38,6 +38,7 @@ Every `GET` response is JSON with `apiVersion`, `asOf` (the slot the record is c
 | `GET /v1/wallets/{pubkey}` | the results where this wallet is the owner recorded on the receipt |
 | `GET /v1/commitments/{commitment}` | results grouped by commitment, with the caveat that **only the same salt and bytecode share one** |
 | `GET /v1/legacy` | receipts of earlier builds, labelled `verified: false`, with the receipts whose address could not be verified |
+| `GET /healthz` (not under `/v1`) | a health check that answers 503, naming each failing check, unless the capture loop, the record, the ledger and the volume are all as they should be (`docs/DEPLOY_RAILWAY.md`) |
 | `GET /v1/status` | freshness (record age, current slot, lag against the chain, stale or not), last build, the capture loop's state and last error, **alarms** (flagged receipts, backup alarms) and the archive digests |
 | `GET /v1/proofs`, `POST /v1/proofs/...` | see Proofs |
 | `GET /v1/openapi.json` | this contract |
@@ -55,7 +56,7 @@ The data is public and changes at most once per capture-loop poll, so it is shar
 | proofs list, OpenAPI | `public, max-age=3600` |
 | every proof request, every challenge, every error | `no-store` |
 
-Any origin may read (`Access-Control-Allow-Origin: *`; nothing is credentialed), with a matching preflight. `/v1` has its own rate limits (default 300 a minute per client address; 30 a minute for issuing challenges). A credential in a URL is refused, as on every route.
+Any origin may read (`Access-Control-Allow-Origin: *`; nothing is credentialed), with a matching preflight. `/v1` has its own rate limits (default 300 a minute per client address; 30 a minute for issuing challenges). How the client address is found is `CONCLAVE_CLIENT_IP`: the connection's own address by default; `global` (one bucket for everybody, with the limits raised) for a platform proxy whose headers are not established; `x-real-ip` or `xff-first` only for a proxy known to overwrite that header (`docs/DEPLOY_RAILWAY.md`). A credential in a URL is refused, as on every route.
 
 ## Honesty, in the responses themselves
 
@@ -96,6 +97,7 @@ CONCLAVE_STORE_DIR=DIR CONCLAVE_RULES_FILE=rules.json node server/bin/serve.mjs
 
 | Setting | |
 |---|---|
+| `CONCLAVE_RECORD_ONLY=1` | serve the record API alone: no auth secret and no upstream needed, and the login, player and chain-proxy routes answer `403 disabled_in_record_only_mode` |
 | `CONCLAVE_STORE_DIR` | the store the capture loop writes. Without it `/v1` answers `404 store_not_configured` |
 | `CONCLAVE_RULES_FILE` | the counting rules in force, as JSON (`verifier/policy/rules.example.json` shows the form; its trusted creator is this project's own test key, an example only). Without it the leaderboard counts nothing |
 | `CONCLAVE_STALE_AFTER_SECONDS` | when `/v1/status` calls the record stale (default 300) |
