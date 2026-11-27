@@ -63,7 +63,7 @@ const SECTIONS: Section[] = [
         </p>
         <Commands lines={[{ cmd: "node client/custody_cli.mjs verify ID.cvbundle --season SEASON" }]} />
         <p>
-          The <Link href="/workshop">Workshop</Link> runs the WebAssembly build of this VM in your browser, for practice. Its <Link href="/workshop#reference">language reference</Link> lists
+          The <Link href="/workshop" prefetch={false}>Workshop</Link> runs the WebAssembly build of this VM in your browser, for practice. Its <Link href="/workshop#reference" prefetch={false}>language reference</Link> lists
           every instruction and signal. It does not read a receipt, so it is not a replay check.
         </p>
         <p>

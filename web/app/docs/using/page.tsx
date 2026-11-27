@@ -58,7 +58,7 @@ const SECTIONS: Section[] = [
           ceiling on that cost, called its division.
         </p>
         <p>
-          <strong>You can write and test strategies today without any chain or wallet</strong>, in the <Link href="/workshop">Workshop</Link> in your browser, or with the tools in the
+          <strong>You can write and test strategies today without any chain or wallet</strong>, in the <Link href="/workshop" prefetch={false}>Workshop</Link> in your browser, or with the tools in the
           repository. Both use the same virtual machine the program runs, over many generated markets, and report the spread of results, not one lucky run.
         </p>
         <Commands lines={[
@@ -191,9 +191,9 @@ const SECTIONS: Section[] = [
 ];
 
 const FAQ: Question[] = [
-  { id: "faq-wallet", q: "Do I need a wallet?", a: <p>Not to read anything here, or to write and test a strategy in the <Link href="/workshop">Workshop</Link>. A wallet would be needed to seal and enter, which this app does not do yet. The Connect button in the record only shares your address with the page. It signs nothing and sends nothing.</p> },
+  { id: "faq-wallet", q: "Do I need a wallet?", a: <p>Not to read anything here, or to write and test a strategy in the <Link href="/workshop" prefetch={false}>Workshop</Link>. A wallet would be needed to seal and enter, which this app does not do yet. The Connect button in the record only shares your address with the page. It signs nothing and sends nothing.</p> },
   { id: "faq-money", q: "Is real money involved?", a: <p>No. This is Solana devnet, a test network. The stake tokens are test tokens, and nothing trades on a real market.</p> },
-  { id: "faq-enter", q: "Can I enter a season now?", a: <p>Not from this app: it has no entry flow yet, and no open seasons are currently offered. The program itself allows entering a zero-fee season with no stake token. A season with a fee needs an allowlisted stake token, which has no public source that the repository offers. You can write and practise a strategy in the <Link href="/workshop">Workshop</Link> today.</p> },
+  { id: "faq-enter", q: "Can I enter a season now?", a: <p>Not from this app: it has no entry flow yet, and no open seasons are currently offered. The program itself allows entering a zero-fee season with no stake token. A season with a fee needs an allowlisted stake token, which has no public source that the repository offers. You can write and practise a strategy in the <Link href="/workshop" prefetch={false}>Workshop</Link> today.</p> },
   { id: "faq-see", q: "Can anyone else see my strategy?", a: <p>While it is open, other players and the public are not given access to it, and in the devnet checks they could not read it. The program does not enforce that by itself: the private rollup does, and what its operator can see has not been tested. Once you close the strategy, <a href="#sealing">anyone can read it</a>.</p> },
   { id: "faq-undo", q: "Can I delete a strategy and keep it private?", a: <p>No. The only way to retire it is to close it, and closing publishes its code. If you never close it, it stays in the rollup, and what it holds stays there too. Part of what registering a strategy costs never comes back, either way.</p> },
   { id: "faq-stuck", q: "What happens if a season stalls?", a: <p>Each waiting stage has a deadline, after which anyone can move it on: usually to a cancellation with refunds, or, if finals fail, to a payout by season rank. All of those steps happen in the rollup, so they assume the season&rsquo;s validator is still running. What happens to entry fees if it stops has not been shown.</p> },

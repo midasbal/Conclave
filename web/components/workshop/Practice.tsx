@@ -6,6 +6,7 @@ import type { EngineClient } from "@/lib/engine/client";
 import type { Assembly, SeasonResult } from "@/lib/engine/types";
 import { EXAMPLES } from "@/lib/workshop/examples";
 import { fromFixed, vol } from "@/lib/workshop/format";
+import { HelpTip } from "./HelpTip";
 import styles from "./Practice.module.css";
 
 type Played = { result: SeasonResult; names: string[]; seed: string; episodes: number; code: string };
@@ -61,15 +62,15 @@ export function Practice({ engine, assembly, ready }: { engine: () => EngineClie
   return (
     <div className={styles.practice}>
       <form className={styles.controls} onSubmit={e => { e.preventDefault(); if (canPlay) void play(); }}>
-        <label>
-          <span>Practice seed</span>
-          <input value={seed} onChange={e => setSeed(e.target.value.slice(0, 40))} spellCheck={false} />
-        </label>
+        <div className={styles.field}>
+          <p><label htmlFor="practice-seed">Practice seed</label><HelpTip term="seed" /></p>
+          <input id="practice-seed" value={seed} onChange={e => setSeed(e.target.value.slice(0, 40))} spellCheck={false} />
+        </div>
         <button type="button" className="plain-button" onClick={() => setSeed(String(crypto.getRandomValues(new Uint32Array(1))[0]))}>New seed</button>
-        <label>
-          <span>Episodes, 1 to 100</span>
-          <input value={episodes} onChange={e => setEpisodes(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))} inputMode="numeric" aria-invalid={!countOk} />
-        </label>
+        <div className={styles.field}>
+          <p><label htmlFor="practice-episodes">Episodes, 1 to 100</label><HelpTip term="episodes" /></p>
+          <input id="practice-episodes" value={episodes} onChange={e => setEpisodes(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))} inputMode="numeric" aria-invalid={!countOk} />
+        </div>
         <button type="submit" className={styles.play} disabled={!canPlay}>{busy ? "Playing..." : "Play a practice season"}</button>
       </form>
       {!assembly?.ok && <p className={styles.fine}>The strategy has to assemble before it can play.</p>}

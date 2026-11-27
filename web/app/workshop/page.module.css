@@ -1,10 +1,19 @@
 .page { padding-block: 2.5rem clamp(5rem, 11vh, 8rem); font-family: var(--font-reading), Georgia, serif; line-height: 1.7; }
 .head { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 1.5rem 3rem; align-items: end; padding-bottom: 1.25rem; }
 .head h1 { font-size: clamp(2.6rem, 6vw, 4.4rem); line-height: 1.04; margin-bottom: 0.6rem; }
-.head > div p { max-width: 28rem; }
+.head > div p { max-width: 30rem; }
+.lede { font-size: 1.18rem; line-height: 1.6; }
+.what { margin-top: 0.7rem; color: var(--ink-soft); }
 /* what this is and is not, set on solid ink where it cannot be missed */
 .notice { display: grid; gap: 0.5rem; padding: 1.25rem 1.5rem; background: var(--ink); color: var(--paper); }
 .notice strong { font-weight: 600; }
 .noscript { padding: 0.9rem 1.1rem; margin-block: 0.5rem 1rem; border: 3px solid var(--ink); }
 @media (max-width: 62rem) { .head { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 36rem) { .notice { padding: 1rem 1.1rem; } }
+@media (max-width: 36rem) {
+  .page { padding-top: 1.25rem; }
+  .head { gap: 0.9rem; padding-bottom: 0.9rem; }
+  .head h1 { font-size: 2.2rem; margin-bottom: 0.35rem; }
+  .lede { font-size: 1.05rem; line-height: 1.5; }
+  .what { margin-top: 0.45rem; font-size: 0.95rem; line-height: 1.5; }
+  .notice { gap: 0.3rem; padding: 0.7rem 0.85rem; font-size: 0.9rem; line-height: 1.45; }
+}

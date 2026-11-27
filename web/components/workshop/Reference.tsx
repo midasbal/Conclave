@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { INSTRUCTIONS, WORK_NOTE } from "@/lib/workshop/instructions";
 import { Ledger } from "@/components/docs/Parts";
+import { HelpTip } from "./HelpTip";
 import { links } from "@/lib/links";
 import styles from "./Reference.module.css";
 
@@ -29,7 +30,7 @@ export function Reference() {
     <section id="reference" className={styles.reference} aria-labelledby="reference-title">
       <header>
         <h2 id="reference-title">Strategy language</h2>
-        <p>Source format 1, ruleset 2. A strategy runs once on every tick of a market; an episode is 150 ticks. The same description, with what the simulator measures, is in the <a href={links.authoring}>authoring guide</a>; how it fits the program is in the <Link href="/docs/technical#determinism">technical docs</Link>.</p>
+        <p>Source format 1, ruleset 2<HelpTip term="ruleset" />. A strategy runs once on every tick of a market; an episode is 150 ticks. The same description, with what the simulator measures, is in the <a href={links.authoring}>authoring guide</a>; how it fits the program is in the <Link href="/docs/technical#determinism">technical docs</Link>.</p>
       </header>
 
       <details open>

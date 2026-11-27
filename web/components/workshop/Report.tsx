@@ -1,6 +1,7 @@
 // The engine's ensemble report, set out as a record. Every figure is the engine's; the sentences say what each one is, and no more.
 import type { Ensemble, SimResult } from "@/lib/engine/types";
 import { pct, vol, whole } from "@/lib/workshop/format";
+import { HelpTip } from "./HelpTip";
 import styles from "./Report.module.css";
 
 type Props = { result: SimResult; stale: boolean; repeat: "first" | "same" | "different" };
@@ -33,7 +34,7 @@ export function Report({ result, stale, repeat }: Props) {
         <p className={styles.score}>
           <span>Median season total</span>
           <strong data-testid="score">{vol(r.dev.season_total.p50)}</strong>
-          <span>vol-units</span>
+          <span>vol-units<HelpTip term="volUnits" /></span>
         </p>
       </header>
       <p className={styles.units}>
@@ -42,11 +43,11 @@ export function Report({ result, stale, repeat }: Props) {
       </p>
 
       <section aria-labelledby="against-title">
-        <h3 id="against-title">Against the built-in field</h3>
+        <div className={styles.titled}><h3 id="against-title">Against the built-in field</h3><HelpTip term="field" /></div>
         {r.field ? (
           <>
             <p className={styles.rank}>
-              Median rank <strong data-testid="rank">{whole(r.field.median_rank)}</strong> of {r.field.size}. In the middle half of worlds it placed from {whole(r.field.p25_rank)} to {whole(r.field.p75_rank)}.
+              Median rank<HelpTip term="medianRank" /> <strong data-testid="rank">{whole(r.field.median_rank)}</strong> of {r.field.size}. In the middle half of worlds it placed from {whole(r.field.p25_rank)} to {whole(r.field.p75_rank)}.
               It finished in the top half in {pct(r.field.top_half_share)} of worlds and in the top tenth in {pct(r.field.top_tenth_share)}.
             </p>
             <p className={styles.fine}>The field is {r.field.size - 1} reference strategies built into the engine, run on the same worlds. They are not the eight examples, and they are not players.</p>
@@ -55,7 +56,7 @@ export function Report({ result, stale, repeat }: Props) {
       </section>
 
       <section aria-labelledby="unseen-title">
-        <h3 id="unseen-title">Two sets of worlds</h3>
+        <div className={styles.titled}><h3 id="unseen-title">Two sets of worlds</h3><HelpTip term="worlds" /></div>
         <table className={styles.table}>
           <thead><tr><th scope="col">Season total, vol-units</th><th scope="col">Practice worlds</th><th scope="col">Unseen worlds</th></tr></thead>
           <tbody>{ROWS.map(row => <tr key={row.label}><th scope="row">{row.label}</th><td>{row.get(r.dev)}</td><td>{row.get(r.holdout)}</td></tr>)}</tbody>

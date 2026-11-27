@@ -10,6 +10,8 @@ import { Editor } from "./Editor";
 import { CostMeter } from "./CostMeter";
 import { Report } from "./Report";
 import { Practice } from "./Practice";
+import { StartHere } from "./StartHere";
+import { HelpTip } from "./HelpTip";
 import styles from "./Workshop.module.css";
 
 const DRAFT = "conclave.workshop.draft.v1";
@@ -152,6 +154,8 @@ export function Workshop({ reference }: { reference: ReactNode }) {
     box.closest("div")?.querySelector(`[data-line="${d.line}"]`)?.scrollIntoView({ block: "center" });
   };
 
+  const example = EXAMPLES.find(e => e.source === source);
+  const aim = example ? /^note "(.*)"$/m.exec(example.source)?.[1] : undefined;
   const errors = fresh && assembly ? assembly.errors : [];
   const warnings = fresh && assembly ? assembly.warnings : [];
   const canRun = ready && !running && loaded && !(fresh && assembly && !assembly.ok);
@@ -167,9 +171,11 @@ export function Workshop({ reference }: { reference: ReactNode }) {
 
   return (
     <>
+      <StartHere isExample={isExample(source)} canRun={canRun} running={running} onRun={() => void run()} />
+
       <p className={styles.engine} data-needs-script="" data-testid="engine" data-state={status.state} role="status">
         {status.state === "starting" && "Starting the engine..."}
-        {status.state === "ready" && <>Engine ready. conclave-vm, ruleset {ENGINE.ruleset}, build <code title={status.sha256}>{status.sha256.slice(0, 8)}</code>, checked before it ran.{status.restarts > 0 && " It stopped and was started again."}</>}
+        {status.state === "ready" && <>Engine ready. conclave-vm, ruleset {ENGINE.ruleset}<HelpTip term="ruleset" />, build <code title={status.sha256}>{status.sha256.slice(0, 8)}</code>, checked before it ran.{status.restarts > 0 && " It stopped and was started again."}</>}
         {status.state === "failed" && <>The engine is not running: {status.reason}. <button type="button" className="plain-button" onClick={() => client.current?.start()}>Try again</button></>}
       </p>
 
@@ -190,6 +196,10 @@ export function Workshop({ reference }: { reference: ReactNode }) {
               Your earlier draft was set aside. <button type="button" className="plain-button" onClick={restore}>Restore it</button>
             </p>
           )}
+          <p className={styles.now} data-testid="now-editing">
+            {example ? <>In the editor: the example <strong>{example.name}</strong>.{aim ? ` ${aim}` : ""}</> : <>In the editor: <strong>your own draft</strong>.</>}{" "}
+            Each line is one step, and text after # is a comment.
+          </p>
           <Editor ref={editor} value={source} errors={errors} warnings={warnings} readOnly={!loaded} onChange={change} onRun={() => void run()} />
           <p className={styles.saved} data-needs-script="">
             {saved ? "Your draft is saved in this browser's local storage, as plain text. It is not sent anywhere." : "This browser would not save the draft. Copy your work before leaving the page."}

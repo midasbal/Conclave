@@ -1,0 +1,19 @@
+.start { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title title" "steps go"; align-items: end; gap: 0.6rem 2.5rem; padding-block: 1.25rem 1.4rem; border-top: 3px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.start h2 { grid-area: title; font-size: 1.6rem; line-height: 1.2; }
+.start ol { grid-area: steps; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1.75rem; counter-reset: step; align-self: start; }
+.start li { counter-increment: step; display: grid; grid-template-columns: 1.7rem minmax(0, 1fr); align-content: start; column-gap: 0.65rem; line-height: 1.55; }
+.start li::before { content: counter(step); grid-row: 1 / span 2; font-family: var(--font-display), Georgia, serif; font-size: 2rem; line-height: 1; padding-top: 0.05rem; }
+.start strong { font-weight: 600; }
+.start li > span { font-size: 0.95rem; color: var(--ink-soft); }
+.go { grid-area: go; align-self: center; font-family: var(--font-display), Georgia, serif; font-size: 1.4rem; line-height: 1.2; padding: 0.85rem 1.6rem; color: var(--paper); background: var(--ink); border: 1px solid var(--ink); cursor: pointer; transition: background-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease); }
+.go:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.go:active:not(:disabled) { transform: translateY(1px); }
+.go:disabled { cursor: not-allowed; opacity: 0.5; }
+
+@media (max-width: 62rem) {
+  .start { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "steps" "go"; gap: 0.9rem; }
+  .go { justify-self: start; }
+}
+@media (max-width: 48rem) { .start ol { grid-template-columns: minmax(0, 1fr); gap: 0.7rem; } }
+/* on a phone the button comes first, so that it is reached without scrolling past the steps that explain it */
+@media (max-width: 36rem) { .start { grid-template-areas: "title" "go" "steps"; gap: 0.7rem; padding-block: 0.9rem 1.1rem; } .go { justify-self: stretch; } }

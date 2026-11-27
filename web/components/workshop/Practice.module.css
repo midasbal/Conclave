@@ -1,10 +1,11 @@
 .practice { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
 .controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.9rem 1rem; }
-.controls label { display: grid; gap: 0.3rem; }
-.controls label span { font-style: italic; font-size: 0.9rem; color: var(--ink-soft); }
+.field { display: grid; gap: 0.2rem; }
+.field p { display: flex; align-items: center; min-height: 1.5rem; }
+.field label { font-style: italic; font-size: 0.9rem; color: var(--ink-soft); }
 .controls input { font-family: var(--font-mono), monospace; font-size: 1rem; width: 11rem; max-width: 100%; padding: 0.45rem 0.7rem; color: var(--ink); background: var(--sheet); border: 1px solid var(--ink); border-radius: 0; }
 .controls input[aria-invalid="true"] { border-width: 3px; }
-.controls button { min-height: 2.75rem; }
+.controls > button { min-height: 2.75rem; }
 .play { font: inherit; padding: 0.45rem 1.3rem; color: var(--paper); background: var(--ink); border: 1px solid var(--ink); cursor: pointer; transition: background-color 160ms var(--ease), color 160ms var(--ease), transform 160ms var(--ease); }
 .play:hover:not(:disabled) { background: transparent; color: var(--ink); }
 .play:active:not(:disabled) { transform: translateY(1px); }
@@ -28,7 +29,7 @@
 @media (max-width: 36rem) {
   .controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
   .controls input { width: 100%; }
-  .controls label:nth-of-type(2), .play { grid-column: 1 / -1; }
+  .controls > div:nth-of-type(2), .play { grid-column: 1 / -1; }
   .raw { display: none; }
   .table { font-size: 0.88rem; }
   .table th, .table td { padding-right: 0.4rem; }

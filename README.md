@@ -50,7 +50,7 @@ It runs on **Solana devnet** only. It has **not been audited**. Account layouts 
 | Capture daemon | Running continuously on Railway against a dedicated Helius devnet endpoint; as of 2026-11-27 it had completed about 20 capture cycles and the service was healthy. It has not yet watched a new season live, from open to settle, through this build: no new season has been run since the deploy |
 | Hosting | The record service and its API are hosted on Railway ([`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md)). The web app is live on Vercel at [conclave-league.vercel.app](https://conclave-league.vercel.app) |
 | Leaderboard | No counting rules are configured, so it counts nothing |
-| Web app | Built in [`web/`](web/README.md): the entry page, a spectator view of the record and the docs. It cannot author or enter yet |
+| Web app | Built in [`web/`](web/README.md): the entry page, a spectator view of the record, the docs, and the Workshop, where strategies are written and simulated locally in the browser. Sealing a strategy on chain and entering a season are not in the app yet |
 
 The seasons on devnet so far are this project's own tests.
 

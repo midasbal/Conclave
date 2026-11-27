@@ -1,6 +1,6 @@
-.engine { font-size: 0.95rem; color: var(--ink-soft); padding-block: 0.8rem; border-bottom: 1px solid var(--rule); }
+.engine { margin-top: 0.4rem; font-size: 0.95rem; color: var(--ink-soft); padding-block: 0.8rem; border-bottom: 1px solid var(--rule); }
 .engine code { font-family: var(--font-mono), monospace; font-size: 0.82rem; color: var(--ink); }
-.engine button { margin-left: 0.5rem; }
+.engine > button { margin-left: 0.5rem; }
 
 .bench { display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 2rem clamp(1.5rem, 3.5vw, 3rem); align-items: start; padding-top: 1.5rem; }
 .desk { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.8rem; min-width: 0; }
@@ -8,6 +8,8 @@
 .toolbar select { font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid var(--ink); border-radius: 0; padding: 0.5rem 0.75rem; min-height: 2.75rem; max-width: 100%; cursor: pointer; }
 .backup { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.6rem 0.9rem; border: 1px dashed var(--ink); }
 .saved { font-size: 0.9rem; color: var(--ink-soft); }
+.now { font-size: 0.95rem; line-height: 1.55; color: var(--ink-soft); }
+.now strong { font-weight: 600; color: var(--ink); }
 
 .side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; min-width: 0; }
 .actions { display: grid; gap: 0.5rem; }

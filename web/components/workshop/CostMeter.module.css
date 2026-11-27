@@ -1,7 +1,8 @@
 .meter { border-top: 3px solid var(--ink); }
 .row { padding-block: 0.8rem 0.9rem; border-bottom: 1px solid var(--rule); }
 .row p, .division { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
-.row p span, .division span { font-style: italic; color: var(--ink-soft); }
+/* the label only: not the help mark nested inside it */
+.row p > span, .division > span { font-style: italic; color: var(--ink-soft); }
 .row strong, .division strong { font-family: var(--font-mono), monospace; font-weight: 500; font-size: 1.05rem; }
 .row small { font-weight: 400; font-size: 0.78rem; color: var(--ink-soft); }
 .track { position: relative; height: 0.7rem; margin-top: 0.45rem; border: 1px solid var(--ink); background: var(--sheet); }
