@@ -1,17 +1,43 @@
 import { links } from "@/lib/links";
 import styles from "./SiteFooter.module.css";
 
+const GROUPS = [
+  {
+    id: "footer-reading",
+    title: "Reading",
+    items: [
+      { label: "Program specification", href: links.lifecycle },
+      { label: "Records and proofs", href: links.proofs },
+      { label: "Record API", href: links.api },
+    ],
+  },
+  {
+    id: "footer-elsewhere",
+    title: "Elsewhere",
+    items: [
+      { label: "Repository", href: links.repo },
+      { label: "X", href: links.x },
+    ],
+  },
+];
+
 export function SiteFooter() {
   return (
     <footer className={styles.footer}>
       <div className={`page ${styles.inner}`}>
-        <p className={styles.status}>Solana devnet. Not audited.</p>
+        <div className={styles.lead}>
+          <p className={styles.name}>Conclave</p>
+          <p className={styles.status}>Solana devnet. Not audited.</p>
+        </div>
         <nav aria-label="Project" className={styles.nav}>
-          <a className="ruled" href={links.repo}>Repository</a>
-          <a className="ruled" href={links.lifecycle}>Program specification</a>
-          <a className="ruled" href={links.proofs}>Records and proofs</a>
-          <a className="ruled" href={links.api}>Record API</a>
-          <a className="ruled" href={links.x}>@wjmdiary on X</a>
+          {GROUPS.map(g => (
+            <div key={g.id}>
+              <p id={g.id} className={styles.title}>{g.title}</p>
+              <ul aria-labelledby={g.id}>
+                {g.items.map(i => <li key={i.href}><a className="ruled" href={i.href}>{i.label}</a></li>)}
+              </ul>
+            </div>
+          ))}
         </nav>
       </div>
     </footer>

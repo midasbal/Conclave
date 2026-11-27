@@ -91,6 +91,6 @@ The upstream in the CI tests is a local HTTP server that returns fixed JSON-RPC 
 
 - Shared state: the nonce store and rate-limit buckets are in memory, so one process only. Several instances need a shared store (Redis or similar); the interfaces are small.
 - No revocation list: a stolen token is good for at most 15 minutes. A `jti` deny list is the next step if that is not enough.
-- Not deployed anywhere. TLS, a reverse proxy, choosing how a caller's address is found behind it (`CONCLAVE_CLIENT_IP`), and secret rotation are deployment work.
+- The record API and the capture daemon are deployed on Railway ([`docs/DEPLOY_RAILWAY.md`](../docs/DEPLOY_RAILWAY.md)). For the full server with logins, TLS, a reverse proxy, choosing how a caller's address is found behind it (`CONCLAVE_CLIENT_IP`), and secret rotation remain deployment work.
 - The browser wallet adapter glue (Phase 7): `Session` takes any `signMessage(bytes)`.
 - The TEE's own 30-day token cannot be shortened by us; keep it in memory only.

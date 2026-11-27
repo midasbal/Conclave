@@ -1,6 +1,6 @@
 # The record API (v1)
 
-A public, read-only HTTP API under `/v1`, served by `server/` from the record the capture loop writes (`docs/RECORD_SERVICE.md`). The web app, not yet built, will read it.
+A public, read-only HTTP API under `/v1`, served by `server/` from the record the capture loop writes (`docs/RECORD_SERVICE.md`). The web app, live at [conclave-league.vercel.app](https://conclave-league.vercel.app), reads it.
 
 * **It reads the store, not the chain.** A request costs one stat of two files unless the loop has written a new record. The single exception is the freshness field of `/v1/status`, which asks the RPC for one finalized slot (cached ten seconds).
 * **The `/v1` code uses no token and no secret.** It never talks to the rollup, never sees a wallet key, and has no field that could carry a strategy's salt or bytecode. (A full server in the same process also holds an auth secret for its login routes; record-only mode needs none.)

@@ -29,7 +29,7 @@ It runs on **Solana devnet** only. It has **not been audited**. Account layouts 
 * **The validator and its enclave.** They execute the program, hold the secrets and write results back. The season's creator chooses the validator, the receipt does not record which, and no tool here verifies an enclave attestation. Results are not re-executed by anyone else.
 * **The upgrade authority.** The program is upgradeable. One key holds that power; it also controls pause, the stake-token allowlist and bond recovery.
 * **The VRF oracle.** It could withhold a seed it dislikes. In the season phase that leads to refunds; in the finals it voids them and pays by season rank.
-* **The creator,** for the choice of validator, and for the field: one person can create a season and fill it with their own wallets and a token of their own.
+* **The creator,** for the choice of validator, and for the field: one person can create a season and fill it with their own wallets. Its stake token must be one the authority has allowlisted, not any token the creator chooses.
 
 ### What it does not guarantee
 
@@ -47,8 +47,8 @@ It runs on **Solana devnet** only. It has **not been audited**. Account layouts 
 |---|---|
 | Program on devnet | Deployed; `program/BUILD_HASH` records the build's SHA-256 |
 | Shown on devnet | Seasons with finals, per-entry claims, refunds, the finals seed-timeout void, strategy reclaim, registry-paid rent, public terms. Some guards and void paths are shown only in the in-process test suite; `program/LIFECYCLE.md` says which were observed |
-| Capture daemon | Built; one-cycle runs against a dedicated devnet RPC completed. It has not run continuously there, or watched a live season through that endpoint |
-| Hosting | Deploy files exist ([`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md)). The image has never been built and nothing is deployed |
+| Capture daemon | Running continuously on Railway against a dedicated Helius devnet endpoint; as of 2026-11-27 it had completed about 20 capture cycles and the service was healthy. It has not yet watched a new season live, from open to settle, through this build: no new season has been run since the deploy |
+| Hosting | The record service and its API are hosted on Railway ([`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md)). The web app is live on Vercel at [conclave-league.vercel.app](https://conclave-league.vercel.app) |
 | Leaderboard | No counting rules are configured, so it counts nothing |
 | Web app | Built in [`web/`](web/README.md): the entry page, a spectator view of the record and the docs. It cannot author or enter yet |
 

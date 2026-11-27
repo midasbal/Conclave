@@ -1,5 +1,29 @@
+/* The closing leaf, on solid ink: the name and the standing caveat on the left, two short labelled lists on the right, all starting on one line. */
 .footer { background: var(--ink); color: var(--paper); }
-.inner { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1rem 3rem; padding-block: 2.25rem; }
-.status { font-family: var(--font-display), Georgia, serif; font-size: 1.5rem; line-height: 1.2; }
-.nav { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; font-size: 0.95rem; }
+.inner { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 3rem clamp(2.5rem, 6vw, 6rem); align-items: start; padding-block: clamp(3.5rem, 6.5vw, 5.25rem) clamp(4rem, 7vw, 5.75rem); }
+
+.lead { display: grid; gap: 0.9rem; }
+.name { font-family: var(--font-display), Georgia, serif; font-size: 2.25rem; line-height: 1; letter-spacing: 0.02em; }
+.status { font-size: 1.0625rem; }
+
+.nav { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 2rem; font-size: 0.95rem; }
+/* side by side, the lists drop so that their headings share a baseline with the name, and their first links one with the caveat */
+@media (min-width: 52.001rem) { .nav { padding-top: 0.9rem; } }
+.title { font-style: italic; font-size: 0.9rem; line-height: 1.5; color: var(--rule); margin-bottom: 1rem; }
+.nav ul { list-style: none; margin: 0; padding: 0; display: grid; justify-items: start; gap: 0.5rem; }
+
 .footer :focus-visible { outline-color: var(--paper); }
+
+@media (max-width: 52rem) {
+  .inner { grid-template-columns: minmax(0, 1fr); gap: 2.75rem; }
+  .nav { padding-top: 2.25rem; border-top: 1px solid var(--ink-soft); }
+}
+/* on a phone each link gets a full line to tap */
+@media (max-width: 36rem) {
+  .inner { padding-block: 3.25rem 3.5rem; }
+  .nav { gap: 1.25rem; }
+  .nav ul { gap: 0; }
+  .nav li a { display: inline-block; padding-block: 0.65rem; }
+  .title { margin-bottom: 0.5rem; }
+}
+@media (max-width: 24rem) { .nav { grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); font-size: 0.9rem; } }
