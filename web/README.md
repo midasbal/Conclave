@@ -4,7 +4,7 @@ The browser app. So far: the entry page, the shell around it (header, footer, 40
 
 The docs are written by hand from the repository's documents and the program. The docs set their prose in Source Serif 4 (`lib/docsFont.ts`), loaded on the docs routes only, with Caslon kept for headings. When the repository's documents or the program change, check the pages under `app/docs/`; `lib/links.ts` also repeats the program id and the build hash.
 
-Next.js (App Router) and TypeScript, with hand-written CSS modules. No component library. It holds no keys. `/app` reads the record API (`../docs/API.md`) from the server.
+Next.js (App Router) and TypeScript, with hand-written CSS modules. No component library. The server holds no keys; `/seal` makes a temporary one in the visitor's browser. `/app` reads the record API (`../docs/API.md`) from the server.
 
 ## Run it
 
@@ -23,11 +23,22 @@ npm run build && npm start   # the production build
 
 `/workshop` writes, assembles and simulates strategies in the browser, with no wallet and no chain. It opens with three steps and a button that runs what is in the editor. Terms a newcomer may not know carry a question mark (`components/workshop/HelpTip.tsx`); every explanation is in `lib/workshop/help.ts`, to be checked again when the engine or the ruleset changes. The engine is the VM compiled to WebAssembly, run in a background worker that is replaced if it crashes or stops answering; where the file came from and how it was checked is in `public/engine/README.md`. The strategy is not sent to any server: the only request the worker makes is for the engine file. The draft is kept in local storage. A report is deterministic: the same bytecode gives the same bytes, and its settings are those of `conclave-author sim`, so a report can be reproduced from the command line. The practice season derives its two seed words from the text of the practice seed.
 
-It cannot seal or enter. When it can, it must not be the first place a draft's privacy is assumed: drafts in local storage are plain text.
+The Workshop itself seals nothing: it hands the draft to `/seal`. Drafts in local storage are plain text, and stay there after sealing until deleted.
 
-## Sealing code
+## Sealing
 
-`lib/seal/chain.ts` is the shared builder library for putting a sealed strategy on devnet: Register, Delegate, the enclave login, SealStrategy and the layout of the sealed account, ported from `client/flows.mjs`. The login and the permission address are written here and the app does not use the MagicBlock SDK; both were compared with `@magicblock-labs/ephemeral-rollups-sdk` 0.18.0 against the devnet enclave before it was removed. The enclave answers public calls with or without a token: what a login buys is being shown the owner's private accounts. No page uses this code yet.
+`/seal` seals a strategy with no wallet and no SOL of the visitor's. It uses the Workshop's editor and engine (`Workshop` with `sealing` set; the draft is shared with `/workshop`), then:
+
+1. **Claim ticket first.** A temporary key, a salt and a strategy number are made in the browser. Nothing is funded or sent until the visitor has downloaded the ticket, selected the saved file again (read in the page and compared with what is in memory) and ticked the acknowledgement. The download alone cannot be observed, which is why the file is asked for again.
+2. **The temporary key signs everything.** `/api/drip` gets its public address; then Register, Delegate, the enclave login and SealStrategy (`lib/seal/flow.ts`). A connected wallet is shown and never asked to sign.
+3. **Six checks.** Owner, number, commitment, salt and code read back; and the sealed account is withheld without a valid login, while a forged token gets 401. The enclave does answer public calls with or without a token, so "no login" does not mean "every request refused". A request that gets no answer is not a pass. The forged request's 401 shows in the browser console; that is the check working.
+4. **The completed ticket** adds the receipt.
+
+Every step first asks the chain whether it is done, so a retry, or choosing a ticket under "Continue from a claim ticket", carries on without paying or sealing twice. The secret key leaves the browser only in the files the visitor downloads.
+
+The ticket (`lib/seal/ticket.ts`) is JSON: `kind: "conclave-claim-ticket"`, `version: 1`, `cluster: "devnet"`, `program`, `createdAt`, `status` (`prepared` or `sealed`), `owner` (`publicKey`, and `secretKey` as 64 numbers), `strategy` (`id`, `salt`, `code`, `commitment`, `ruleset`, `name`, `source`) and `receipt` (null until sealed). Later screens must read it with `parseTicket`, which checks that the key, address, salt, code and commitment agree. The number and commitment are in it from the start, so that an unfinished seal can be found again. A change of shape needs a new version.
+
+`lib/seal/chain.ts` holds the instructions, the login and the account layout, ported from `client/flows.mjs`. The app does not use the MagicBlock SDK: the login and the permission address were compared with `@magicblock-labs/ephemeral-rollups-sdk` 0.18.0 against the devnet enclave before it was removed. The app does not check the enclave's attestation, and never closes a strategy.
 
 ## Environment
 
@@ -44,7 +55,7 @@ CONCLAVE_API_URL=http://127.0.0.1:8791 npm run dev
 
 ## Funding a fresh key
 
-`POST /api/drip` (`app/api/drip/route.ts`) passes a public address to the operator service (`../operator`), which sends it a little devnet SOL. Two more server-only variables: `OPERATOR_API_URL`, the service's base address, and `OPERATOR_SHARED_SECRET`, the same value the service has. Set both in Vercel as for `CONCLAVE_API_URL`. The route forwards nothing but the address and the visitor's IP address, which the operator uses for a soft rate limit. No page calls it yet.
+`POST /api/drip` (`app/api/drip/route.ts`) passes a public address to the operator service (`../operator`), which sends it a little devnet SOL. Two more server-only variables: `OPERATOR_API_URL`, the service's base address, and `OPERATOR_SHARED_SECRET`, the same value the service has. Set both in Vercel as for `CONCLAVE_API_URL`. The route forwards nothing but the address and the visitor's IP address, which the operator uses for a soft rate limit. `/seal` calls it.
 
 ## Reading the record
 

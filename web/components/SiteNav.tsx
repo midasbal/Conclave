@@ -20,7 +20,8 @@ export function SiteNav() {
         <Link className="ruled" href="/#season">How it runs</Link>
         <Link className="ruled" href="/#limits">Limits</Link>
       </nav>
-      {inside && <WalletMenu />}
+      {/* in the record, and on the seal page, where a connected wallet is shown and never asked to sign */}
+      {(inside || path === "/seal") && <WalletMenu />}
     </div>
   );
 }

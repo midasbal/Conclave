@@ -78,6 +78,10 @@ const SECTIONS: Section[] = [
     title: "Entering a season",
     body: (
       <>
+        <p>
+          This app can <Link href="/seal" prefetch={false}>seal a strategy</Link> without a wallet or SOL of your own. A temporary key made in your browser registers it, hands it to the rollup and seals it, and
+          the project pays the devnet cost. Before any of that you save a <strong>claim ticket</strong>: the only proof of ownership and the only copy of the salt and code. It is never stored for you.
+        </p>
         <Warning title="You cannot enter from this app yet">
           <p>
             The program allows entering a <strong>zero-fee season with no stake token</strong>, but this app has no entry flow yet, and no open seasons are currently offered.
@@ -191,7 +195,7 @@ const SECTIONS: Section[] = [
 ];
 
 const FAQ: Question[] = [
-  { id: "faq-wallet", q: "Do I need a wallet?", a: <p>Not to read anything here, or to write and test a strategy in the <Link href="/workshop" prefetch={false}>Workshop</Link>. A wallet would be needed to seal and enter, which this app does not do yet. The Connect button in the record only shares your address with the page. It signs nothing and sends nothing.</p> },
+  { id: "faq-wallet", q: "Do I need a wallet?", a: <p>Not to read anything here, or to write and test a strategy in the <Link href="/workshop" prefetch={false}>Workshop</Link>. To <Link href="/seal" prefetch={false}>seal a strategy</Link> you need no wallet either: a temporary key made in your browser owns it, and you keep that key in a claim ticket. This app cannot enter a season yet. A connected wallet only shows its address here. It signs nothing and sends nothing.</p> },
   { id: "faq-money", q: "Is real money involved?", a: <p>No. This is Solana devnet, a test network. The stake tokens are test tokens, and nothing trades on a real market.</p> },
   { id: "faq-enter", q: "Can I enter a season now?", a: <p>Not from this app: it has no entry flow yet, and no open seasons are currently offered. The program itself allows entering a zero-fee season with no stake token. A season with a fee needs an allowlisted stake token, which has no public source that the repository offers. You can write and practise a strategy in the <Link href="/workshop" prefetch={false}>Workshop</Link> today.</p> },
   { id: "faq-see", q: "Can anyone else see my strategy?", a: <p>While it is open, other players and the public are not given access to it, and in the devnet checks they could not read it. The program does not enforce that by itself: the private rollup does, and what its operator can see has not been tested. Once you close the strategy, <a href="#sealing">anyone can read it</a>.</p> },

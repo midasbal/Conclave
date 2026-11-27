@@ -1,0 +1,73 @@
+.identity { padding: 0.75rem 1rem; border: 1px solid var(--rule); font-size: 0.95rem; overflow-wrap: anywhere; }
+.identity code, .mono { font-family: var(--font-mono), monospace; font-size: 0.78rem; overflow-wrap: anywhere; }
+.block { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin-top: 3rem; padding-top: 1.5rem; border-top: 3px solid var(--ink); }
+.block h2, .receipt h2 { font-size: clamp(1.75rem, 3.2vw, 2.3rem); line-height: 1.18; }
+.block h3 { font-size: 1.35rem; line-height: 1.3; }
+.block strong { font-weight: 600; }
+.read { max-width: 40rem; }
+.small { padding: 0.25rem 0.8rem; font-size: 0.92rem; }
+.source { border-block: 1px solid var(--rule); }
+.source summary { padding: 0.6rem 0.2rem; cursor: pointer; }
+.source pre { margin: 0 0 0.8rem; padding: 0.8rem 1rem; max-height: 22rem; overflow-y: auto; background: var(--sheet); border: 1px solid var(--ink); border-left-width: 5px; font-family: var(--font-mono), monospace; font-size: 0.76rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.confirm { display: flex; flex-wrap: wrap; gap: 0.75rem; padding: 0.9rem 1rem; border: 3px solid var(--ink); }
+.confirm p { flex: 1 0 100%; }
+
+/* the plain statement about the ticket, on solid ink */
+.stern { display: grid; gap: 0.6rem; max-width: 46rem; padding: 1.2rem 1.4rem; background: var(--ink); color: var(--paper); }
+.todo { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.9rem; counter-reset: todo; }
+.todo > li { counter-increment: todo; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; justify-items: start; padding: 1rem 1.2rem 1.15rem; border: 1px solid var(--ink); background: var(--sheet); }
+.todo > li[data-done="true"] { border-left-width: 6px; }
+.todo h3::before { content: counter(todo, lower-alpha) ") "; }
+.todo > li[data-done="true"] h3::after { content: "  done"; font-family: var(--font-mono), monospace; font-size: 0.72rem; padding: 0.1rem 0.45rem; margin-left: 0.7rem; background: var(--ink); color: var(--paper); vertical-align: middle; }
+.agree { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.8rem; align-items: start; cursor: pointer; }
+.agree input { width: 1.4rem; height: 1.4rem; margin-top: 0.2rem; accent-color: var(--ink); }
+
+.choose { position: relative; display: inline-block; }
+.choose input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.choose span { display: inline-block; padding: 0.55rem 1.25rem; border: 1px solid var(--ink); transition: background-color 160ms var(--ease), color 160ms var(--ease); }
+.choose:hover span { background: var(--ink); color: var(--paper); }
+.choose input:focus-visible + span { outline: 3px solid var(--ink); outline-offset: 3px; }
+.choose[aria-disabled="true"] span { opacity: 0.45; background: transparent; color: var(--ink); }
+.choose input:disabled { cursor: not-allowed; }
+.good { max-width: 40rem; }
+.bad { max-width: 40rem; padding: 0.6rem 0.9rem; border: 3px solid var(--ink); }
+
+.go, .seal { font-family: var(--font-display), Georgia, serif; line-height: 1.25; color: var(--paper); background: var(--ink); border: 1px solid var(--ink); cursor: pointer; transition: background-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease); }
+.go { justify-self: start; font-size: 1.2rem; padding: 0.6rem 1.35rem; }
+.seal { justify-self: start; font-size: 1.6rem; padding: 0.8rem 2rem; }
+.go:hover:not(:disabled), .seal:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.go:active:not(:disabled), .seal:active:not(:disabled) { transform: translateY(1px); }
+.go:disabled, .seal:disabled { cursor: not-allowed; opacity: 0.45; }
+
+.steps { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ink); }
+.steps li { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 0.9rem; align-items: start; padding-block: 0.75rem; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+.steps li p { font-size: 0.95rem; color: var(--ink-soft); }
+.badge { font-family: var(--font-mono), monospace; font-size: 0.72rem; text-align: center; padding: 0.15rem 0; margin-top: 0.25rem; border: 1px solid var(--rule); }
+li[data-state="working"] .badge { border: 2px solid var(--ink); }
+li[data-state="done"] .badge { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+li[data-state="failed"] .badge { border: 3px double var(--ink); }
+@media (prefers-reduced-motion: no-preference) { li[data-state="working"] .badge { animation: wait 1.1s ease-in-out infinite alternate; } }
+@keyframes wait { from { opacity: 1; } to { opacity: 0.45; } }
+.failure { display: grid; gap: 0.6rem; max-width: 46rem; padding: 1rem 1.2rem; border: 3px solid var(--ink); overflow-wrap: anywhere; }
+
+.receipt { margin-top: 2.5rem; background: var(--sheet); border: 1px solid var(--ink); border-top-width: 6px; padding: clamp(1rem, 3vw, 1.9rem); display: grid; gap: 1.2rem; grid-template-columns: minmax(0, 1fr); }
+.receipt header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1.5rem; padding-bottom: 0.8rem; border-bottom: 3px double var(--ink); }
+.receipt header p { font-style: italic; color: var(--ink-soft); }
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: 0.8rem; align-items: baseline; padding-block: 0.45rem; border-bottom: 1px solid var(--rule); }
+.checks span { font-family: var(--font-mono), monospace; font-size: 0.72rem; text-align: center; background: var(--ink); color: var(--paper); padding: 0.05rem 0; }
+.receipt dl { margin: 0; }
+.receipt dl > div { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); gap: 0.2rem 1.25rem; padding-block: 0.5rem; border-bottom: 1px solid var(--rule); }
+.receipt dt { font-style: italic; color: var(--ink-soft); }
+.receipt dd { margin: 0; font-family: var(--font-mono), monospace; font-size: 0.76rem; line-height: 1.7; overflow-wrap: anywhere; }
+
+@media (max-width: 36rem) {
+  .steps li { grid-template-columns: 4.75rem minmax(0, 1fr); gap: 0.6rem; }
+  .receipt dl > div { grid-template-columns: minmax(0, 1fr); }
+  .go, .seal { justify-self: stretch; }
+}
+
+/* a plain button standing alone in a block keeps to its words */
+.block > button, .block > p > button { justify-self: start; }
+.block > :global(.plain-button) { justify-self: start; }
+.steps li p.mono { font-size: 0.74rem; }

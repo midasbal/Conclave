@@ -19,6 +19,8 @@ strategies.json*
 id.json
 *.key
 record-store*/
+# claim tickets saved from the seal page: each holds a secret key, a salt and strategy code
+conclave-claim-ticket*.json
 
 # Rust build artifacts
 target/

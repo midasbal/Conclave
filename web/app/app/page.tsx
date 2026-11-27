@@ -38,6 +38,10 @@ export default async function RecordPage({ searchParams }: { searchParams: Promi
             Season receipts that the record service has read from <strong>Solana devnet</strong>, newest first. These are devnet seasons played with test stakes.
             Anyone can create one, so a listing here is a record that it happened and not an endorsement of it.
           </p>
+          <p className={styles.toSeal}>
+            {/* not fetched ahead of time: that would preload the seal page's stylesheet here */}
+            <Link href="/seal" prefetch={false} className="ruled">Seal a strategy of your own</Link>
+          </p>
         </div>
         <RecordAsOf asOf={asOf} now={Date.now()} />
       </header>

@@ -1,6 +1,7 @@
 "use client";
 // The Workshop: write, assemble, run. Everything happens in this browser. The source is held in this component, in the engine's worker and, as a draft,
 // in local storage. Nothing here sends it anywhere: there is no request that carries it, no address that holds it and no form that posts it.
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { EngineClient, type Status } from "@/lib/engine/client";
 import type { Assembly, Diagnostic, SimResult } from "@/lib/engine/types";
@@ -14,8 +15,8 @@ import { StartHere } from "./StartHere";
 import { HelpTip } from "./HelpTip";
 import styles from "./Workshop.module.css";
 
-const DRAFT = "conclave.workshop.draft.v1";
-const BACKUP = "conclave.workshop.backup.v1";
+export const DRAFT = "conclave.workshop.draft.v1";
+export const BACKUP = "conclave.workshop.backup.v1";
 /** the run the command line tool makes by default, so that a report here can be reproduced with `conclave-author sim` */
 const RUN = { worlds: 48, episodes: 12, base: "0xc0dec1a55e110001" };
 
@@ -34,7 +35,12 @@ function write(key: string, value: string | null): boolean {
 
 type Shown = { result: SimResult; repeat: "first" | "same" | "different" };
 
-export function Workshop({ reference }: { reference: ReactNode }) {
+/**
+ * reference: the language reference, shown on the Workshop's own page.
+ * sealing: set on the seal page, which uses this same editor, engine and report to bring a strategy in. It leaves out the Workshop's introduction,
+ * practice season and reference, and offers to carry the assembled strategy on. Both pages share the saved draft.
+ */
+export function Workshop({ reference, sealing }: { reference?: ReactNode; sealing?: { onUse: (source: string, assembly: Assembly) => void } }) {
   const [source, setSource] = useState<string>(EXAMPLES[0].source);
   const [loaded, setLoaded] = useState(false); // true once the saved draft, if any, is in the editor: nothing is saved before that
   const [saved, setSaved] = useState(true);
@@ -171,7 +177,7 @@ export function Workshop({ reference }: { reference: ReactNode }) {
 
   return (
     <>
-      <StartHere isExample={isExample(source)} canRun={canRun} running={running} onRun={() => void run()} />
+      {!sealing && <StartHere isExample={isExample(source)} canRun={canRun} running={running} onRun={() => void run()} />}
 
       <p className={styles.engine} data-needs-script="" data-testid="engine" data-state={status.state} role="status">
         {status.state === "starting" && "Starting the engine..."}
@@ -189,7 +195,7 @@ export function Workshop({ reference }: { reference: ReactNode }) {
                 {EXAMPLES.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
             </label>
-            <a className="ruled" href="#reference">Language reference</a>
+            {sealing ? <a className="ruled" href="/workshop#reference" target="_blank" rel="noopener noreferrer">Language reference (new tab)</a> : <a className="ruled" href="#reference">Language reference</a>}
           </div>
           {backup !== null && backup !== source && (
             <p className={styles.backup} role="status">
@@ -202,7 +208,7 @@ export function Workshop({ reference }: { reference: ReactNode }) {
           </p>
           <Editor ref={editor} value={source} errors={errors} warnings={warnings} readOnly={!loaded} onChange={change} onRun={() => void run()} />
           <p className={styles.saved} data-needs-script="">
-            {saved ? "Your draft is saved in this browser's local storage, as plain text. It is not sent anywhere." : "This browser would not save the draft. Copy your work before leaving the page."}
+            {!saved ? "This browser would not save the draft. Copy your work before leaving the page." : sealing ? "Your draft is saved in this browser's local storage, as plain text. It leaves this browser only if you seal it." : "Your draft is saved in this browser's local storage, as plain text. It is not sent anywhere."}
           </p>
         </section>
 
@@ -213,6 +219,18 @@ export function Workshop({ reference }: { reference: ReactNode }) {
             <p>48 worlds of 12 episodes. Ctrl or Command and Enter also runs.</p>
           </div>
           {problem && <p className={styles.problem} role="alert">{problem}</p>}
+          {sealing ? (
+            <div className={styles.actions}>
+              <button type="button" className={styles.run} onClick={() => { if (fresh && assembly?.ok) sealing.onUse(source, assembly); }} disabled={!(fresh && assembly?.ok)}>Use this strategy</button>
+              <p>Takes the strategy as it stands to the next step. Simulating it first is worth the second it takes.</p>
+            </div>
+          ) : fresh && assembly?.ok ? (
+            <p className={styles.handoff}>
+              {/* not fetched ahead of time: that would preload the seal page's stylesheet here */}
+              <Link href="/seal" prefetch={false} className="ruled">Seal this strategy on devnet</Link>
+              <span>No wallet and no SOL needed. It leaves this practice tool.</span>
+            </p>
+          ) : null}
           <div id="diagnostics" className={styles.diagnostics} aria-live="polite">
             {errors.length > 0 && <ul data-testid="errors">{diagnostics(errors, "Error")}</ul>}
             {warnings.length > 0 && <ul data-testid="asm-warnings">{diagnostics(warnings, "Warning")}</ul>}
@@ -236,13 +254,13 @@ export function Workshop({ reference }: { reference: ReactNode }) {
         {shown && <Report result={shown.result} repeat={shown.repeat} stale={!fresh || assembly?.code_sha256 !== shown.result.report.code_sha256} />}
       </div>
 
-      <section className={styles.block} data-needs-script="" aria-labelledby="practice-title">
+      {!sealing && <section className={styles.block} data-needs-script="" aria-labelledby="practice-title">
         <header>
           <h2 id="practice-title">Practice season</h2>
           <p>Your strategy and the eight examples play one season together on markets drawn from a seed you choose, in the same loop the program runs. It is a practice seed, not a draw from the chain.</p>
         </header>
         <Practice engine={() => client.current} assembly={fresh ? assembly : null} ready={ready} />
-      </section>
+      </section>}
 
       {reference}
     </>

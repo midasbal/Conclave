@@ -1,0 +1,9 @@
+.page { padding-block: 2.5rem clamp(5rem, 11vh, 8rem); font-family: var(--font-reading), Georgia, serif; line-height: 1.7; }
+.head { display: grid; gap: 0.8rem; max-width: 40rem; }
+.head h1 { font-size: clamp(2.5rem, 5.6vw, 4rem); line-height: 1.06; }
+.noscript { padding: 0.9rem 1.1rem; border: 3px solid var(--ink); }
+.know { display: grid; gap: 0.8rem; max-width: 52rem; margin-block: 1.75rem; padding: clamp(1.1rem, 3vw, 1.6rem); background: var(--ink); color: var(--paper); }
+.know h2 { font-size: 1.6rem; line-height: 1.25; }
+.know ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.6rem; }
+.know strong { font-weight: 600; }
+.know :global(:focus-visible) { outline-color: var(--paper); }
