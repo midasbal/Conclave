@@ -2,7 +2,7 @@
 import crypto from "crypto";
 import { parseReceipt, FINALS_EPISODES } from "./layouts.mjs";
 export { parseReceipt };
-const sha = b => crypto.createHash("sha256").update(b).digest(); const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v2");
+const sha = b => crypto.createHash("sha256").update(b).digest(); const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v3"), DOM_SCORE_SALT = Buffer.from("CNCL-SSALT-v1");
 const named = (name, ok, detail) => ({ name, ok: !!ok, ...(detail ? { detail } : {}) });
 export const allOk = checks => checks.every(c => c.ok);
 
@@ -62,7 +62,8 @@ export function payoutChecks({ fee, entries, ownersBefore, ownersAfterEnter, own
     named("solvent: no prize is negative or larger than the pot", prizes.every(p => p >= 0n && p <= pot)),
   ];
 }
-export const scoreCommit = (salt, season, id, total, finalsTotal, neps, finalsEps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha(Buffer.concat([DOM_SCORE, Buffer.from(salt), b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(8, x => x.writeBigInt64LE(BigInt(finalsTotal))), b(4, x => x.writeUInt32LE(neps)), b(4, x => x.writeUInt32LE(finalsEps))])); };
+export const scoreSalt = (salt, season) => { const x = Buffer.alloc(8); x.writeBigUInt64LE(BigInt(season)); return sha(Buffer.concat([DOM_SCORE_SALT, Buffer.from(salt), x])); };
+export const scoreCommit = (salt, season, id, total, finalsTotal, neps, finalsEps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha(Buffer.concat([DOM_SCORE, scoreSalt(salt, season), b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(8, x => x.writeBigInt64LE(BigInt(finalsTotal))), b(4, x => x.writeUInt32LE(neps)), b(4, x => x.writeUInt32LE(finalsEps))])); };
 export const codeCommit = (salt, code) => sha(Buffer.concat([DOM_CODE, Buffer.from(salt), Buffer.from(code)]));
 /** receipt hygiene. rc: parseReceipt output; raw: the receipt bytes; secrets: per entrant { id, salt, code, regCommit (Buffer from the public registry), total (BigInt), finalsTotal? (BigInt, finalists only) } in entry order */
 export function receiptChecks(rc, raw, secrets, { season, neps }) {
@@ -76,6 +77,8 @@ export function receiptChecks(rc, raw, secrets, { season, neps }) {
     named("every code commitment opens to the sealed code under the owner's salt", rc.entries.every((e, i) => e.commit.equals(codeCommit(secrets[i].salt, secrets[i].code)))),
     named("every entry has a score commitment, and it is the salted hash of (season, id, season total, finals total, episodes, finals episodes)", rc.entries.every((e, i) => e.score.some(b => b !== 0) && e.score.equals(commitOf(secrets[i].salt, e, i)))),
     named("no score commitment is the unsalted hash of its own plain totals, so a published total cannot be guessed by brute force", rc.entries.every((e, i) => !e.score.equals(commitOf(Buffer.alloc(32), e, i)))),
+    named("the receipt is format 3 and names, for every entry, the wallet that entered it", rc.format === 3 && rc.entries.every((e, i) => !!e.owner && !!secrets[i].owner && Buffer.from(e.owner).equals(Buffer.from(secrets[i].owner)))),
+    named("neither a sealed salt nor a season score salt appears anywhere in the receipt", secrets.every(s => !found(s.salt) && !found(scoreSalt(s.salt, season)))),
     named("no entrant's code, salt, 8-byte code window or unsalted code hash appears anywhere in the receipt", secrets.every(s => !found(s.code) && !found(s.salt) && !windows(s.code, 8).some(w => found(w)) && !unsalted(s.code).some(h => found(h)))),
   ];
 }

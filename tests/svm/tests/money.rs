@@ -105,7 +105,7 @@ fn set64(e: &mut Env, k: &Address, off: usize, v: u64) { e.set_data(k, |d| d[off
     let s = e.season(133); assert!(e.init_receipt(&s).is_ok()); let mut acc = e.svm.get_account(&s.receipt).unwrap(); acc.data.truncate(RC_MONEY_SIZE); acc.data[rc::STATE] = 2; acc.data[rc::SEASON..rc::SEASON + 8].copy_from_slice(&133u64.to_le_bytes()); acc.data[rc::RELEASE..rc::RELEASE + 8].copy_from_slice(&BOND.to_le_bytes()); e.svm.set_account(s.receipt, acc).unwrap();
     assert!(e.commit_undelegate(&[s.receipt]).is_ok(), "commit+undelegate of an old closed receipt"); let before = e.lamports(&e.payer.pubkey()); let r = e.release_bond(&s); assert!(r.is_ok(), "ReleaseBond on an old receipt: {}", err_string(&r)); assert_eq!(e.lamports(&e.payer.pubkey()) + r.unwrap().fee - before, BOND);
     // but an old receipt cannot open a season under the new layout
-    let t = e.season(134); assert!(e.init_receipt(&t).is_ok()); let mut acc = e.svm.get_account(&t.receipt).unwrap(); acc.data.truncate(RC_MONEY_SIZE); e.svm.set_account(t.receipt, acc).unwrap(); e.provision_if_new(t.arena, arena_size(20)); e.provision_if_new(t.claims, claims_size(20)); let ix = e.create_season_ix(&t, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9020, "CreateSeason on an old-size receipt");
+    let t = e.season(134); assert!(e.init_receipt(&t).is_ok()); let mut acc = e.svm.get_account(&t.receipt).unwrap(); acc.data.truncate(RC_MONEY_SIZE); e.svm.set_account(t.receipt, acc).unwrap(); e.provision_if_new(t.arena, arena_size(20)); e.provision_side(&t, 20); let ix = e.create_season_ix(&t, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9020, "CreateSeason on an old-size receipt");
 }
 #[test] fn hub_is_reconciled_against_the_bond_at_cleanup() {
     // the stand-in Magic program does not move lamports, so the draw is set on the arena the way the real create records it, and the close returns nothing: a full shortfall the bond must cover
@@ -195,18 +195,18 @@ fn void_pays_by_season_rank(e: &mut Env, s: &Season, reason: u8, start: &[u64]) 
     let mut e = Env::new(5); let s = e.season(170); rejects(&e.init_receipt_bond(&s, 1_000_000 - 1), 9050, "a bond below the minimum"); assert!(e.init_receipt_bond(&s, BOND).is_ok());
     // a stranger cannot open the arena against someone else's bond
     let mut s1 = s.clone(); e.provision_if_new(s1.arena, arena_size(20)); { let kp = e.player(2); let mut ix = e.create_season_ix(&s1, 2, 1, 10, 20, 0, 2); ix.accounts[0] = e.m(kp.pubkey(), true, false); rejects(&e.send(&[ix], &[&kp]), 9052, "CreateSeason by a wallet that did not post the bond"); }
-    e.provision_if_new(s1.claims, claims_size(20));
+    e.provision_side(&s1, 20);
     for (label, neps, spt, flags, code) in [("zero episodes", 0u32, 1u32, 0u8, 9100u32), ("101 episodes", 101, 1, 0, 9100), ("zero slots per tick", 2, 0, 0, 9101), ("101 slots per tick", 2, 101, 0, 9101), ("paced run over the bound", 100, 49, 0, 9102), ("an unknown season flag", 2, 1, 1, 9103), ("another unknown flag", 2, 1, 130, 9103)] { let ix = e.create_season_ix(&s1, neps, spt, 10, 20, flags, 2); rejects(&e.send(&[ix], &[]), code, label); }
     for (label, w, sd, g, m, maxs) in [("seed timeout over its bound", 10u64, MAX_SEEDTO + 1, MIN_GRACE, 1u8, 20u8), ("window 0", 0, 10, MIN_GRACE, 1, 20), ("seed timeout 0", 10, 0, MIN_GRACE, 1, 20), ("grace over its cap", 10, 10, MAX_GRACE + 1, 1, 20), ("min 0", 10, 10, MIN_GRACE, 0, 20), ("min above max", 10, 10, MIN_GRACE, 5, 4), ("window absurd", MAX_W + 1, 10, MIN_GRACE, 1, 20)] {
         e.params = Params { window: w, seedto: sd, grace: g, mins: m, bond: BOND }; let ix = e.create_season_ix(&s1, 2, 1, 10, maxs, 0, 2); e.fresh_blockhash(); rejects(&e.send(&[ix], &[]), 9035, label); }
     // the claims account must be this season's
-    e.params = Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }; { let mut other = s1.clone(); other.claims = e.claims_pda(999); e.provision_if_new(other.claims, claims_size(20)); let ix = e.create_season_ix(&other, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9082, "another season's claims account"); }
+    e.params = Params { window: 1_000_000, seedto: 1_000_000, grace: 1_000_000, mins: 1, bond: BOND }; { let mut other = s1.clone(); other.claims = e.claims_pda(999); e.provision_side(&other, 20); let ix = e.create_season_ix(&other, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9082, "another season's claims account"); }
     assert!(e.init_pool(&s).is_ok()); assert!(e.create_season(&mut s1, 2, 10, 20, false, 2).is_ok());
     // one receipt opens one arena: the season id cannot be created twice against the same bond
     let ix = e.create_season_ix(&s1, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9051, "a second CreateSeason on an opened receipt");
     // a receipt that does not carry its bond (lamports drained) is refused
     let mut e = Env::new(5); let s = e.season(171); assert!(e.init_receipt(&s).is_ok()); let lam = e.lamports(&s.receipt); e.svm.set_account(s.receipt, { let mut acc = e.svm.get_account(&s.receipt).unwrap(); acc.lamports = lam - BOND + 1; acc }).unwrap(); e.provision_if_new(s.arena, arena_size(20));
-    e.provision_if_new(s.claims, claims_size(20)); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9053, "an unfunded bond");
+    e.provision_side(&s, 20); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9053, "an unfunded bond");
     // entry window: no entering once it has closed
     let mut e = Env::new(5); e.params.window = 100; let mut s = e.season(172); assert!(e.init_pool(&s).is_ok()); assert!(e.create_season(&mut s, 2, 10, 20, false, 2).is_ok()); let st = e.register_and_seal(0, "a", code_of("Mom20th")); let st2 = e.register_and_seal(1, "b", code_of("EMAcross"));
     assert!(e.enter(&mut s, &st).is_ok()); e.warp(100); e.fresh_blockhash(); rejects(&e.enter(&mut s, &st2), 9030, "Enter after the window");
@@ -219,7 +219,7 @@ const MAX_W: u64 = MAX_ENTRY_WINDOW;
 // ---- review change 1: the season carries at least as much weight as the finals ----
 #[test] fn a_finals_season_is_at_least_as_long_as_the_finals_and_the_run_bound_covers_both_phases() {
     let mut e = Env::new(5);
-    let try_create = |e: &mut Env, sid: u64, neps: u32, spt: u32, finals: bool| -> Option<u32> { let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let ix = e.create_season_ix(&s, neps, spt, 10, 20, if finals { 2 } else { 0 }, 2); let r = e.send(&[ix], &[]); if r.is_ok() { None } else { Some(custom(&r).unwrap_or(0)) } };
+    let try_create = |e: &mut Env, sid: u64, neps: u32, spt: u32, finals: bool| -> Option<u32> { let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_side(&s, 20); let ix = e.create_season_ix(&s, neps, spt, 10, 20, if finals { 2 } else { 0 }, 2); let r = e.send(&[ix], &[]); if r.is_ok() { None } else { Some(custom(&r).unwrap_or(0)) } };
     for (n, neps) in (1..FINALS_EPISODES).enumerate() { assert_eq!(try_create(&mut e, 600 + n as u64, neps, 1, true), Some(9104), "{} season episodes with 15 finals episodes", neps); }
     assert_eq!(try_create(&mut e, 620, FINALS_EPISODES, 1, true), None, "equal weight is allowed"); assert_eq!(try_create(&mut e, 621, 1, 1, false), None, "without finals a one-episode season stays allowed");
     // the 720,000-slot run bound counts both phases
@@ -230,7 +230,7 @@ const MAX_W: u64 = MAX_ENTRY_WINDOW;
 #[test] fn the_creators_waits_are_capped_and_a_creator_at_the_caps_still_cannot_keep_buy_ins() {
     let mut e = Env::new(5);
     for (sid, window, seedto, ok) in [(640u64, MAX_ENTRY_WINDOW + 1, 10u64, false), (641, 200_000_000, 10, false), (642, 10, MAX_SEEDTO + 1, false), (643, MAX_ENTRY_WINDOW, MAX_SEEDTO, true)] {
-        e.params.window = window; e.params.seedto = seedto; let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); let r = e.send(&[ix], &[]); if ok { assert!(r.is_ok(), "at the caps: {}", err_string(&r)); } else { rejects(&r, 9035, "over a cap"); } }
+        e.params.window = window; e.params.seedto = seedto; let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_side(&s, 20); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); let r = e.send(&[ix], &[]); if ok { assert!(r.is_ok(), "at the caps: {}", err_string(&r)); } else { rejects(&r, 9035, "over a cap"); } }
     // the worst the creator can do: both waits at their caps, then walk away. A stranger gets every buy-in back as soon as the two waits have passed
     let start = bals(&e); let s = open(&mut e, 650, 3, 10, false); let created = rd64(&e.data(&s.arena), arx::CREATED);
     warp_to(&mut e, created + MAX_ENTRY_WINDOW - 1); rejects(&e.lock_by(&s, 4), 9032, "inside the window"); warp_to(&mut e, created + MAX_ENTRY_WINDOW); assert!(e.lock_by(&s, 4).is_ok(), "anyone locks when the window ends");
@@ -262,7 +262,7 @@ const MAX_W: u64 = MAX_ENTRY_WINDOW;
 #[test] fn the_publish_grace_has_a_floor_so_cleanup_cannot_drop_results_right_after_settle() {
     assert_eq!(MIN_GRACE, 180_000); let mut e = Env::new(5);
     for (n, (grace, finals, want)) in [(0u64, false, Some(9105u32)), (1, false, Some(9105)), (600, true, Some(9105)), (MIN_GRACE - 1, false, Some(9105)), (MIN_GRACE - 1, true, Some(9105)), (MIN_GRACE, false, None), (MIN_GRACE, true, None), (MAX_GRACE, false, None), (MAX_GRACE + 1, false, Some(9035))].into_iter().enumerate() {
-        e.params.grace = grace; let s = e.season(680 + n as u64); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let hub = e.lamports(&e.hub); let ix = e.create_season_ix(&s, if finals { 15 } else { 2 }, 1, 10, 20, if finals { 2 } else { 0 }, 2); let r = e.send(&[ix], &[]);
+        e.params.grace = grace; let s = e.season(680 + n as u64); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_side(&s, 20); let hub = e.lamports(&e.hub); let ix = e.create_season_ix(&s, if finals { 15 } else { 2 }, 1, 10, 20, if finals { 2 } else { 0 }, 2); let r = e.send(&[ix], &[]);
         match want { None => assert!(r.is_ok(), "grace {}: {}", grace, err_string(&r)), Some(c) => { rejects(&r, c, &format!("grace {}", grace)); assert_eq!((e.data(&s.receipt)[rc::STATE], e.lamports(&e.hub)), (0, hub), "a refused creation leaves the receipt unopened") } } }
 }
 

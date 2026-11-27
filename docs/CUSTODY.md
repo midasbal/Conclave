@@ -45,7 +45,7 @@ Give the passphrase with `--passphrase-file`, `CONCLAVE_BUNDLE_PASSPHRASE_FILE`,
 
 * `export-all` checks each record against whatever the chain still holds (sealed account, registry, published receipt entries), writes `index.json` with public facts only, and exits non-zero on any disagreement. It reads one sealed account at a time, slowly, because the rollup bans clients that hurry.
 * `recover` needs the owner's wallet and **not** the key file. Without `--id` it finds the owner's strategies through their open registries on base. Only strategies that are still sealed can be recovered. It writes new bundle files, so it needs a folder where they do not already exist, or the same passphrase.
-* `verify --season` needs only the bundle, its passphrase and the public receipt. It replays the bytecode on the receipt's seeds and checks the score commitment, which also works after the strategy is closed. It needs the author module built (see `docs/AUTHORING.md`) and a VM with the receipt's rules. **Showing someone this proof means giving them the salt and the bytecode.**
+* `verify --season` needs only the bundle, its passphrase and the public receipt. It replays the bytecode on the receipt's seeds and checks the score commitment, which also works after the strategy is closed. It needs the author module built (see `docs/AUTHORING.md`) and a VM with the receipt's rules. **Showing someone this proof means giving them the salt and the bytecode.** On a format 3 receipt, a season's totals alone can be proved with that season's score salt, which opens neither the code commitment nor any other season; see `program/LIFECYCLE.md`.
 * `rekey` re-encrypts under a new passphrase. Older copies of the file still open with the old one.
 
 ## Export before close

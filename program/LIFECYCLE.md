@@ -81,7 +81,7 @@ An entrant whose token account cannot be paid (closed, or withdrawn from the rol
 
 Each (season, entry) is published at most once: the mark is in that season's arena slot and receipt entry (9120), so publishing a strategy in another season never reopens an earlier one, and the publish counters cannot exceed the number of entries. Cleanup checks every entry's own mark and refuses inside the grace while any is unpublished (9123). The registry records the **final** rank and adds the **season-phase** total.
 
-The score commitment is `sha256("CNCL-SCORE-v2", salt, season, id, season_total, finals_total, episodes, finals_episodes)`; the last two finals fields are zero for an entry that did not play the finals. The owner's sealed record holds the final rank, the season total and, for strategies sealed since this build, the finals total (older sealed accounts are 8 bytes shorter, stay usable, and their owners get the finals total by replaying the finals seed).
+The score commitment is `sha256("CNCL-SCORE-v2", salt, season, id, season_total, finals_total, episodes, finals_episodes)` on the deployed build, and changes in the receipts build below. The last two finals fields are zero for an entry that did not play the finals. The owner's sealed record holds the final rank, the season total and, for strategies sealed since the finals build, the finals total (older sealed accounts are 8 bytes shorter, stay usable, and their owners get the finals total by replaying the finals seed).
 
 ## Strategy reclaim and the open-entry guard
 
@@ -117,6 +117,54 @@ The count moves down only where the slot's bit is set, and the bit is cleared wi
 **Upgrading to this build.** No account changes size and the arena magic is unchanged. Old strategies read a count of zero. Seasons opened by the previous build can still publish, cancel and clean up, and never decrement anything; a strategy entered only in such a season is NOT protected by the counter, so deploy with no season open. A client whose Enter does not pass the strategy and its registry writable stops working, and so does one that asks for a grace under 180,000 slots.
 
 **Done on devnet on 2026-11-26** (build sha256 `0ea300bf...`, 504,536 bytes, program data extended by 12,648 bytes, on-chain bytes equal to the artifact). Every receipt of a build that requires one was closed beforehand, so no season was open.
+
+## Receipts and identity
+
+**Deployed on devnet** (sha256 `7bd612e7...`); what was seen there is at the end of this section. Everything in this section replaces what the rest of this file says where they differ.
+
+**Two gaps, closed.** Each was reproduced against the deployed bytecode before it was fixed (`tests/svm/tests/gaps_4a.rs`).
+
+* `Delegate` of a receipt checked neither the creator nor the state, with the validator chosen by the caller. A stranger could hand a creator's fresh receipt, bond and all, to a validator of its choosing, or re-delegate a closed one so that ReleaseBond failed. Now only the receipt's **creator** may delegate it, and only while it is **fresh** (9140). The creator still chooses the validator; the receipt does not record which one.
+* `Cleanup` skipped the bond accounting when the receipt was missing or read-only, so anyone allowed to clean up could strand the bond and skip the forfeit and the hub top-up. Now Cleanup requires the season's own receipt, writable and open, before it closes anything (9141).
+
+**Cancel requires the receipt too.** Cancel used to write the receipt only if it could. It runs once, so whoever sent it could leave a season with no record of its field. It now requires this season's receipt, writable. A refund therefore depends on the receipt, which is in the rollup for as long as its arena is.
+
+**The roster.** CreateSeason creates a second private account, PDA `["roster", season]` (16 bytes plus 32 per seat, permission with no members). Enter copies the entry's code commitment into it from the sealed account it is already reading. The arena has no room: 20 commitments would take it past the 10,240-byte limit. The hub pays the roster and its permission (27,008 lamports for 20 seats), counted in the season's rent, and Cleanup closes both.
+
+**The receipt records who, for every entry.** Settle and Cancel write, for every entry whether or not it is ever published, the **owner** at entry (from the arena) and the **code commitment** (from the roster). Publish now only adds the score commitment, and refuses a strategy whose commitment is not the one recorded (9022). Nothing about the field is on the receipt before Settle or Cancel.
+
+| Receipt | Size | Byte 146 | Owners | Commitments |
+|---|---|---|---|---|
+| Format 3 (this build) | 2,464 | 3 | 20 x 32 bytes from offset 1,824 | every entry, from Settle or Cancel |
+| Format 2 | 1,824 | 0 | none | published entries only |
+| Format 1 | 1,728 or 1,792 | 0 | none | published entries only |
+
+Only a format 3 receipt can open a season or be delegated. Earlier ones keep their bond paths (RecoverBond, commit and undelegate, ReleaseBond) and stay readable by the client and server parsers. A format 3 receipt costs its creator the rent of 640 more bytes, and receipts are never closed.
+
+**Score salt.** `score_salt = sha256("CNCL-SSALT-v1", salt, season)` and `score = sha256("CNCL-SCORE-v3", score_salt, season, id, season_total, finals_total, episodes, finals_episodes)`. To prove a season's totals an owner gives the season's score salt and the totals (`scoreSalt` and `scoreCommitWith` in `client/lib.mjs`). That does not reveal the sealed salt, does not open the code commitment, and opens no other season. It does not show which code produced the totals: that takes the sealed salt and the code, and a replay. Format 2 receipts keep the old rule, where proving a total hands out the sealed salt. The code commitment is unchanged.
+
+**Permanent id marker.** CloseRegistry now shrinks the registry to an 8-byte account (magic `REGD`) that no instruction removes, and pays the owner everything above its rent. The address stays taken, so the id cannot be registered again. Registries removed by the previous build left no marker: **their ids are free**.
+
+**What this does not do.** The marker retires an id, not a strategy: whoever knows the salt and code can seal them again under a new id. Attribution says who entered and with what commitment, not that the commitment's code is original. Reading the roster is prevented by the rollup's permission, which the SVM does not model.
+
+**The field before Lock.** With this client it is private: the roster and the arena are not readable, nothing about the field is on the receipt, and **each entrant alone signs, pays for and submits its own Enter**, under its own rollup token (`enter` in `client/flows.mjs`). The last part matters because the rollup shows a wallet the signatures of the transactions it signed. A wallet that signs other people's Enters can match the signature lists of the arena and roster against those of the public registries, and so rebuild the field. **Any sponsor who signs an Enter, as fee payer or otherwise, sees that entry**, a season creator included. The program does not enforce who pays: a client that has the creator or a service sponsor entries gives that wallet those entries. `tests/svm/tests/client_flows.rs` fails if `flows.enter` ever sends an Enter with another signer or under another token.
+
+**Observed on devnet** (`client/proof4a.mjs`, 2026-11-26; the history results are from the rerun after the client change). Upgraded in place; the program data was extended by 10,240 bytes (the loader's minimum), so 2,176 zero bytes follow the 512,600-byte artifact. No season was open and no fresh older receipt existed.
+
+* **Reading the roster.** After five entries and before Lock, an anonymous caller, a stranger with its own token, the creator and an entrant all got nothing from `getAccountInfo`, `getMultipleAccounts`, `getProgramAccounts` and a simulation asked to return the account. The receipt, rollup and base, named no entry.
+* **History, through the client's `enter`** (each entrant signs, pays and sends). 29 addresses were asked for their signatures by each viewer: the season accounts, config, program, token program, pool and its token account, and every entrant's registry, strategy, wallet and token account. An anonymous caller and a stranger were shown no Enter, and their arena and roster lists were empty. The creator's arena and roster lists held CreateSeason and nothing else, and none of its lists held an Enter. Each of the five entrants was shown its own Enter and no other. No viewer could read any Enter's body, **not even the entrant that signed it**; the same check did read a public transaction's body for its signer. As sent, every Enter had one signature, the entrant's, who was the fee payer; the fee was 0 and the entrant's base balance did not change. `getBlock` returned nothing usable (HTTP 403 on the call tried by hand). On base, nothing touched an entrant's registry.
+* **Why the payer matters.** An earlier run, with a client in which the creator paid every Enter, showed the creator all five entries in the signature lists (bodies still redacted).
+* **Live feeds: untested.** The rollup's websocket delivered slot notifications but no log or account notification, with or without a token, not even for a public control transaction. Its silence about the entries shows nothing.
+* **Not covered:** what the rollup operator and the enclave itself can see, timing or traffic analysis, and any RPC method not listed here. The filtering is the rollup's behaviour, not something the program enforces, and could change with it.
+* **The 2,464-byte receipt** was delegated, committed, undelegated and released. Magic refused one Commit of the receipt with 20, 16 or 12 registries (custom error 2684354562) and accepted the receipt with 10; 11 was not tried. The client commits in chunks of 4.
+* A stranger's Delegate of a fresh receipt, and Delegate of a closed one by a stranger and by the creator, failed with 9140. Cleanup with the receipt read-only or replaced, including by another season's, failed with 9141, and with no receipt account with NotEnoughAccountKeys.
+* A paid five-entry finals season showed every owner and commitment on the base receipt with two entries unpublished. A separate process given the receipt, one season's score salt and the totals verified them. The hub ended at its starting balance.
+* A 20-seat season cancelled on a seed timeout refunded every entrant exactly. Before the Cancel, taking the open receipt out of the rollup (9055), delegating it from base, and a Cancel with the receipt read-only (9020), missing, or with a wrong roster (9142) all failed.
+* **Cleanup at a full field fits only with one signature.** Naming 20 strategies it is 1,168 bytes (97,344 compute units) when the crank pays its own fee, as sent on devnet. With a separate fee payer it is 1,264 bytes, over the 1,232 limit. Whoever cranks a full field must pay its own fee, and an added instruction has 64 bytes at most.
+* CloseRegistry left an 8-byte marker holding 690,880 lamports and paid the owner 2,609,600. Registering the id again (old owner and stranger), sealing it, delegating the marker and CloseRegistry on it all failed.
+* **What a strategy costs its owner for good:** 3,641,920 lamports plus base transaction fees: the 690,880 in the marker and 2,951,040 paid at delegation. The latter funds the delegation record and metadata accounts; at undelegation the delegation program paid it to its validator fee vault (2,655,936) and protocol fee vault (295,104).
+
+**Upgrading to this build.** The arena magic changes to `ARN4`, so every arena of the previous build is refused outright: **deploy with no season open**, or that season and its money are stuck, and its strategies stay counted. A fresh format 2 receipt (InitReceipt with no season yet) could neither open a season nor be delegated afterwards, so there must be none. Old strategies and registries work unchanged, including a registry closed but not yet removed. CreateSeason, Enter, Settle, Cancel and Cleanup take new accounts, so **the client of this build does not work against the previous program, and the previous client does not work against this one**.
 
 ## Randomness queue
 
@@ -160,6 +208,9 @@ RequestSeed accepts only `5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc` (9110). 
 | 9131 | Cleanup was not given the strategy of an entry that is still counted |
 | 9132 | not a closed registry of this owner (CloseRegistry) |
 | 9133 | Enter was not given the strategy's own open registry, writable |
+| 9140 | this wallet may not delegate this receipt (creator only, fresh only, format 3) |
+| 9141 | Cleanup was not given this season's open receipt, writable |
+| 9142 | not this season's roster |
 | 9105 | publish grace under 180,000 slots |
 
 Instruction tag 14 (the old StartFinals) is retired and answers InvalidInstructionData.
@@ -194,7 +245,7 @@ Instruction tag 14 (the old StartFinals) is retired and answers InvalidInstructi
 
 ## Tests
 
-`tests/svm/tests/`: `findings_3a.rs` (each Phase 3a defect, reversed into a regression test), `grief_3a.rs` (an unpayable account delays only itself), `money.rs`, `lifecycle.rs`, `edge.rs`, `reject.rs`, `admin.rs`, `meter.rs`, `fuzz.rs` (parsing, corrupted state, and a money check and an open-entry count check after every accepted mutated transaction), `authored.rs`, `reclaim.rs` (the counter on every path, close, the dodge attempts, the hub made whole with rent modelled, and an upgrade over the previous program's bytecode that is ignored unless that binary is supplied), `client_flows.rs` (the client's own instruction builders against the program; ignored unless node is available) and `vrf_3a.rs` (the real VRF program; ignored unless its bytes are supplied).
+`tests/svm/tests/`: `findings_3a.rs` (each Phase 3a defect, reversed into a regression test), `grief_3a.rs` (an unpayable account delays only itself), `money.rs`, `lifecycle.rs`, `edge.rs`, `reject.rs`, `admin.rs`, `meter.rs`, `fuzz.rs` (parsing, corrupted state, and a money check and an open-entry count check after every accepted mutated transaction), `authored.rs`, `gaps_4a.rs` (the two receipt gaps, reversed into regressions), `roster_4a.rs` (the roster, attribution on every path, receipt formats, the score salt, the id marker), `reclaim.rs` (the counter on every path, close, the dodge attempts, the hub made whole with rent modelled, and an upgrade over the previous program's bytecode that is ignored unless that binary is supplied), `client_flows.rs` (the client's own instruction builders against the program; ignored unless node is available) and `vrf_3a.rs` (the real VRF program; ignored unless its bytes are supplied).
 
 The stand-ins move no lamports. With `model_rent` the harness applies ephemeral rent from the calls the program really made, right after each transaction, so balances between transactions are exact but the program's own in-instruction rent figures read zero there. Delegation is not modelled.
 

@@ -49,10 +49,20 @@ export function logger(file) { return (...a) => { const s = a.join(" "); console
 export function loadPool() { const pool = fs.readFileSync(path.join(OUT, "real_pool.bin")); const meta = JSON.parse(fs.readFileSync(path.join(OUT, "real_pool.json"))).strategies; const n = pool.readUInt16LE(0); const progs = []; let off = 2; for (let i = 0; i < n; i++) { const l = pool.readUInt16LE(off); off += 2; progs.push(pool.subarray(off, off + l)); off += l; } const by = {}; meta.forEach((s, i) => by[s.name] = { code: progs[i], ops: s.ops, i }); return by; }
 export const sha256 = b => crypto.createHash("sha256").update(b).digest();
 // ---- commitments (must match program/src/lib.rs) ----
-const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v2");
+const DOM_CODE = Buffer.from("CNCL-CODE-v1"), DOM_SCORE = Buffer.from("CNCL-SCORE-v3"), DOM_SCORE_SALT = Buffer.from("CNCL-SSALT-v1"), DOM_SCORE_V2 = Buffer.from("CNCL-SCORE-v2");
 export const codeCommit = (salt, code) => sha256(Buffer.concat([DOM_CODE, salt, code]));
+const le = (n, f) => { const x = Buffer.alloc(n); f(x); return x; };
+const scoreHash = (domain, key, season, id, total, finalsTotal, neps, finalsEps) => sha256(Buffer.concat([domain, key, le(8, x => x.writeBigUInt64LE(BigInt(season))), le(8, x => x.writeBigUInt64LE(BigInt(id))), le(8, x => x.writeBigInt64LE(BigInt(total))), le(8, x => x.writeBigInt64LE(BigInt(finalsTotal))), le(4, x => x.writeUInt32LE(neps)), le(4, x => x.writeUInt32LE(finalsEps))]));
+/** the salt one season's score commitments are keyed by, derived from the sealed salt. Handing it out proves that season's totals; it does not open the code commitment or any other season */
+export const scoreSalt = (salt, season) => sha256(Buffer.concat([DOM_SCORE_SALT, Buffer.from(salt), le(8, x => x.writeBigUInt64LE(BigInt(season)))]));
+/** what a verifier recomputes from ONLY the season's score salt and the claimed totals (format 3 receipts) */
+export const scoreCommitWith = (ssalt, season, id, total, finalsTotal, neps, finalsEps) => scoreHash(DOM_SCORE, Buffer.from(ssalt), season, id, total, finalsTotal, neps, finalsEps);
 /** total: season-phase total; finalsTotal and finalsEps are 0 for an entry that did not play the finals (not a qualifier, no finals, or voided) */
-export const scoreCommit = (salt, season, id, total, finalsTotal, neps, finalsEps) => { const b = (n, f) => { const x = Buffer.alloc(n); f(x); return x; }; return sha256(Buffer.concat([DOM_SCORE, salt, b(8, x => x.writeBigUInt64LE(BigInt(season))), b(8, x => x.writeBigUInt64LE(BigInt(id))), b(8, x => x.writeBigInt64LE(BigInt(total))), b(8, x => x.writeBigInt64LE(BigInt(finalsTotal))), b(4, x => x.writeUInt32LE(neps)), b(4, x => x.writeUInt32LE(finalsEps))])); };
+export const scoreCommit = (salt, season, id, total, finalsTotal, neps, finalsEps) => scoreCommitWith(scoreSalt(salt, season), season, id, total, finalsTotal, neps, finalsEps);
+/** receipts written by earlier builds (format 2): keyed by the sealed salt itself, so proving such a score also hands out the salt behind the code commitment */
+export const scoreCommitV2 = (salt, season, id, total, finalsTotal, neps, finalsEps) => scoreHash(DOM_SCORE_V2, Buffer.from(salt), season, id, total, finalsTotal, neps, finalsEps);
+/** the rule the receipt in hand was written under */
+export const scoreCommitFor = (format, ...args) => (format === 3 ? scoreCommit : scoreCommitV2)(...args);
 /** strategy ids are random 64-bit numbers (the namespace is global); the secret salts live with the keys, outside the repo */
 export const newId = () => crypto.randomBytes(8).readBigUInt64LE();
 /** the key file. Writes are durable and serialised, and no write may drop a secret it holds (client/custody.mjs) */
@@ -64,5 +74,7 @@ export const players = () => readKey("players.json").map(a => Keypair.fromSecret
 // arena / receipt layouts (mirror of program/src/lib.rs)
 export const A = { HDR: 1280, SLOT: 440 };
 export const RC = { SIZE: 224 + 20 * 80, ENT: 224, ESZ: 80 };
-export { parseReceipt, parseReceiptMoney, parseClaims } from "./layouts.mjs";
+export { parseReceipt, parseReceiptMoney, parseClaims, receiptFormat } from "./layouts.mjs";
+/** the season roster: private in the rollup (no members), it holds each entry's code commitment until Settle or Cancel writes it to the receipt */
+export const rosterPda = sid => pda([Buffer.from("roster"), u64(sid)]);
 export const claimsPda = sid => pda([Buffer.from("claims"), u64(sid)]);

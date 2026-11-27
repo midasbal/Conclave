@@ -2,13 +2,19 @@
 export const FINALS_EPISODES = 15;
 export const FINALS_STATUS = ["none", "played", "voided"];
 export const REASONS = ["", "under_minimum", "seed_timeout", "creator", "finals_seed_timeout", "finals_deadline", "finals_too_few_qualifiers", "season_deadline"];
-export const RC_SIZE = 224 + 20 * 80;
-/** season receipt. kind 0 settled, 2 cancelled. Each entry carries its frozen season rank and its final rank */
+/** receipt sizes by format. 3 (this build): a format byte at 146 and each entry's owner after the entry table. 2: the same without either. 1: the two earlier layouts */
+export const RC_SIZE = 224 + 20 * 80 + 20 * 32, RC_V2_SIZE = 224 + 20 * 80, RC_OWNERS = 224 + 20 * 80, RC_FORMAT_AT = 146, RECEIPT_FORMAT = 3;
+export const receiptFormat = d => d.length >= RC_SIZE && d[RC_FORMAT_AT] === RECEIPT_FORMAT ? 3 : d.length >= RC_V2_SIZE ? 2 : 1;
+/** season receipt of any format. kind 0 settled, 2 cancelled. Each entry carries its frozen season rank and its final rank.
+ *  Format 3 also carries, for EVERY entry once Settle or Cancel has run, the owner at entry and the code commitment. Format 2 has no owner (null) and a commitment only for published entries.
+ *  Format 1 (1728 or 1792 bytes) has ids, ranks and, for published entries, commitments; nothing else is read from it here. */
 export function parseReceipt(d) {
-  const n = d[5]; const out = { kind: d[4], ns: n, published: d[6], division: d[7], season: d.readBigUInt64LE(8), ruleset: d.readUInt16LE(24), vmVersion: d[26], genVersion: d[27], packs: [d[28], d[29]], neps: d.readUInt32LE(32), seedA: d.readBigUInt64LE(40), seedB: d.readBigUInt64LE(48), pins: d.subarray(56, 104),
+  const format = receiptFormat(d); const n = Math.min(d[5], 20);
+  if (format === 1) { const at = d.length >= 192 + 20 * 80 ? 192 : 128; const out = { format, kind: d[4], ns: n, published: d[6], season: d.readBigUInt64LE(8), entries: [] }; for (let i = 0; i < n; i++) { const e = at + i * 80; out.entries.push({ id: d.readBigUInt64LE(e), commit: d.subarray(e + 8, e + 40), score: d.subarray(e + 40, e + 72), rank: d.readUInt32LE(e + 72), owner: null }); } return out; }
+  const out = { format, kind: d[4], ns: n, published: d[6], division: d[7], season: d.readBigUInt64LE(8), ruleset: d.readUInt16LE(24), vmVersion: d[26], genVersion: d[27], packs: [d[28], d[29]], neps: d.readUInt32LE(32), seedA: d.readBigUInt64LE(40), seedB: d.readBigUInt64LE(48), pins: d.subarray(56, 104),
     creator: d.subarray(104, 136), bond: d.readBigUInt64LE(136), state: d[144], reason: d[145], refunded: d.readBigUInt64LE(152), rentDrawn: d.readBigUInt64LE(160), rentReclaimed: d.readBigUInt64LE(168), forfeit: d.readBigUInt64LE(176), release: d.readBigUInt64LE(184),
     finals: { seedA: d.readBigUInt64LE(192), seedB: d.readBigUInt64LE(200), packs: [d[208], d[209]], status: d[210], qualifiers: d[211], neps: d.readUInt32LE(212) }, owed: d.readBigUInt64LE(216), entries: [] };
-  for (let i = 0; i < n; i++) { const e = 224 + i * 80; out.entries.push({ id: d.readBigUInt64LE(e), commit: d.subarray(e + 8, e + 40), score: d.subarray(e + 40, e + 72), rank: d.readUInt32LE(e + 72), seasonRank: d.readUInt16LE(e + 76), published: d[e + 78] === 1, finalist: d[e + 79] === 1 }); }
+  for (let i = 0; i < n; i++) { const e = 224 + i * 80; out.entries.push({ id: d.readBigUInt64LE(e), commit: d.subarray(e + 8, e + 40), score: d.subarray(e + 40, e + 72), rank: d.readUInt32LE(e + 72), seasonRank: d.readUInt16LE(e + 76), published: d[e + 78] === 1, finalist: d[e + 79] === 1, owner: format === 3 ? d.subarray(RC_OWNERS + i * 32, RC_OWNERS + i * 32 + 32) : null }); }
   return out; }
 /** the money fields (104..192) sit at the same offsets in receipts written by the previous build, which are shorter */
 export function parseReceiptMoney(d) { return { creator: d.subarray(104, 136), bond: d.readBigUInt64LE(136), state: d[144], reason: d[145], rentDrawn: d.readBigUInt64LE(160), rentReclaimed: d.readBigUInt64LE(168), forfeit: d.readBigUInt64LE(176), release: d.readBigUInt64LE(184) }; }

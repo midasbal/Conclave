@@ -63,7 +63,7 @@ check("the realised ranking is consistent with the field's long-run order (rank 
 
 // ---- 6. receipt hygiene, payouts
 const regData = []; for (const e of field) regData.push(Buffer.from((await L.base.getAccountInfo(L.regPda(e.id))).data)); runAll("owed versus claimed:", K.claimsChecks(claimed.after, rc, { fee: FEE }));
-const secrets = field.map((e, i) => ({ id: e.id, salt: e.salt, code: e.code, regCommit: regData[i].subarray(48, 80), total: recs[i].pnl }));
+const secrets = field.map((e, i) => ({ id: e.id, owner: c.players[e.owner].publicKey.toBuffer(), salt: e.salt, code: e.code, regCommit: regData[i].subarray(48, 80), total: recs[i].pnl }));
 runAll("\nreceipt checks (the full public receipt):", K.receiptChecks(rc, raw, secrets, { season: sid, neps: NEPS })); runAll("public coarse view checks:", K.coarseChecks(coarseReceipt(raw), rc, secrets));
 { let bad = 0; for (const e of field) for (const r of Art.registryChecks(regData[field.indexOf(e)], { code: e.code, salt: e.salt, commitment: regData[field.indexOf(e)].subarray(48, 80) })) if (!r.ok) { bad++; check(`${e.name} registry: ${r.name}`, false); } check(`all ${field.length} public registry entries hold only the salted commitment (8 hygiene checks each, ${bad} failed)`, bad === 0); }
 runAll("payout checks:", K.payoutChecks({ fee: FEE, entries: rows.map(r => ({ owner: r.owner, receiptRank: r.receiptRank })), ownersBefore, ownersAfterEnter, ownersAfter }));

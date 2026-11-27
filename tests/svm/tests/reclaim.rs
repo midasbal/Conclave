@@ -22,7 +22,7 @@ fn close_ok(e: &mut Env, st: &Strat, rent: u64) { let k = e.strat_pda(st.id); le
 
 #[test] fn the_rent_model_reproduces_what_devnet_showed() {
     assert_eq!(STRAT_RENT, 20_000); let mut e = env(5); let h = e.lamports(&e.hub); let st = sealed(&mut e, 1); assert_eq!(h - e.lamports(&e.hub), 20_000, "a new sealed strategy");
-    let h = e.lamports(&e.hub); let s = open(&mut e, 1, &st, 0, false); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.arena)] + e.rent_held.as_ref().unwrap()[&(true, s.arena)], 328_576, "a 20-seat arena and its permission"); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.claims)], 34_944, "its claims account"); assert_eq!(h - e.lamports(&e.hub), 328_576 + 34_944);
+    let h = e.lamports(&e.hub); let s = open(&mut e, 1, &st, 0, false); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.arena)] + e.rent_held.as_ref().unwrap()[&(true, s.arena)], 328_576, "a 20-seat arena and its permission"); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.claims)], 34_944, "its claims account"); assert_eq!(e.rent_held.as_ref().unwrap()[&(false, s.roster)] + e.rent_held.as_ref().unwrap()[&(true, s.roster)], 27_008, "a 20-seat roster and its permission (no members)"); assert_eq!(h - e.lamports(&e.hub), 328_576 + 34_944 + 27_008);
 }
 
 // ================= the counter, on every path =================
@@ -119,10 +119,10 @@ fn rc_entry(e: &Env, s: &Season, i: usize) -> (u64, u32) { let d = e.data(&s.rec
 /// What the program checks is that the strategy's OWN open registry is passed WRITABLE. That a writable account must be delegated to the rollup is the rollup's rule, not modelled here: it is shown on devnet.
 #[test] fn enter_needs_the_strategys_own_registry_writable() {
     let mut e = env(5); let st = sealed(&mut e, 2); let (a_, b) = (st[0].clone(), st[1].clone()); let mut s = e.season(52); assert!(e.init_pool(&s).is_ok()); assert!(e.create_season(&mut s, 2, 10, 20, false, 2).is_ok()); let bal = e.balance(&e.players[a_.owner].pubkey());
-    let mut try_with = |e: &mut Env, meta: AccountMeta, what: &str| { let mut ix = e.enter_ix(&s, &a_, a_.owner); *ix.accounts.last_mut().unwrap() = meta; e.fresh_blockhash(); let kp = e.player(a_.owner); rejects(&e.send(&[ix], &[&kp]), 9133, what); assert_eq!((e.data(&s.arena)[ar::NS], e.open_count(a_.id), e.balance(&e.players[a_.owner].pubkey())), (0, 0, bal), "{}: nothing entered, nothing counted, no fee moved", what); };
+    let mut try_with = |e: &mut Env, meta: AccountMeta, what: &str| { let mut ix = e.enter_ix(&s, &a_, a_.owner); ix.accounts[7] = meta; e.fresh_blockhash(); let kp = e.player(a_.owner); rejects(&e.send(&[ix], &[&kp]), 9133, what); assert_eq!((e.data(&s.arena)[ar::NS], e.open_count(a_.id), e.balance(&e.players[a_.owner].pubkey())), (0, 0, bal), "{}: nothing entered, nothing counted, no fee moved", what); };
     let own = e.reg_pda(a_.id); try_with(&mut e, AccountMeta::new_readonly(own, false), "its registry read-only"); let other = e.reg_pda(b.id); try_with(&mut e, AccountMeta::new(other, false), "another strategy's registry"); let mine = e.register(a_.owner, "same owner", code_of("EMAcross")); let mine = e.reg_pda(mine.id); try_with(&mut e, AccountMeta::new(mine, false), "another registry of the SAME owner (the way round the rule: offer a delegated one for a strategy whose own is not)"); let strat_b = e.strat_pda(b.id); try_with(&mut e, AccountMeta::new(strat_b, false), "an account that is not a registry"); try_with(&mut e, AccountMeta::new(Address::new_unique(), false), "an account that does not exist");
     let good = e.data(&own); e.set_data(&own, |d| d[0..4].copy_from_slice(&M_REG_CLOSED.to_le_bytes())); try_with(&mut e, AccountMeta::new(own, false), "a closed registry"); e.set_data(&own, |d| *d = good.clone()); e.set_data(&own, |d| d[8] ^= 1); try_with(&mut e, AccountMeta::new(own, false), "a registry naming another owner"); e.set_data(&own, |d| *d = good.clone());
-    let mut ix = e.enter_ix(&s, &a_, a_.owner); ix.accounts.pop(); e.fresh_blockhash(); let kp = e.player(a_.owner); errs(&e.send(&[ix], &[&kp]), "the previous account list, with no registry"); assert!(e.enter(&mut s, &a_).is_ok(), "with its own writable registry it enters"); assert_eq!(e.open_count(a_.id), 1);
+    let mut ix = e.enter_ix(&s, &a_, a_.owner); ix.accounts.truncate(7); e.fresh_blockhash(); let kp = e.player(a_.owner); errs(&e.send(&[ix], &[&kp]), "the previous account list, with no registry"); assert!(e.enter(&mut s, &a_).is_ok(), "with its own writable registry it enters"); assert_eq!(e.open_count(a_.id), 1);
 }
 
 // ================= close =================
@@ -132,7 +132,7 @@ fn rc_entry(e: &Env, s: &Season, i: usize) -> (u64, u32) { let d = e.data(&s.rec
     close_ok(&mut e, &a_, STRAT_RENT);
     assert!(e.commit_undelegate(&[rk]).is_ok(), "a closed registry may be committed and undelegated");
     let thief = e.players[3].pubkey(); e.fresh_blockhash(); let ix = e.close_registry_ix(a_.id, thief); rejects(&e.send(&[ix], &[]), 9132, "the registry pays only its owner");
-    let (r0, o0, paid) = (e.lamports(&rk), e.lamports(&ow), e.lamports(&rk)); assert!(paid >= 2_000_000, "what the owner put in at Register"); let r = e.close_registry(&a_); assert!(r.is_ok(), "CloseRegistry (sent by a stranger's fee payer): {}", err_string(&r)); assert_eq!(e.lamports(&ow) - o0, r0, "every lamport of it back to the owner"); assert!(e.svm.get_account(&rk).map_or(true, |x| x.lamports == 0 && x.data.is_empty()), "the registry entry is gone");
+    let (r0, o0, paid) = (e.lamports(&rk), e.lamports(&ow), e.lamports(&rk)); assert!(paid >= 2_000_000, "what the owner put in at Register"); let r = e.close_registry(&a_); assert!(r.is_ok(), "CloseRegistry (sent by a stranger's fee payer): {}", err_string(&r)); assert_eq!(e.lamports(&ow) - o0, r0 - 1, "everything above the marker back to the owner (this harness runs with rent at zero, so the marker keeps 1 lamport; roster_4a.rs measures it at real rent)"); let m = e.svm.get_account(&rk).unwrap(); assert_eq!((m.data.len(), rd32(&m.data, 0), m.lamports), (MARKER_SIZE, M_REG_DEAD, 1), "only the marker is left");
     errs(&e.close_registry(&a_), "twice"); assert_eq!(e.open_count(st[1].id), 0, "the other strategy is untouched"); assert!(!e.data(&e.strat_pda(st[1].id)).is_empty());
 }
 
@@ -172,24 +172,37 @@ fn rc_entry(e: &Env, s: &Season, i: usize) -> (u64, u32) { let d = e.data(&s.rec
     assert_eq!(e.open_count(st[0].id), 0); let mut s = open(&mut e, 80, &st, 10, false); assert_eq!(e.open_count(st[0].id), 1); close_refused_open(&mut e, &st[0], "old strategy, entered"); play(&mut e, &mut s, 8); assert!(e.settle_publishing(&s, 1).is_ok()); assert_eq!(e.open_count(st[0].id), 0); close_ok(&mut e, &st[0], 19_744);
 }
 
-/// The real compatibility test: strategies and seasons made by the PREVIOUS PROGRAM'S BYTECODE, then the program is swapped in place, as an upgrade does.
-/// Needs that binary: CONCLAVE_OLD_SO=/path/to/conclave.so (sha256 928fe97110e617fdd1a90fbc3af04fa55be12b4e2a16d06af975a0ec3d1f04b4, the build deployed before this change)
-#[test] #[ignore = "needs the previous program binary in CONCLAVE_OLD_SO"] fn state_made_by_the_deployed_bytecode_survives_the_upgrade_and_closes() {
-    let old = std::fs::read(std::env::var("CONCLAVE_OLD_SO").expect("CONCLAVE_OLD_SO")).unwrap(); let new = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../program/target/deploy/conclave.so")).unwrap(); assert_eq!(sha256(&[&old]).iter().map(|b| format!("{:02x}", b)).collect::<String>(), "928fe97110e617fdd1a90fbc3af04fa55be12b4e2a16d06af975a0ec3d1f04b4"); assert_ne!(old, new);
+/// The real compatibility test: strategies, registries, receipts and an open season made by the PREVIOUS PROGRAM'S BYTECODE, then the program is swapped in place, as an upgrade does.
+/// Needs that binary: CONCLAVE_OLD_SO=/path/to/conclave.so (sha256 0ea300bf560f75edbdad7598f6bf50361b6daeaf971e7f23fe77909f153dc81c, the build deployed before this change)
+#[test] #[ignore = "needs the previous program binary in CONCLAVE_OLD_SO"] fn state_made_by_the_deployed_bytecode_survives_the_upgrade() {
+    let old = std::fs::read(std::env::var("CONCLAVE_OLD_SO").expect("CONCLAVE_OLD_SO")).unwrap(); let new = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../program/target/deploy/conclave.so")).unwrap(); assert_eq!(sha256(&[&old]).iter().map(|b| format!("{:02x}", b)).collect::<String>(), "0ea300bf560f75edbdad7598f6bf50361b6daeaf971e7f23fe77909f153dc81c"); assert_ne!(old, new);
     let mut e = env(5); let pid = e.pid; e.svm.add_program(pid, &old).unwrap();
-    // old bytecode: seal four, and leave three kinds of season open across the upgrade: finished and unsettled, settled and half published, and unlocked
-    let st = sealed(&mut e, 4); let enter_old = |e: &mut Env, s: &mut Season, t: &Strat| { let mut ix = e.enter_ix(s, t, t.owner); ix.accounts[1].is_writable = false; let kp = e.player(t.owner); e.fresh_blockhash(); let r = e.send(&[ix], &[&kp]); assert!(r.is_ok(), "old Enter: {}", err_string(&r)); s.entries.push(t.clone()); };
-    let mk = |e: &mut Env, sid: u64| { let mut s = e.season(sid); assert!(e.init_pool(&s).is_ok()); assert!(e.create_season(&mut s, 2, 10, 20, false, 2).is_ok()); for t in &st[..3] { enter_old(e, &mut s, t); } s };
-    let mut unsettled = mk(&mut e, 900); play(&mut e, &mut unsettled, 9); let mut half = mk(&mut e, 901); play(&mut e, &mut half, 10); assert!(e.settle_publishing(&half, 1).is_ok()); let unlocked = mk(&mut e, 902);
-    assert_eq!(counts(&e, &st), [0, 0, 0, 0], "the old build counts nothing");
+    // the previous build's account lists: no roster anywhere
+    let enter_old = |e: &mut Env, s: &mut Season, t: &Strat| { let mut ix = e.enter_ix(s, t, t.owner); ix.accounts.truncate(8); let kp = e.player(t.owner); e.fresh_blockhash(); let r = e.send(&[ix], &[&kp]); assert!(r.is_ok(), "old Enter: {}", err_string(&r)); s.entries.push(t.clone()); };
+    let settle_old = |e: &mut Env, s: &Season| { let mut ix = e.settle_ix_publishing(s, s.entries.len()); ix.accounts.remove(6); e.fresh_blockhash(); let r = e.send(&[ix], &[]); assert!(r.is_ok(), "old Settle: {}", err_string(&r)); };
+    let cleanup_old = |e: &mut Env, s: &Season, rc: bool| { let mut ix = e.cleanup_ix(s); ix.accounts.truncate(if rc { 8 } else { 7 }); e.fresh_blockhash(); let r = e.send(&[ix], &[]); assert!(r.is_ok(), "old Cleanup: {}", err_string(&r)); };
+    let st = sealed(&mut e, 4);
+    let mk = |e: &mut Env, sid: u64, who: &[Strat]| { let mut s = e.season(sid); assert!(e.init_pool(&s).is_ok()); assert!(e.create_season(&mut s, 2, 10, 20, false, 2).is_ok()); assert_eq!(e.data(&s.receipt).len(), RC_V2_SIZE, "the old build's receipt"); for t in who { enter_old(e, &mut s, t); } s };
+    // (a) a season closed with its bond still unreleased; (b) one whose bond the gap stranded; (c) one still OPEN at the upgrade; (d) a fresh receipt nobody opened yet
+    let mut closed = mk(&mut e, 900, &st[..2]); play(&mut e, &mut closed, 9); settle_old(&mut e, &closed); cleanup_old(&mut e, &closed, true);
+    let mut stranded = mk(&mut e, 901, &st[..2]); play(&mut e, &mut stranded, 10); settle_old(&mut e, &stranded); cleanup_old(&mut e, &stranded, false); assert_eq!(e.data(&stranded.receipt)[rc::STATE], 1, "the old build let Cleanup skip the receipt");
+    let open_old = mk(&mut e, 902, &st[2..3]);
+    let fresh = e.season(903); assert!(e.init_receipt(&fresh).is_ok());
+    // a registry whose owner closed the strategy under the old build and has not removed it yet
+    let kp = e.player(st[3].owner); let ix = e.close_strategy_ix(st[3].id, st[3].owner); e.fresh_blockhash(); assert!(e.send(&[ix], &[&kp]).is_ok());
     e.svm.add_program(pid, &new).unwrap();
-    // new bytecode on old state: a new season enters an old strategy and counts it; the old seasons publish and clean up without ever touching a count
-    let mut fresh = open(&mut e, 903, &st[..2], 10, false); assert_eq!(counts(&e, &st), [1, 1, 0, 0]);
-    assert!(e.settle_publishing(&unsettled, 3).is_ok(), "an old season settles and publishes"); assert_eq!(counts(&e, &st), [1, 1, 0, 0], "publishing an old entry never takes a new season's unit");
-    for i in 1..3 { assert!(e.publish(&half, i).is_ok()); } assert_eq!(counts(&e, &st), [1, 1, 0, 0]);
-    assert!(e.cancel(&unlocked).is_ok()); assert!({ let ix = e.cleanup_ix(&unlocked); e.send(&[ix], &[]).is_ok() }, "an old cancelled arena needs no strategy named"); assert!(e.cleanup(&unsettled).is_ok()); assert!(e.cleanup(&half).is_ok()); assert_eq!(counts(&e, &st), [1, 1, 0, 0]);
-    close_refused_open(&mut e, &st[0], "an old strategy in a new season"); close_ok(&mut e, &st[2], STRAT_RENT); close_ok(&mut e, &st[3], STRAT_RENT);
-    play(&mut e, &mut fresh, 11); assert!(e.settle_publishing(&fresh, 2).is_ok()); close_ok(&mut e, &st[0], STRAT_RENT); close_ok(&mut e, &st[1], STRAT_RENT); for t in &st { let r = e.close_registry(t); assert!(r.is_ok(), "an old registry is removed too: {}", err_string(&r)); }
+    // old closed receipt: still undelegatable and releasable, never delegable again
+    assert!(e.commit_undelegate(&[closed.receipt]).is_ok()); let c0 = e.lamports(&e.payer.pubkey()); let r = e.release_bond(&closed); assert!(r.is_ok(), "ReleaseBond on an old receipt: {}", err_string(&r)); assert_eq!(e.lamports(&e.payer.pubkey()) + r.unwrap().fee - c0, BOND);
+    // old stranded receipt: RecoverBond, then ReleaseBond
+    e.svm.set_account(stranded.arena, solana_account::Account::default()).unwrap(); let p = e.payer.pubkey(); let ix = e.ix(21, vec![e.m(p, true, true), e.ro(e.config), e.rw(stranded.receipt), e.ro(stranded.arena)], 901u64.to_le_bytes().to_vec()); e.fresh_blockhash(); let r = e.send(&[ix], &[]); assert!(r.is_ok(), "RecoverBond on an old stranded receipt: {}", err_string(&r)); assert!(e.commit_undelegate(&[stranded.receipt]).is_ok()); assert!(e.release_bond(&stranded).is_ok());
+    // old open season: the new build refuses its arena outright. Nothing about it can be finished, its money stays in its pool and its strategy stays counted: THE DEPLOY MUST HAPPEN WITH NO SEASON OPEN
+    for r in [e.lock(&open_old), e.cancel(&open_old), e.settle(&open_old), e.cleanup(&open_old)] { errs(&r, "an old arena"); }
+    assert_eq!(e.open_count(st[2].id), 1); rejects(&e.close_strategy(&st[2]), 9130, "stuck with its old arena");
+    // old fresh receipt: it can neither open a season nor be delegated under the new build (none may exist at the deploy)
+    let mut f = fresh.clone(); e.provision_if_new(f.arena, arena_size(20)); e.provision_side(&f, 20); let ix = e.create_season_ix(&f, 2, 1, 10, 20, 0, 2); e.fresh_blockhash(); rejects(&e.send(&[ix], &[]), 9020, "CreateSeason on an old fresh receipt"); f.maxs = 20;
+    // old strategies and registries work on: enter a new season, publish, close, and leave a marker. The one closed under the old build gets its marker at removal
+    let mut s = open(&mut e, 904, &st[..2], 10, false); assert_eq!(counts(&e, &st[..2]), [1, 1]); play(&mut e, &mut s, 11); assert!(e.settle_publishing(&s, 2).is_ok()); for i in 0..2 { assert_eq!(e.receipt_owner(&s, i), e.players[st[i].owner].pubkey().to_bytes().to_vec()); assert_eq!(e.receipt_commit(&s, i), code_commit(&st[i].salt, &st[i].code).to_vec()); }
+    close_ok(&mut e, &st[0], STRAT_RENT); for t in [&st[0], &st[3]] { let r = e.close_registry(t); assert!(r.is_ok(), "{}", err_string(&r)); assert_eq!(rd32(&e.data(&e.reg_pda(t.id)), 0), M_REG_DEAD); }
 }
 
 // ================= the hub is made whole =================

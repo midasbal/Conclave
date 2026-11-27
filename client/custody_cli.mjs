@@ -35,8 +35,8 @@ const chunks = (a, n) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) 
 const tee = async kp => new L.Endpoint(L.TEE, await L.tokenFor(L.TEE, kp));
 /** every season receipt on base (closed or delegated), as id -> [{ season, commitment }] for published entries */
 async function receiptCommitments() { const bs58 = (await import("bs58")).default; const out = new Map();
-  for (const owner of [L.PROGRAM.toBase58(), L.DLP.toBase58()]) for (const size of [1728, 1792, 1824]) { const r = await L.rpc(L.BASE_URL, "getProgramAccounts", [owner, { encoding: "base64", filters: [{ dataSize: size }, { memcmp: { offset: 0, bytes: bs58.encode(Buffer.from([0x52, 0x50, 0x43, 0x54])) } }] }]); if (r.error) throw new Error("receipt scan failed: " + JSON.stringify(r.error));
-      const at = size === 1824 ? 224 : size === 1792 ? 192 : 128; for (const a of r.result) { const d = Buffer.from(a.account.data[0], "base64"); if (d.readUInt32LE(0) !== M_RCPT) continue; for (let i = 0; i < Math.min(d[5], 20); i++) { const e = at + i * 80; const commit = d.subarray(e + 8, e + 40); if (commit.every(b => b === 0)) continue; const id = d.readBigUInt64LE(e).toString(); (out.get(id) ?? out.set(id, []).get(id)).push({ season: d.readBigUInt64LE(8).toString(), commitment: hex(commit) }); } } }
+  for (const owner of [L.PROGRAM.toBase58(), L.DLP.toBase58()]) for (const size of [1728, 1792, 1824, 2464]) { const r = await L.rpc(L.BASE_URL, "getProgramAccounts", [owner, { encoding: "base64", filters: [{ dataSize: size }, { memcmp: { offset: 0, bytes: bs58.encode(Buffer.from([0x52, 0x50, 0x43, 0x54])) } }] }]); if (r.error) throw new Error("receipt scan failed: " + JSON.stringify(r.error));
+      const at = size >= 1824 ? 224 : size === 1792 ? 192 : 128; for (const a of r.result) { const d = Buffer.from(a.account.data[0], "base64"); if (d.readUInt32LE(0) !== M_RCPT) continue; for (let i = 0; i < Math.min(d[5], 20); i++) { const e = at + i * 80; const commit = d.subarray(e + 8, e + 40); if (commit.every(b => b === 0)) continue; const id = d.readBigUInt64LE(e).toString(); (out.get(id) ?? out.set(id, []).get(id)).push({ season: d.readBigUInt64LE(8).toString(), commitment: hex(commit) }); } } }
   return out; }
 
 if (cmd === "export-all") {
@@ -84,11 +84,15 @@ if (cmd === "verify") {
   const reg = await L.base.getAccountInfo(L.regPda(id)); if (reg && reg.data.readUInt32LE(0) === M_REG) { const g = C.parseRegistry(reg.data); check("the registry on base holds this commitment and owner", hex(g.commitment) === o.public.commitment && g.owner === o.public.owner); } else console.log("note: no open registry on base for this id (closed, or never created)");
   const season = val("--season");
   if (season) { const a = await L.base.getAccountInfo(L.receiptPda(BigInt(season))); if (!a) die("no receipt for that season", 1); const R = L.parseReceipt(a.data); const k = R.entries.findIndex(e => e.id === id); if (k < 0) die("this strategy is not on that receipt", 1); const e = R.entries[k];
-    check("the receipt is back on base (owned by the program) and closed", a.owner.equals(L.PROGRAM) && a.data[144] === 2); if (!e.published) { console.log("note: this entry was never published, so the receipt carries no commitment to compare"); }
-    else { check("the receipt's code commitment for this entry is the bundle's", hex(e.commit) === o.public.commitment);
-      const A = await (await import("./author.mjs")).load(); const pins = F.vmPins(); if (pins) check("the receipt's VM rules are the ones this machine replays with", hex(R.pins) === pins);
+    check("the receipt is back on base (owned by the program) and closed", a.owner.equals(L.PROGRAM) && a.data[144] === 2);
+    if (R.format === 1) die("receipts of the first two layouts cannot be replayed by this tool", 1);
+    // a format 3 receipt names the owner and the commitment of every entry; an earlier one only has a commitment where the entry was published
+    if (R.format === 3) { check("the receipt names the bundle's owner for this entry", new L.PublicKey(e.owner).toBase58() === o.public.owner); check("the receipt's code commitment for this entry is the bundle's", hex(e.commit) === o.public.commitment); }
+    else if (e.published) check("the receipt's code commitment for this entry is the bundle's", hex(e.commit) === o.public.commitment);
+    if (!e.published) console.log("note: this entry was never published, so there is no score commitment to compare");
+    else { const A = await (await import("./author.mjs")).load(); const pins = F.vmPins(); if (pins) check("the receipt's VM rules are the ones this machine replays with", hex(R.pins) === pins);
       // each entry's run depends only on its own bytecode and the season's worlds, so one strategy replays alone
       const total = A.season([o.code], R.seedA, R.seedB, R.neps).totals[0]; const played = e.finalist && R.finals.status === 1; const ftotal = played ? A.season([o.code], R.finals.seedA, R.finals.seedB, R.finals.neps).totals[0] : 0n;
-      check("replaying the bundle's bytecode on the receipt's seeds reproduces the on-chain score commitment (season and finals totals)", L.scoreCommit(o.salt, R.season, id, total, ftotal, R.neps, played ? R.finals.neps : 0).equals(e.score)); } }
+      check("replaying the bundle's bytecode on the receipt's seeds reproduces the on-chain score commitment (season and finals totals)", L.scoreCommitFor(R.format, o.salt, R.season, id, total, ftotal, R.neps, played ? R.finals.neps : 0).equals(e.score)); } }
   console.log(`${checks.filter(Boolean).length}/${checks.length} checks passed for strategy ${id}`); process.exit(checks.every(Boolean) ? 0 : 1);
 }

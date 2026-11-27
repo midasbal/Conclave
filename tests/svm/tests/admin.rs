@@ -42,7 +42,7 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
 }
 #[test] fn stake_mint_allowlist_accepts_and_rejects() {
     let mut e = Env::new(5); let real = e.mint; let other = Address::new_unique();
-    let attempt = |e: &mut Env, sid: u64, mint: Address| -> Res { let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let keep = e.mint; e.mint = mint; let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); e.mint = keep; e.send(&[ix], &[]) };
+    let attempt = |e: &mut Env, sid: u64, mint: Address| -> Res { let s = e.season(sid); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_side(&s, 20); let keep = e.mint; e.mint = mint; let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); e.mint = keep; e.send(&[ix], &[]) };
     assert!(attempt(&mut e, 210, real).is_ok(), "the allowlisted mint is accepted"); rejects(&attempt(&mut e, 211, other), 9061, "a mint that is not on the list");
     e.admin_ok(2, other.as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 2); assert!(attempt(&mut e, 212, other).is_ok(), "after being allowed"); e.admin_ok(2, other.as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 2, "allowing twice is idempotent");
     e.admin_ok(3, other.as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 1); rejects(&attempt(&mut e, 213, other), 9061, "after being removed"); assert!(attempt(&mut e, 214, real).is_ok(), "the other mint is unaffected by the removal");
@@ -51,7 +51,7 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
     // only the authority edits the list
     let q = e.player(1); rejects(&e.admin_by(&q, 2, other.as_ref()), 9062, "a stranger editing the allowlist");
     // a fake config cannot be slipped in to bypass the list or the pause
-    let s = e.season(215); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let mut ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); ix.accounts[8] = e.rw(Address::new_unique()); rejects(&e.send(&[ix], &[]), 9063, "CreateSeason with a fake config");
+    let s = e.season(215); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_side(&s, 20); let mut ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); ix.accounts[8] = e.rw(Address::new_unique()); rejects(&e.send(&[ix], &[]), 9063, "CreateSeason with a fake config");
     let mut s2 = open(&mut e, 216, 1, 10); let st = e.register_and_seal(2, "x", code_of("EMAcross")); let mut ix = e.enter_ix(&s2, &st, 2); ix.accounts[6] = e.ro(Address::new_unique()); let kp = e.player(2); rejects(&e.send(&[ix], &[&kp]), 9063, "Enter with a fake config"); let _ = &mut s2;
 }
 #[test] fn a_lookalike_config_at_another_address_is_refused() {
@@ -69,7 +69,7 @@ const C_PAUSED: usize = 4; const C_NMINTS: usize = 5; const C_AUTH: usize = 8;
     let ix = e.init_config_ix(pd, e.payer.pubkey()); assert!(e.send(&[ix], &[]).is_ok(), "the upgrade authority creates the config"); assert_eq!(&cfgb(&e)[C_AUTH..C_AUTH + 32], e.payer.pubkey().as_ref()); assert_eq!(cfgb(&e)[C_NMINTS], 0, "no mint is allowed until the authority allows one");
     let ix = e.init_config_ix(pd, e.payer.pubkey()); assert!(e.send(&[ix], &[]).is_err(), "the config cannot be created twice");
     // with an empty allowlist nothing can be created
-    let s = e.season(220); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_if_new(s.claims, claims_size(20)); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9061, "empty allowlist");
+    let s = e.season(220); assert!(e.init_receipt(&s).is_ok()); e.provision_if_new(s.arena, arena_size(20)); e.provision_side(&s, 20); let ix = e.create_season_ix(&s, 2, 1, 10, 20, 0, 2); rejects(&e.send(&[ix], &[]), 9061, "empty allowlist");
 }
 
 // ---- stranded-bond recovery ----

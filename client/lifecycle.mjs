@@ -50,7 +50,7 @@ if (mode === "cancel") {
   const stranger = await L.sendTee(c.URL, [F.lockIx(sid, c.players[4].publicKey)], [O, c.players[4]]); check("a stranger cannot lock inside the window (9032)", !!stranger.err && JSON.stringify(stranger.err).includes("9032"), JSON.stringify(stranger.err || "ACCEPTED"));
   await waitSlot(created + 4_100); log("entry window elapsed, slot", await slot());
   const lr = await F.register(c, 2, "Mom20th", c.codes["Mom20th"].code); const hubBeforeLate = await F.hubLamports(c); ok(await F.seal(c, 2, lr.id, lr.salt, c.codes["Mom20th"].code), "TEE Seal late strategy (owner 2)"); const lateRent = hubBeforeLate - await F.hubLamports(c); /* sealed after the starting hub reading, and never closed here, so its rent stays out of the hub */
-  const late = await L.sendTee(c.URL, [F.enterIx(c, sid, 2, lr.id)], [O, c.players[2]]); check("Enter after the window is refused (9030)", !!late.err && JSON.stringify(late.err).includes("9030"), JSON.stringify(late.err || "ACCEPTED"));
+  const late = await F.sendEnter(c, sid, 2, lr.id); check("Enter after the window is refused (9030)", !!late.err && JSON.stringify(late.err).includes("9030"), JSON.stringify(late.err || "ACCEPTED"));
   const lk = await L.sendTee(c.URL, [F.lockIx(sid, c.players[4].publicKey)], [O, c.players[4]]); check("a stranger's Lock after the window cancels the under-minimum season", ok(lk, "TEE Lock (stranger)"));
   const cx = await L.sendTee(c.URL, [F.cancelIx(c, sid, c.players[4].publicKey, S.entries.map(e => e.id))], [O, c.players[4]]); check("Cancel and refund by a stranger", ok(cx, "TEE Cancel"));
   { const cm = await F.claimAll(c, sid, log); log(F.claimsTable(cm.after)); check("both refunds claimed", cm.results.every(r => !r.err) && cm.after.claimed === cm.after.owed); }
