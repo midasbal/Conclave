@@ -50,7 +50,7 @@ It runs on **Solana devnet** only. It has **not been audited**. Account layouts 
 | Capture daemon | Built; one-cycle runs against a dedicated devnet RPC completed. It has not run continuously there, or watched a live season through that endpoint |
 | Hosting | Deploy files exist ([`docs/DEPLOY_RAILWAY.md`](docs/DEPLOY_RAILWAY.md)). The image has never been built and nothing is deployed |
 | Leaderboard | No counting rules are configured, so it counts nothing |
-| Web app | Not built |
+| Web app | Built in [`web/`](web/README.md): the entry page, a spectator view of the record and the docs. It cannot author or enter yet |
 
 The seasons on devnet so far are this project's own tests.
 
@@ -68,6 +68,7 @@ The seasons on devnet so far are this project's own tests.
 | `verifier/` | Record builder, capture loop, counting policy and proof verifier |
 | `server/` | Record API, and wallet-session auth with a key-holding RPC proxy ([`server/README.md`](server/README.md)) |
 | `deploy/` | Entrypoint that runs the capture loop and the API as one unit |
+| `web/` | Next.js web app: entry page, spectator view of the record, and docs ([`web/README.md`](web/README.md)) |
 | `tests/` | Conformance corpus, in-process SVM suite, client and tooling tests |
 | `scripts/`, `.github/workflows/` | Reproducible build, deployed-equals-artifact check, canary, CI |
 

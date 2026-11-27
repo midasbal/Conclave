@@ -10,7 +10,7 @@
 }
 
 .title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1.5rem; padding-bottom: 0.85rem; border-bottom: 3px double var(--ink); }
-.title h1, .title h2 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); line-height: 1.1; }
+.title h1, .title h2, .title h3 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); line-height: 1.1; }
 .title p { color: var(--ink-soft); font-style: italic; font-size: 0.95rem; }
 
 .facts { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 0.75rem 1.25rem; margin: 0; padding-block: 0.9rem 1.1rem; }

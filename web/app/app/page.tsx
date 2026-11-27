@@ -83,7 +83,7 @@ export default async function RecordPage({ searchParams }: { searchParams: Promi
 
       <p className={styles.key}>
         <strong>Final</strong> means the receipt is closed and back on Solana. <strong>Provisional</strong> means it is still held in the rollup and can change.
-        <strong> Flagged</strong> means it changed in a way it should not have since it was first saved.
+        <strong> Flagged</strong> means the record service found something wrong with it, or with the saved copy, after first saving it.
       </p>
     </div>
   );

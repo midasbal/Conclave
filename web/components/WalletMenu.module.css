@@ -19,7 +19,5 @@
 .problem { padding: 0 1rem 0.8rem; font-size: 0.9rem; }
 .problem:empty { display: none; }
 
-/* on a narrow screen the trigger can sit at the left edge, so the menu opens rightwards from it */
-@media (max-width: 36rem) { .panel { right: auto; left: 0; } }
 @keyframes drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }

@@ -1,0 +1,67 @@
+.doc { padding-block: 1.75rem clamp(4rem, 10vh, 6.5rem); }
+
+.switch { display: flex; flex-wrap: wrap; border-bottom: 3px solid var(--ink); }
+.switch a { padding: 0.55rem 1.15rem 0.45rem; text-decoration: none; border: 1px solid transparent; border-bottom: 0; transition: background-color 160ms var(--ease), color 160ms var(--ease); }
+.switch a:hover { background: var(--wash); border-color: var(--rule); }
+.switch a[aria-current] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* a rail, then a column of text held to a reading width */
+.columns { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 40rem); gap: 0 clamp(2.5rem, 7vw, 7rem); align-items: start; }
+
+.rail { position: sticky; top: 1.5rem; margin-top: 3rem; max-height: calc(100dvh - 3rem); overflow-y: auto; font-size: 0.95rem; line-height: 1.45; }
+.rail > p { font-style: italic; color: var(--ink-soft); padding-bottom: 0.5rem; border-bottom: 1px solid var(--ink); }
+.rail ol, .fold ol { list-style: none; margin: 0; padding: 0; }
+.rail a, .fold a { display: block; padding: 0.45rem 0 0.4rem; border-bottom: 1px solid var(--rule); text-decoration: none; transition: padding-left 180ms var(--ease); }
+.rail a:hover, .rail a:focus-visible { padding-left: 0.5rem; text-decoration: none; }
+.fold { display: none; }
+
+.article { padding-top: 2.5rem; min-width: 0; }
+.article > header h1 { font-size: clamp(2.3rem, 5vw, 3.5rem); line-height: 1.05; }
+.intro { display: grid; gap: 0.9rem; margin-top: 1.1rem; font-size: 1.15rem; }
+.article > section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin-top: 3.25rem; padding-top: 1.25rem; border-top: 1px solid var(--ink); scroll-margin-top: 1.25rem; }
+.article > section > h2 { font-size: clamp(1.65rem, 3vw, 2.05rem); line-height: 1.2; }
+.article h3 { font-size: 1.35rem; line-height: 1.3; }
+.article :global(ul), .article :global(ol) { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.5rem; }
+.article :global(code) { font-family: var(--font-mono), monospace; font-size: 0.82em; overflow-wrap: anywhere; }
+.article :global(pre) { margin: 0; padding: 0.9rem 1rem; background: var(--sheet); border: 1px solid var(--ink); border-left-width: 5px; overflow-x: auto; font-family: var(--font-mono), monospace; font-size: 0.8rem; line-height: 1.7; }
+.article :global(pre code) { font-size: 1em; overflow-wrap: normal; }
+
+/* ---- the FAQ: each question a ruled line that opens ---- */
+.faq { border-top: 3px solid var(--ink); }
+.faq details { border-bottom: 1px solid var(--rule); scroll-margin-top: 1.25rem; }
+.faq summary { display: grid; grid-template-columns: minmax(0, 1fr) 2rem; align-items: center; gap: 1rem; padding: 0.95rem 0.25rem 0.9rem; cursor: pointer; list-style: none; transition: background-color 150ms var(--ease); }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary h3 { font-size: 1.28rem; }
+/* a cross drawn in two strokes: upright when shut, turned flat when open */
+.faq summary::after { content: ""; justify-self: center; width: 0.9rem; height: 0.9rem; background: currentColor; clip-path: polygon(45% 0, 55% 0, 55% 45%, 100% 45%, 100% 55%, 55% 55%, 55% 100%, 45% 100%, 45% 55%, 0 55%, 0 45%, 45% 45%); transition: clip-path 200ms var(--ease); }
+.faq details[open] summary::after { clip-path: polygon(45% 45%, 55% 45%, 55% 45%, 100% 45%, 100% 55%, 55% 55%, 55% 55%, 45% 55%, 45% 55%, 0 55%, 0 45%, 45% 45%); }
+.faq summary:hover { background: var(--wash); }
+.faq summary:focus-visible { outline-offset: -3px; }
+.answer { display: grid; gap: 0.8rem; padding: 0 0.25rem 1.35rem; }
+
+.sources { margin-top: 3.5rem; padding-top: 1.25rem; border-top: 3px solid var(--ink); font-size: 0.95rem; color: var(--ink-soft); }
+.sources ul { margin-top: 0.75rem; }
+.sources a { color: var(--ink); }
+
+/* tablet and below: one column, the contents folded above it */
+@media (max-width: 62rem) {
+  .columns { grid-template-columns: minmax(0, 40rem); justify-content: center; }
+  .rail { display: none; }
+  .fold { display: block; margin-top: 1.5rem; border: 1px solid var(--ink); background: var(--sheet); }
+  .fold summary { padding: 0.7rem 1rem 0.65rem; cursor: pointer; }
+  .fold nav { padding: 0 1rem 0.5rem; border-top: 1px solid var(--ink); }
+  .fold a { padding-block: 0.65rem 0.6rem; }
+  .fold li:last-child a { border-bottom: 0; }
+}
+@media (min-width: 40.001rem) and (max-width: 62rem) { .fold ol { grid-template-columns: repeat(2, minmax(0, 1fr)); display: grid; column-gap: 1.5rem; } }
+@media (max-width: 36rem) {
+  /* three equal tabs across the screen */
+  .switch { display: grid; grid-template-columns: repeat(3, auto); justify-content: stretch; }
+  .switch a { padding: 0.65rem 0.4rem 0.55rem; font-size: 0.95rem; text-align: center; white-space: nowrap; }
+  .intro { font-size: 1.08rem; }
+  .article > section { margin-top: 2.5rem; }
+  .faq summary h3 { font-size: 1.18rem; }
+}
+
+/* on a phone a command or a hash wraps, so that all of it can be read without dragging it sideways */
+@media (max-width: 36rem) { .article :global(pre) { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.76rem; padding-inline: 0.8rem; } .article :global(pre code) { overflow-wrap: anywhere; } }

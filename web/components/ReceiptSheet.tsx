@@ -10,7 +10,7 @@ export type Fact = { label: string; value: ReactNode };
 type Props = {
   titleId: string;
   title: string;
-  heading?: "h1" | "h2";
+  heading?: "h1" | "h2" | "h3";
   subtitle: string;
   facts: Fact[];
   rows: ReceiptRow[];

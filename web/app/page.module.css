@@ -49,3 +49,13 @@
   .stages li + li { border-top: 1px solid var(--rule); margin-top: 1.25rem; }
   .stages dl > div { min-height: 0; }
 }
+
+/* tablet: each stage keeps its text at a reading width, with what is on view and what is kept back set beside it */
+@media (min-width: 40rem) and (max-width: 62rem) {
+  .stages li { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-rows: auto 1fr; column-gap: 2rem; padding-bottom: 1.5rem; }
+  .stages li > :first-child { grid-column: 1 / -1; }
+  .stages li > dl { margin-top: 0.25rem; align-self: start; }
+  .stages li + li { margin-top: 0; }
+}
+/* small desktop: the narrower columns wrap further, so both lines of each ledger are given more room to keep them level */
+@media (min-width: 62.001rem) and (max-width: 72rem) { .stages dl > div { min-height: calc(4.35em + 1.5rem); grid-template-columns: 5.25rem minmax(0, 1fr); } }

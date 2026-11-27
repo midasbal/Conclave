@@ -1,6 +1,8 @@
 # Conclave web
 
-The browser app. So far: the entry page, the shell around it (header, footer, 404), and a spectator view of the public record at `/app`.
+The browser app. So far: the entry page, the shell around it (header, footer, 404), a spectator view of the public record at `/app`, and the docs at `/docs` (`/docs/using` and `/docs/technical`).
+
+The docs are written by hand from the repository's documents and the program. When those change, check the pages under `app/docs/`; `lib/links.ts` also repeats the program id and the build hash.
 
 Next.js (App Router) and TypeScript, with hand-written CSS modules. No component library. It holds no keys. `/app` reads the record API (`../docs/API.md`) from the server.
 
@@ -44,8 +46,8 @@ From the command line: `cd web && npx vercel env add CONCLAVE_API_URL production
 
 | Path | |
 |---|---|
-| `app/` | Routes: the entry page, `/app`, `/app/season/[season]`, the not-found pages, and the global tokens in `globals.css` |
-| `components/` | Header, footer, the receipt sheet (shared by the exhibit and the season pages), the seal mark, motion, and the wallet provider and menu |
+| `app/` | Routes: the entry page, `/app`, `/app/season/[season]`, `/docs` and its two pages, the not-found pages, and the global tokens in `globals.css` |
+| `components/` | Header, footer, the receipt sheet (shared by the exhibit and the season pages), the seal mark, the not-found sheet, the docs layout (`components/docs/`), motion, and the wallet provider and menu |
 | `lib/` | Typefaces, outbound links, the server-side record reader and its types, and the record's codes in words |
 | `data/exhibit.json` | One real devnet receipt (below) |
 

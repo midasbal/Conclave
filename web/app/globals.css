@@ -17,7 +17,8 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+/* a tap is answered in ink, not in the browser's blue */
+html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: rgb(43 39 33 / 0.12); scroll-behavior: smooth; }
 body {
   margin: 0;
   min-height: 100dvh;
@@ -55,6 +56,47 @@ a:hover { text-decoration-thickness: 2px; text-underline-offset: 0.3em; }
 .notice h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); line-height: 1.06; }
 .plain-button { font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--ink); padding: 0.5rem 1.2rem; cursor: pointer; }
 .plain-button:hover { background: var(--ink); color: var(--paper); }
+
+/* ---- the not-found sheet (components/NotOnRecord.tsx). Here rather than in a module: a stylesheet of the root 404's own is preloaded on every page ---- */
+.void-room { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 3rem clamp(2.5rem, 6vw, 6rem); align-items: center; padding-block: clamp(3rem, 9vh, 6rem) clamp(4rem, 11vh, 7rem); }
+.void-words { display: grid; gap: 1.25rem; max-width: 34rem; }
+.void-words h1 { font-size: clamp(2.5rem, 5.4vw, 4.4rem); line-height: 1.04; }
+.void-ways { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.75rem; padding-top: 0.75rem; }
+.void-back a { display: inline-block; padding: 0.65rem 1.4rem 0.6rem; background: var(--ink); color: var(--paper); border: 1px solid var(--ink); text-decoration: none; transition: background-color 180ms var(--ease), color 180ms var(--ease), transform 180ms var(--ease); }
+.void-back a:hover { background: transparent; color: var(--ink); text-decoration: none; }
+.void-back a:active { transform: translateY(1px); }
+
+.void-holder { position: relative; isolation: isolate; width: 100%; max-width: 28rem; justify-self: end; padding-right: 9px; }
+.void-holder::after { content: ""; position: absolute; z-index: -1; inset: 9px 0 -9px 9px; border: 1px solid var(--ink); background: var(--paper); }
+.void-leaf { position: relative; background: var(--sheet); border: 1px solid var(--ink); border-top-width: 6px; padding: 1.25rem 1.5rem 7.5rem; }
+.void-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 0.9rem; border-bottom: 3px double var(--ink); font-family: var(--font-mono), monospace; font-size: 0.8rem; }
+/* ruled lines waiting for an entry that was never made */
+.void-lines > div { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: end; gap: 1rem; height: 3.1rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--rule); font-style: italic; font-size: 0.9rem; line-height: 1.2; color: var(--ink-soft); }
+.void-lines i { display: block; border-bottom: 1px dashed var(--ink-soft); height: 0; margin-bottom: 0.25rem; }
+.void-stamp { position: absolute; right: 1.5rem; bottom: 1.6rem; display: grid; justify-items: center; padding: 0.4rem 1.1rem 0.5rem; border: 3px solid var(--ink); transform: rotate(-4deg); }
+.void-stamp::after { content: ""; position: absolute; inset: -7px; border: 1px solid var(--ink); }
+.void-stamp strong { font-family: var(--font-display), Georgia, serif; font-weight: 400; font-size: 1.55rem; line-height: 1.1; text-transform: uppercase; letter-spacing: 0.1em; margin-right: -0.1em; white-space: nowrap; }
+.void-stamp span { font-family: var(--font-mono), monospace; font-size: 0.68rem; line-height: 1.2; }
+
+/* struck once, after the sheet has been seen empty. Styles alone, so it runs without script; with reduced motion the stamp is simply there */
+@media (prefers-reduced-motion: no-preference) {
+  .void-stamp { animation: void-strike 380ms cubic-bezier(0.55, 0, 0.9, 0.45) 600ms backwards; }
+  .void-leaf { animation: void-jolt 340ms linear 980ms; }
+}
+@keyframes void-strike { from { opacity: 0; transform: rotate(-9deg) scale(2); } 30% { opacity: 1; } to { opacity: 1; transform: rotate(-4deg) scale(1); } }
+@keyframes void-jolt { 0% { transform: translateY(0); } 25% { transform: translateY(4px); } 55% { transform: translateY(-2px); } 100% { transform: translateY(0); } }
+
+@media (max-width: 62rem) {
+  .void-room { grid-template-columns: minmax(0, 1fr); }
+  .void-holder { justify-self: start; }
+}
+@media (min-width: 40rem) and (max-width: 62rem) { .void-room { justify-items: center; } .void-holder { justify-self: center; } .void-words { justify-self: stretch; max-width: none; } .void-words > p { max-width: 34rem; } }
+@media (max-width: 36rem) {
+  .void-leaf { padding: 1rem 1rem 6.75rem; }
+  .void-lines > div { height: 2.6rem; }
+  .void-stamp { right: 1.1rem; }
+  .void-stamp strong { font-size: 1.3rem; }
+}
 
 /* Sections come into view once, as they are scrolled to. Only a page whose script is running hides anything first (the .js class, set before paint and
    withdrawn again if the script never reports in), so without JavaScript, or if it fails, everything is simply there. */

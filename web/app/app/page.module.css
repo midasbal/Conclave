@@ -51,3 +51,8 @@
   .fee { grid-area: fee; justify-self: end; }
 }
 @media (max-width: 24rem) { .filters a { padding-inline: 0.75rem; } .opened, .field, .fee { font-size: 0.72rem; } }
+
+/* tablet: two ruled lines to a season, in three columns that line up down the page */
+@media (min-width: 40rem) and (max-width: 62rem) {
+  .row { grid-template-columns: 9rem minmax(0, 1fr) 8rem; grid-template-areas: "number outcome status" "opened field fee"; justify-content: stretch; gap: 0.3rem 1.25rem; padding-inline: 1.25rem; }
+}

@@ -8,4 +8,15 @@
 .brand:hover svg, .brand:focus-visible svg { transform: translateY(1px) scale(0.96); }
 .tools { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem clamp(1.25rem, 3vw, 2.5rem); }
 .nav { display: flex; flex-wrap: wrap; gap: 0.25rem clamp(1rem, 2.6vw, 2.25rem); font-size: 0.95rem; }
-@media (max-width: 26rem) { .nav { column-gap: 0.85rem; font-size: 0.875rem; } }
+
+/* tablet and phone: two deliberate rows. The mark with the wallet beside it, then the links ruled off across the full width */
+@media (max-width: 52rem) {
+  .inner { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "brand wallet" "nav nav"; gap: 0.7rem 1rem; padding-bottom: 0.35rem; }
+  .brand { grid-area: brand; justify-self: start; }
+  .tools { display: contents; }
+  .tools > :not(nav) { grid-area: wallet; justify-self: end; }
+  .nav { grid-area: nav; justify-content: space-between; gap: 0.25rem 0.75rem; padding-top: 0.3rem; border-top: 1px solid var(--rule); }
+  .nav a { padding-block: 0.5rem; }
+}
+@media (min-width: 36.001rem) and (max-width: 52rem) { .nav { justify-content: flex-start; column-gap: 2.25rem; } }
+@media (max-width: 26rem) { .nav { column-gap: 0.5rem; font-size: 0.875rem; } .brand { font-size: 1.6rem; } }

@@ -1,0 +1,20 @@
+.home { padding-block: 1.75rem clamp(4rem, 10vh, 6.5rem); }
+.head { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 6fr); gap: 1rem 3rem; align-items: end; padding-block: 2.75rem 2.25rem; }
+.head h1 { font-size: clamp(2.5rem, 6vw, 4.4rem); line-height: 1.02; }
+.head p { max-width: 32rem; justify-self: end; }
+.doors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; }
+.door { display: grid; grid-template-rows: auto auto 1fr; gap: 0.9rem; padding: 1.5rem 1.75rem 1.25rem; background: var(--sheet); border: 1px solid var(--ink); border-top-width: 6px; text-decoration: none; transition: background-color 180ms var(--ease), transform 180ms var(--ease); }
+.door:hover { background: var(--wash); text-decoration: none; transform: translateY(-2px); }
+.door:active { transform: translateY(1px); }
+.door h2 { font-size: clamp(1.8rem, 3vw, 2.4rem); line-height: 1.15; }
+.door:hover h2, .door:focus-visible h2 { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+.door ul { list-style: none; margin: 0.5rem 0 0; padding: 0; align-self: end; border-top: 1px solid var(--ink); font-size: 0.95rem; }
+.door li { padding-block: 0.45rem 0.4rem; border-bottom: 1px solid var(--rule); }
+.door li:last-child { border-bottom: 0; }
+.full { margin-top: 2.5rem; max-width: 40rem; color: var(--ink-soft); }
+.full a { color: var(--ink); }
+
+@media (max-width: 52rem) {
+  .head, .doors { grid-template-columns: minmax(0, 1fr); }
+  .head p { justify-self: start; }
+}
