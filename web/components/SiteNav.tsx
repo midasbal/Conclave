@@ -10,7 +10,6 @@ export function SiteNav() {
   const inside = path === "/app" || path.startsWith("/app/");
   const docs = path === "/docs" || path.startsWith("/docs/");
   const workshop = path === "/workshop";
-  const wallet = inside || path === "/seal"; // the record, and the sealing experiment
   return (
     <div className={styles.tools}>
       <nav aria-label="Main" className={styles.nav}>
@@ -21,7 +20,7 @@ export function SiteNav() {
         <Link className="ruled" href="/#season">How it runs</Link>
         <Link className="ruled" href="/#limits">Limits</Link>
       </nav>
-      {wallet && <WalletMenu />}
+      {inside && <WalletMenu />}
     </div>
   );
 }

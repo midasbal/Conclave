@@ -1,6 +1,9 @@
-// The transactions that put a sealed strategy on devnet, ported from client/flows.mjs (register, delegIx, seal) and client/lib.mjs (addresses).
-// Nothing here signs or holds a key. Seeds, account order and data layouts must match program/src/lib.rs.
+// What puts a sealed strategy on devnet: the three instructions, the enclave login and the sealed account's layout. Ported from client/flows.mjs
+// (register, delegIx, seal) and client/lib.mjs (addresses); the login and the permission address replace the MagicBlock SDK. Nothing here holds a key:
+// whoever calls enclaveLogin passes the signing function. Seeds, account order and data layouts must match program/src/lib.rs.
+// A rollup blockhash lasts under a minute (about 5,950 blocks at about 104 a second, measured), so sign and send promptly.
 import { Buffer } from "buffer";
+import bs58 from "bs58";
 import { PublicKey, SystemProgram, ComputeBudgetProgram, Transaction, TransactionInstruction, type AccountMeta } from "@solana/web3.js";
 import { PROGRAM_ID } from "@/lib/links";
 
@@ -10,8 +13,6 @@ export const TEE_RPC = "https://devnet-tee.magicblock.app";
 export const PROGRAM = new PublicKey(PROGRAM_ID);
 export const DELEGATION_PROGRAM = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
 export const MAGIC_PROGRAM = new PublicKey("Magic11111111111111111111111111111111111111");
-/** a rollup blockhash was measured valid at 30 s and gone by 60 s: lastValidBlockHeight sits about 5,950 blocks ahead, at about 104 blocks a second */
-export const ROLLUP_BLOCKHASH_SECONDS = 55;
 
 const meta = (pubkey: PublicKey, isWritable = false, isSigner = false): AccountMeta => ({ pubkey, isWritable, isSigner });
 export const u64 = (n: bigint) => {
@@ -62,6 +63,42 @@ export function delegateInstruction(owner: PublicKey, id: bigint, validator: Pub
 
 export type SealAddresses = { permission: PublicKey; vault: PublicKey; permissionProgram: PublicKey };
 
+/** MagicBlock's permission program and ephemeral rent vault, on devnet */
+export const PERMISSION_PROGRAM = new PublicKey("ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1");
+export const EPHEMERAL_VAULT = new PublicKey("MagicVau1t999999999999999999999999999999999");
+
+/** the accounts SealStrategy needs besides the strategy's own: the permission that lets only the owner read the sealed account lives at
+ *  ["permission:", sealed account] under the permission program */
+export function sealAddresses(sealed: PublicKey): SealAddresses {
+  return { permission: pda(["permission:", sealed.toBytes()], PERMISSION_PROGRAM), vault: EPHEMERAL_VAULT, permissionProgram: PERMISSION_PROGRAM };
+}
+
+const SESSION_MS = 1000 * 60 * 60 * 24 * 30;
+
+/**
+ * The enclave login: ask for a text to sign, sign it, send the signature back, receive a token. Two requests, the same ones, in the same order and with
+ * the same failures, as getAuthToken in @magicblock-labs/ephemeral-rollups-sdk 0.18.0, which this replaces. The address in the first request is public.
+ * The token it returns is a credential: keep it in memory and send it in an Authorization header, never in an address.
+ */
+export async function enclaveLogin(rpcUrl: string, publicKey: PublicKey, signMessage: (message: Uint8Array) => Promise<Uint8Array>): Promise<{ token: string; expiresAt: number }> {
+  const query = new URLSearchParams({ pubkey: publicKey.toString() });
+  const first = await fetch(`${rpcUrl}/auth/challenge?${query.toString()}`);
+  const { challenge, error } = (await first.json()) as { challenge?: unknown; error?: unknown };
+  if (typeof error === "string" && error.length > 0) throw new Error(`Failed to get challenge: ${error}`);
+  if (typeof challenge !== "string" || challenge.length === 0) throw new Error("No challenge received");
+
+  const signature = bs58.encode(await signMessage(new TextEncoder().encode(challenge)));
+  const second = await fetch(`${rpcUrl}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pubkey: publicKey.toString(), challenge, signature }),
+  });
+  const answer = (await second.json()) as { token?: unknown; expiresAt?: number; error?: unknown };
+  if (second.status !== 200) throw new Error(`Failed to authenticate: ${answer.error}`);
+  if (typeof answer.token !== "string" || answer.token.length === 0) throw new Error("No token received");
+  return { token: answer.token, expiresAt: answer.expiresAt ?? Date.now() + SESSION_MS };
+}
+
 /** 3 SealStrategy (rollup). Its data carries the salt and the code in plain form: whoever is shown this transaction is shown the strategy */
 export function sealInstruction(owner: PublicKey, id: bigint, salt: Uint8Array, code: Uint8Array, a: SealAddresses) {
   return instruction(
@@ -82,44 +119,6 @@ export function transactionOf(feePayer: PublicKey, blockhash: string, ...instruc
 }
 /** the compute limit the client asks for in the rollup */
 export const computeLimit = () => ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 });
-
-export type Returned = {
-  /** every difference between what was asked and what the wallet gave back, in words */
-  changes: string[];
-  /** safe to send: the fee payer is unchanged, every instruction asked for (compute budget aside) is there unaltered and in order, and the signatures verify */
-  sendable: boolean;
-  signatureValid: boolean;
-};
-
-const same = (a: TransactionInstruction, b: TransactionInstruction) =>
-  a.programId.equals(b.programId) && Buffer.from(a.data).equals(Buffer.from(b.data)) && a.keys.length === b.keys.length && a.keys.every((k, i) => k.pubkey.equals(b.keys[i].pubkey));
-
-/** A wallet may change a transaction before signing it. This compares what came back with what was handed over. */
-export function compareReturned(asked: Transaction, got: Transaction): Returned {
-  const changes: string[] = [];
-  const payerSame = !!got.feePayer && !!asked.feePayer && got.feePayer.equals(asked.feePayer);
-  if (!payerSame) changes.push("the fee payer was changed");
-  if (got.recentBlockhash !== asked.recentBlockhash) changes.push("the blockhash was replaced (a rollup does not know a blockhash from another cluster)");
-  // a wallet may reasonably set its own compute budget: that is reported, but what must come back unaltered is every other instruction
-  const budget = (ix: TransactionInstruction) => ix.programId.equals(ComputeBudgetProgram.programId);
-  const wanted = asked.instructions.filter(ix => !budget(ix));
-  const askedBudget = asked.instructions.filter(budget);
-  const gotBudget = got.instructions.filter(budget);
-  if (askedBudget.length !== gotBudget.length || askedBudget.some((ix, i) => !same(ix, gotBudget[i]))) changes.push(`the compute budget instructions were changed (asked for ${askedBudget.length}, got ${gotBudget.length})`);
-  let next = 0;
-  const added: string[] = [];
-  for (const ix of got.instructions.filter(i => !budget(i))) {
-    if (next < wanted.length && same(wanted[next], ix)) next += 1;
-    else added.push(ix.programId.toBase58());
-  }
-  const intact = next === wanted.length;
-  if (!intact) changes.push("an instruction that was asked for is missing or altered");
-  if (added.length) changes.push(`${added.length} instruction(s) not asked for, of program(s) ${added.join(", ")}`);
-  let signatureValid = false;
-  try { signatureValid = got.verifySignatures(); } catch { signatureValid = false; }
-  if (!signatureValid) changes.push("the signatures do not verify");
-  return { changes, sendable: payerSame && intact && signatureValid, signatureValid };
-}
 
 export type Sealed = { length: number; owner: PublicKey; id: bigint; commitment: Uint8Array; salt: Uint8Array; code: Uint8Array };
 

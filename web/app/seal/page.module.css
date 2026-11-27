@@ -1,9 +1,0 @@
-.page { padding-block: 2.5rem clamp(5rem, 11vh, 8rem); max-width: calc(52rem + 2 * var(--gutter)); font-family: var(--font-reading), Georgia, serif; line-height: 1.7; }
-.head { display: grid; gap: 0.8rem; max-width: 40rem; }
-.kind { justify-self: start; padding: 0.1rem 0.7rem; border: 2px solid var(--ink); font-family: var(--font-mono), monospace; font-size: 0.76rem; }
-.head h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.08; }
-.warning { display: grid; gap: 0.8rem; margin-top: 2rem; padding: clamp(1.1rem, 3vw, 1.75rem); background: var(--ink); color: var(--paper); }
-.warning h2 { font-size: 1.7rem; line-height: 1.25; }
-.warning ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.7rem; }
-.warning strong { font-weight: 600; }
-.warning :global(:focus-visible) { outline-color: var(--paper); }
