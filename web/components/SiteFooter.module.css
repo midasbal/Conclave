@@ -1,0 +1,5 @@
+.footer { background: var(--ink); color: var(--paper); }
+.inner { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1rem 3rem; padding-block: 2.25rem; }
+.status { font-family: var(--font-display), Georgia, serif; font-size: 1.5rem; line-height: 1.2; }
+.nav { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; font-size: 0.95rem; }
+.footer :focus-visible { outline-color: var(--paper); }

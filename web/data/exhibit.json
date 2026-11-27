@@ -1,0 +1,47 @@
+{
+  "source": "record-snapshots/record-snapshot-latest.json (first final copy), program HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne, devnet",
+  "season": "81980",
+  "receiptAddress": "6DL1iLxUHiN9VVGrFmxRAweBaKznqraXMvs5r8qKuYZB",
+  "firstCopySha256": "4edc2c1e4fa37aa455ba5cdb99d8f53a63735ccfec4c5dcd952cc64b950ba6cb",
+  "openedOn": "2026-11-27",
+  "episodes": 15,
+  "finalsEpisodes": 15,
+  "entryFee": "10",
+  "entries": [
+    {
+      "finalRank": 1,
+      "seasonRank": 1,
+      "strategyId": "11653021969079568936",
+      "owner": "8YnXBcJqeusZjU4MN2hqKPng2XkmAB7xKvHGBAKcVNYg",
+      "codeCommitment": "fc5ea0e5666c33990a36f53e8a44f1135f7ff4238cbd080310960565de14b102"
+    },
+    {
+      "finalRank": 2,
+      "seasonRank": 3,
+      "strategyId": "5529700046510675420",
+      "owner": "AJxu4Pz39b3Xp3gDENdBgDV5fj2hcxncLDAenG17pods",
+      "codeCommitment": "5f7c8c02e398cae1fa3fba6973f71927c3589c0879d3f46b423355e509c2fbb4"
+    },
+    {
+      "finalRank": 3,
+      "seasonRank": 2,
+      "strategyId": "3935599962444591216",
+      "owner": "2MGxgj8kMpqrRU4SWAAbRbqmUufZMBxLer1d6a3RdFaa",
+      "codeCommitment": "71a2e5ff23cada43c7f0324ccabe06e8e5c7e8f38ce1df2f1bcac803150d9255"
+    },
+    {
+      "finalRank": 4,
+      "seasonRank": 4,
+      "strategyId": "12571783366171000859",
+      "owner": "GUJJ8VoZpD1sMCwRRwqtZ1av1gqiRgCnrJ2vphR8v8KL",
+      "codeCommitment": "84d2db8b04092f17dfa43ccd70351d01f3c0aa0d8650543c5c997e3aa8d351f9"
+    },
+    {
+      "finalRank": 5,
+      "seasonRank": 5,
+      "strategyId": "15128499028704288493",
+      "owner": "GEXSG4v4zXxKXyxYGGbW6nTcVad98hHCym8ioQcUpBjt",
+      "codeCommitment": "b7eccd8a8becf64b2b71d2b7f3bf30c724a516b36cc5d346d69af9ba915f5eaf"
+    }
+  ]
+}

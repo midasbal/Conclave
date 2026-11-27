@@ -1,0 +1,50 @@
+/* One flat theme: ledger paper and a near-black ink. The red belongs to the seal and to nothing else. */
+:root {
+  --paper: #e5e8e2;
+  --sheet: #f1f3ee;
+  --ink: #111a16;
+  --ink-soft: #424e47;
+  --rule: #aab3ab;
+  --seal: #9e231a;
+
+  --measure: 34rem;
+  --page: 74rem;
+  --gutter: clamp(1.25rem, 4vw, 3rem);
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-text), Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  text-rendering: optimizeLegibility;
+}
+main { flex: 1; }
+h1, h2, h3 { font-family: var(--font-display), Georgia, serif; font-weight: 400; margin: 0; text-wrap: balance; }
+p { margin: 0; text-wrap: pretty; }
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.22em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+::selection { background: var(--ink); color: var(--paper); }
+
+.page { width: 100%; max-width: calc(var(--page) + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.skip { position: absolute; left: var(--gutter); top: -4rem; background: var(--ink); color: var(--paper); padding: 0.5rem 0.9rem; z-index: 2; }
+.skip:focus { top: 0.5rem; }
+
+/* a quiet page with one statement: used by the pages that have nothing on view. Global so that the 404 page adds no stylesheet to the others */
+.room { display: grid; gap: clamp(3rem, 8vh, 5rem); padding-block: clamp(3rem, 10vh, 7rem); }
+.notice { display: grid; gap: 1.25rem; max-width: var(--measure); }
+.notice h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); line-height: 1.06; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}

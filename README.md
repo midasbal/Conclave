@@ -123,4 +123,4 @@ An upgrade can need the program data account extended first, and some require th
 
 ## License
 
-Not yet chosen.
+[MIT](LICENSE).
