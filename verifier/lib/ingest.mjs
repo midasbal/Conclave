@@ -17,19 +17,27 @@ export class Ingest {
   constructor(source, { dir, backupDir = null, publishTo = null, program = PROGRAM_ID, genesis = DEVNET_GENESIS, sweepMs = 15 * 60_000, heartbeatMs = 24 * 3600_000, now = () => new Date().toISOString(), log = () => {} }) {
     Object.assign(this, { source, dir, backupDir, publishTo, program, genesis, sweepMs, heartbeatMs, now, log }); this.last = null; this.error = null; this.backupInfo = { configured: !!backupDir, lastSyncAt: null, alarms: [] }; this.lastSyncHead = null; this.startedAt = null;
   }
+  /** takes the store. It reads and writes the disk only and sends nothing: an RPC that is down, rate limiting or refusing the key must not stop the process, because the record on disk can still be served while the loop retries */
   async open() {
-    const cluster = await this.source.genesisHash(); if (cluster !== this.genesis) throw new Error(`this RPC serves cluster ${cluster}, not the expected ${this.genesis}`);
+    this.clusterVerified = false;
     this.store = new Store(this.dir, this.genesis, this.program, { now: this.now, log: this.log }); this.store.lock(); this.store.reconcileLedger(); this.state = this.store.readState(); this.startedAt = this.now();
     if (!this.state.lastHeartbeatAt) this.state.lastHeartbeatAt = this.now(); this.store.ledger.append({ type: "start", pid: process.pid, genesis: this.genesis, program: this.program, sweepMs: this.sweepMs }); return this;
   }
   close() { this.store?.unlock(); }
+
+  /** the RPC must serve the cluster this store is for. Asked once per process, by the first cycle that gets an answer, and BEFORE anything else is read: nothing is captured from a cluster that has not been checked */
+  async verifyCluster() {
+    if (this.clusterVerified) return; const cluster = await this.source.genesisHash(); if (cluster !== this.genesis) throw new Error(`this RPC serves cluster ${cluster}, not the expected ${this.genesis}`);
+    this.clusterVerified = true;
+  }
 
   /** one cycle. `sweep: true` forces a full sweep. Returns what it did. Throws RateLimited (state is saved, nothing is lost) or any other error */
   async cycle({ sweep = false } = {}) {
     const t0 = Date.now(), at = this.now(), { store, state, source, program } = this; const archive = store.archive; const ctx = newContext(source, archive, { program, now: this.now });
     const listed = new Map(), slots = []; const sweepDue = sweep || !state.lastSweep || Date.parse(at) - Date.parse(state.lastSweep.at) >= this.sweepMs;
     let processed = 0, skipped = 0, looked = 0, known = [];
-    try { // the listing is inside the handler too: when it is the listing that fails, the status must still say so
+    try { // the cluster check and the listing are inside the handler too: when one of them is what fails, the status must still say so
+      await this.verifyCluster();
       for (const owner of [program, DELEGATION_PROGRAM_ID]) { const got = await source.receiptsOwnedBy(owner); if (got.contextSlot != null) slots.push(got.contextSlot); for (const a of got) listed.set(a.address, a); }
       known = [...new Set([...Object.keys(state.fingerprints), ...archive.addresses(), ...listed.keys()])].sort();
       for (const address of known) {
@@ -49,8 +57,13 @@ export class Ingest {
     const descriptors = known.map(a => store.entry(a)).filter(Boolean);
     // which strategies are closed: every sweep for all of them, and at once for any strategy not seen before
     const ids = [...new Set(descriptors.filter(d => d.kind === "season").flatMap(d => d.season.entries.map(e => e.strategyId)))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
-    state.registries ??= {}; const want = sweepDue ? ids : ids.filter(id => !state.registries[id]);
-    if (want.length) { try { Object.assign(state.registries, await readRegistryStatuses(source, program, want)); state.registriesAt = { at, slot }; store.writeState(state); } catch (e) { if (e.name === "RateLimited") { this.error = { at, message: e.message, rateLimited: e.retryAt }; this.writeStatus({ state: "rate-limited", at, processed, skipped }); } throw e; } }
+    // a read that failed is remembered and asked again until it succeeds: this cycle has already counted its sweep, so without this the next poll would skip the read and report success
+    state.registries ??= {}; const want = sweepDue ? ids : ids.filter(id => !state.registries[id] || state.registryRetry?.includes(id));
+    if (want.length) {
+      try { Object.assign(state.registries, await readRegistryStatuses(source, program, want, { strict: true })); state.registriesAt = { at, slot }; delete state.registryRetry; store.writeState(state); }
+      catch (e) { // like any other failed cycle: the status says why, the record on disk stays as it was, and the loop retries
+        state.registryRetry = want; store.writeState(state); this.error = { at, message: e.message, rateLimited: e.name === "RateLimited" ? e.retryAt : null }; this.writeStatus({ state: e.name === "RateLimited" ? "rate-limited" : "degraded", at, processed, skipped }); throw e; }
+    }
     const registries = Object.fromEntries(ids.map(id => [id, state.registries[id]]).filter(([, v]) => v));
     const record = assembleRecord(descriptors, { archive, genesis: this.genesis, program, now: this.now, source, ctx, currentTo: { slot, at }, registries, registriesAt: state.registriesAt ?? null,
       extra: { service: { cycle: state.cycles, lastSweep: state.lastSweep, sweepIntervalMs: this.sweepMs, thisCycle: { sweep: sweepDue, processed, skipped, lookedUp: looked, ms: Date.now() - t0 } } } });

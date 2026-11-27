@@ -6,6 +6,12 @@ const read = (name) => { const f = process.env[`${name}_FILE`]; if (f) return fs
  *  global    one bucket for every caller. For a platform proxy whose forwarding headers are not established (see docs/DEPLOY_RAILWAY.md): no caller can spoof its way out of a limit, and no caller is told apart either.
  *  x-real-ip, xff-first   the address a proxy put in that header, when the operator has verified the proxy overwrites it. CONCLAVE_TRUST_PROXY=1 is the old name for xff-first. */
 export const CLIENT_IP_MODES = ["socket", "global", "x-real-ip", "xff-first"];
+/** the startup line: says what was actually loaded, and never a value. Neither an upstream URL (it may carry a provider key) nor the secret is printed */
+export function startupLine(c) {
+  const upstream = !c.upstream ? "none" : c.recordOnly ? "configured (used only for the /v1/status freshness read; not printed)" : "configured (not printed)";
+  const secret = c.recordOnly ? (c.secret ? "set but not used" : "none") : "loaded (not printed)";
+  return `conclave-server listening on ${c.host}:${c.port} mode=${c.recordOnly ? "record-only" : "full"} upstream=${upstream} secret=${secret} rollup=${c.rollupUpstream ? "configured (not printed)" : "none"} client-ip=${c.clientIp} origins=${c.origins.length} record-api=${c.storeDir ? "store configured" : "no store"}${c.recordOnly ? "" : ` audience=${c.audience}`}`;
+}
 export function loadConfig() {
   const recordOnly = process.env.CONCLAVE_RECORD_ONLY === "1";
   const secret = read("CONCLAVE_AUTH_SECRET"); const upstream = read("CONCLAVE_RPC_UPSTREAM") || (recordOnly ? read("CONCLAVE_VERIFIER_RPC") : undefined);

@@ -39,6 +39,14 @@ test("the real server starts clean with neither secret set, serves the public re
   } finally { await s.stop(); }
 });
 
+test("the startup line states what is actually configured, and never prints a value", async () => {
+  const dir = await buildStore(load("all")); const line = async env => { const port = await freePort(); const s = await start({ CONCLAVE_STORE_DIR: dir, HOST: "127.0.0.1", PORT: String(port), ...env }); try { assert.match(s.out(), /listening on/, s.out()); return s.out().split("\n").find(l => /listening on/.test(l)); } finally { await s.stop(); } };
+  const bare = await line({ CONCLAVE_RECORD_ONLY: "1" }); assert.match(bare, /mode=record-only upstream=none secret=none rollup=none /); assert.ok(!/loaded|configured \(/.test(bare.replace("store configured", "")), "nothing is claimed to be loaded: " + bare);
+  const withRpc = await line({ CONCLAVE_RECORD_ONLY: "1", CONCLAVE_VERIFIER_RPC: "https://rpc.invalid/?api-key=KEY-THAT-MUST-NOT-PRINT" }); assert.match(withRpc, /mode=record-only upstream=configured \(used only for the \/v1\/status freshness read; not printed\) secret=none /); assert.ok(!/KEY-THAT-MUST-NOT-PRINT|rpc\.invalid/.test(withRpc), withRpc);
+  const unused = await line({ CONCLAVE_RECORD_ONLY: "1", CONCLAVE_AUTH_SECRET: "Z".repeat(40), CONCLAVE_ROLLUP_UPSTREAM: "https://tee.invalid" }); assert.match(unused, /upstream=none secret=set but not used rollup=none /); assert.ok(!unused.includes("ZZZZ"), unused);
+  const full = await line({ CONCLAVE_AUTH_SECRET: "Q".repeat(40), CONCLAVE_RPC_UPSTREAM: "https://rpc.invalid/?api-key=OTHER-KEY" }); assert.match(full, /mode=full upstream=configured \(not printed\) secret=loaded \(not printed\) rollup=none /); assert.ok(!/QQQQ|OTHER-KEY|rpc\.invalid/.test(full), full);
+});
+
 test("without CONCLAVE_RECORD_ONLY the same bare environment refuses to start, saying why", async () => {
   const s = await start({ CONCLAVE_STORE_DIR: tmp() }); try { await new Promise(r => s.child.exitCode !== null ? r() : s.child.on("exit", r)); assert.notEqual(s.child.exitCode, 0); assert.match(s.out(), /CONCLAVE_AUTH_SECRET/); } finally { await s.stop(); }
 });

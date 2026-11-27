@@ -2,7 +2,7 @@
 
 One Railway service runs both, in one container, beside one volume: the capture daemon (`verifier/cli.mjs ingest`) writes the store, and the record API (`server/bin/serve.mjs`, record-only mode) reads it. They share a container because a volume can be attached to one service only. `deploy/supervisor.mjs` starts both and, if either one exits for any reason, stops the other and exits non-zero, so Railway restarts the whole unit.
 
-**Status.** Built and tested locally. **Not yet done: the image build on Railway, and a dry run against the real RPC and the delegation-program scan.** Statements about Railway below are marked *(verified)* when they come from Railway's own documentation as read on 2026-11-27, *(staff reply)* when they come from a Railway employee's reply in the community forum, and *(unverified)* when neither.
+**Status.** Built and tested locally. The capture daemon was dry-run against a real Helius devnet endpoint, from a local machine into a scratch store. **Not yet done: the image build, anything on Railway itself, and the store migration.** Statements about Railway below are marked *(verified)* when they come from Railway's own documentation as read on 2026-11-27, *(staff reply)* when they come from a Railway employee's reply in the community forum, and *(unverified)* when neither.
 
 ## What is in the repository
 
@@ -45,7 +45,30 @@ Not set in this deployment: `CONCLAVE_AUTH_SECRET`, `CONCLAVE_RPC_UPSTREAM`, `CO
 
 ## Cadence and RPC credit
 
-The daemon polls every five minutes (two `getProgramAccounts` calls: the program's receipts and the delegation program's, filtered on the receipt magic) and sweeps hourly (about one signature-history request per known receipt). We control when seasons settle, and a receipt waits on base until someone calls ReleaseBond, so a slow poll loses nothing. At the recorded size (about 75 receipts) that is roughly 3,000 requests a day. **Inferred, not measured:** if a provider charges 10 credits for each, that is under 1M a month, near a free tier's allowance, and it grows with the number of receipts. The daemon counts the requests it sends; measure a real day in the dry run before choosing a tier.
+The daemon polls every five minutes and sweeps hourly. We control when seasons settle, and a receipt waits on base until someone calls ReleaseBond, so a slow poll loses nothing.
+
+**Prices** ([Helius's credits page](https://www.helius.dev/docs/billing/credits), read 2026-11-27): `getProgramAccounts` costs **10 credits**; the other methods the daemon uses (`getSignaturesForAddress`, `getTransaction`, `getAccountInfo`, `getMultipleAccounts`, `getGenesisHash`) cost **1 each**. The [Free plan](https://www.helius.dev/pricing) allows 1M credits a month, 10 requests a second and 5 `getProgramAccounts` a second.
+
+**Request counts, measured** in a dry run against a Helius devnet endpoint on 2026-11-27, over a store of 88 listed receipts. The credits are those counts at the listed prices: no response carried a credit header, so the charge itself was not observed.
+
+| Cycle | Requests | Credits |
+|---|---|---|
+| A normal poll (two `getProgramAccounts`) | 2 | about 20 |
+| An hourly sweep, including that poll | 59 | about 77 |
+| Filling an empty store, once | 322 | about 340 |
+
+A running daemon also asks `getGenesisHash` once per start (1 credit). At the relaxed cadence a day is 264 polls and 24 sweeps: about 7,100 credits, **about 214,000 a month, about 21 percent of the Free plan's 1M**. A poll's cost does not grow with the record; a sweep's does, as receipts accumulate.
+
+* **Point the monitor at `/healthz`: it makes no RPC calls.** `/v1/status` reads one slot from the RPC at most once every ten seconds while it is being asked, which is at most about 259,000 credits a month if something asks it continuously.
+* **Unconfirmed: whether devnet calls draw credits on the Free plan.** The pages read do not say, nor that the Free plan includes devnet RPC, nor what happens when the credits run out. The key used in the dry run worked on devnet. Check the provider's dashboard after a day of running.
+* **The delegation-program scan returned** in the dry run: 18.9 s on the first call, 1.1 s and 0.1 s on the next two, against the client's 60 s timeout, with 8 matching accounts. Three samples do not show the worst case, and a result set that small does not show how a large one is served.
+* **The URL must name the parameter:** `https://devnet.helius-rpc.com/?api-key=<key>`. With the key alone after the `?`, Helius answers HTTP 401.
+
+## When the RPC fails, at startup or later
+
+The daemon opens its store from disk and sends nothing while doing so. The check that the RPC serves the expected cluster is the first step of the capture cycle, inside the retry loop. So a refused key, an outage or a rate limit at startup does not stop the process: the API serves the last record on disk, `status.json` says `degraded` (or `rate-limited`) with the reason, `/healthz` answers 503, `/health` stays 200, and the loop retries with backoff (up to five minutes; a rate limit waits as long as the endpoint asked). Nothing is captured until the cluster has been verified, and an RPC for the wrong cluster is retried and refused every time. On a brand-new, empty store there is no record yet, and `/v1` answers 503 until the first cycle succeeds.
+
+A configuration error still stops the container at once, by design: a missing `CONCLAVE_VERIFIER_RPC` or store, a value that is not a URL at all, or a volume that fails the preflight.
 
 ## The health endpoints
 
@@ -103,4 +126,4 @@ They are answered from a cache (`CONCLAVE_GPA_CACHE_SECONDS`, 60), identical con
 * **No off-platform backup.** The store lives on the volume. The committed `record-snapshots/` file is the manual cold copy, and the old store on the previous host stays untouched until you decide otherwise.
 * Moving the existing store onto the volume (`store restore --snapshot` into an empty store, then `store verify`) is a separate step.
 * More than one instance (the wallet-proof challenges, rate buckets and the lock all assume one).
-* Whether the provider serves the delegation-program scan on its plan, and the real credit use, are the dry run's job.
+* The credit charge as the provider counts it, and the delegation-program scan from Railway or with a larger result set: not observed yet.

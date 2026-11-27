@@ -1,9 +1,9 @@
 // The capture loop over REAL recorded devnet responses (test/fixtures). Where a test needs something that did not happen on devnet (a changed byte, a second delegation, a killed process) it alters a copy and says SYNTHETIC.
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "fs"; import os from "os"; import path from "path"; import { fileURLToPath } from "url"; import { spawn } from "child_process";
 import { Ingest } from "../lib/ingest.mjs"; import { buildRecord } from "../lib/builder.mjs"; import { Store, verifyStore, whoAmI } from "../lib/store.mjs"; import { readLedger } from "../lib/ledger.mjs"; import { RateLimited } from "../lib/chain.mjs";
-import { PROGRAM_ID, DEVNET_GENESIS, poolAddress } from "../lib/chain.mjs"; import { replay } from "./recorded.mjs";
+import { PROGRAM_ID, DEVNET_GENESIS, poolAddress } from "../lib/chain.mjs"; import { replay, withRecordedRegistries } from "./recorded.mjs";
 const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
-const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`)));
+const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => withRecordedRegistries(JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`))));
 const ALL = load("all"); const STAGE = Object.fromEntries(["provisional", "provisional-republished", "final", "bond-released"].map(n => [n, load(n)]));
 const tmp = () => (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "ingest-test-")); _made.push(d); return d; })(); const clone = x => JSON.parse(JSON.stringify(x));
 const root = dir => path.join(dir, DEVNET_GENESIS, PROGRAM_ID);
@@ -107,6 +107,32 @@ test("STALE LOCK: a really concurrent writer is still refused; a lock from anoth
   const dir2 = tmp(); const c2 = spawn(process.execPath, [path.join(here, "ingest_child.mjs")], { env: { ...process.env, STORE: dir2, DELAY_MS: "400" }, stdio: ["ignore", "pipe", "inherit"] }); let up = false; c2.stdout.on("data", d => { if (String(d).includes("started")) up = true; });
   const t1 = Date.now(); while (!up && Date.now() - t1 < 30_000) await new Promise(r => setTimeout(r, 20)); c2.kill("SIGKILL"); await new Promise(r => c2.on("exit", r));
   assert.ok(fs.existsSync(path.join(root(dir2), "_service", "lock")), "a SIGKILL leaves its lock behind"); (await open(spy(replay(ALL)), dir2)).close();
+});
+
+// A source whose genesisHash fails in a chosen way for the first n asks, then answers from the recording. Everything it serves after that is the recorded devnet data.
+function failingStart(n, fail) { const base = replay(ALL); const asked = { genesis: 0, other: 0 }; const wrap = f => async (...a) => { asked.other++; return f.apply(base, a); };
+  return { asked, source: { ...base, host: "t", genesisHash: async () => { if (asked.genesis++ < n) return fail(); return base.genesisHash(); }, slot: wrap(base.slot), receiptsOwnedBy: wrap(base.receiptsOwnedBy), account: wrap(base.account), accounts: wrap(base.accounts), signatures: wrap(base.signatures), transaction: wrap(base.transaction) } }; }
+const svc = (dir, f) => path.join(root(dir), "_service", f); const statusOf = dir => JSON.parse(fs.readFileSync(svc(dir, "status.json")));
+
+test("STARTUP: open() sends nothing to the RPC; a failing genesis check leaves the record on disk untouched, says why in the status, captures nothing, and recovers", async () => {
+  const dir = tmp(); const first = await open(replay(ALL), dir); await first.cycle(); first.close(); const recordBefore = fs.readFileSync(svc(dir, "record.json")); const copies = verifyStore(dir, DEVNET_GENESIS, PROGRAM_ID).copies;
+  const t = failingStart(3, () => { throw new Error("getGenesisHash on rpc.example: HTTP 401, not JSON"); }); const a = await open(t.source, dir); assert.deepEqual(t.asked, { genesis: 0, other: 0 }, "opening the store asked the RPC nothing");
+  for (let i = 1; i <= 3; i++) { await assert.rejects(() => a.cycle(), /HTTP 401/); const st = statusOf(dir); assert.equal(st.state, "degraded"); assert.match(st.lastError.message, /HTTP 401/); assert.equal(t.asked.genesis, i); }
+  assert.equal(t.asked.other, 0, "nothing else was read from a cluster that was never checked"); assert.ok(fs.readFileSync(svc(dir, "record.json")).equals(recordBefore), "the last known record is byte for byte as it was"); assert.equal(verifyStore(dir, DEVNET_GENESIS, PROGRAM_ID).copies, copies);
+  await a.cycle(); assert.equal(statusOf(dir).state, "ok"); assert.equal(statusOf(dir).lastError, null); assert.equal(t.asked.genesis, 4); await a.cycle(); assert.equal(t.asked.genesis, 4, "once verified, the cluster is not asked again by this process"); a.close();
+});
+test("STARTUP: the loop itself retries, after an ordinary failure and after a rate limit, and captures once the RPC answers", async () => {
+  for (const [what, fail] of [["an outage", () => { throw new Error("getGenesisHash on t: no usable answer (TypeError)"); }], ["a 429", () => { throw new RateLimited("t", Date.now() + 50, "HTTP 429"); }]]) {
+    const dir = tmp(); const t = failingStart(2, fail); const a = await open(t.source, dir); const stop = new AbortController(); const logs = []; a.log = m => logs.push(m); let result;
+    await a.run({ pollMs: 20, signal: stop.signal, onCycle: r => { result = r; stop.abort(); } }); a.close();
+    assert.ok(result, what); assert.equal(t.asked.genesis, 3, `${what}: two failures, then the answer`); assert.equal(result.record.archive.copies, 28); assert.equal(logs.filter(l => /retrying in|rate limited: waiting/.test(l)).length, 2, logs.join("|"));
+  }
+});
+test("STARTUP: an RPC for another cluster still captures nothing, however often it is retried, and --once still fails", async () => {
+  const dir = tmp(); const t = failingStart(99, () => "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY"); const a = await open(t.source, dir);
+  for (let i = 0; i < 3; i++) await assert.rejects(() => a.cycle(), /this RPC serves cluster 4uhc\w+, not the expected/);
+  assert.equal(t.asked.genesis, 3, "a wrong answer is never remembered as verified"); assert.equal(t.asked.other, 0); assert.equal(verifyStore(dir, DEVNET_GENESIS, PROGRAM_ID).copies, 0); assert.ok(!fs.existsSync(svc(dir, "record.json"))); assert.match(statusOf(dir).lastError.message, /serves cluster/);
+  await assert.rejects(() => a.run({ once: true }), /serves cluster/); a.close();
 });
 
 test("SYNTHETIC: a process killed in the middle of a cycle loses nothing and duplicates nothing", async () => {

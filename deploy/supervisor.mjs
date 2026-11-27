@@ -11,7 +11,7 @@ export function plan(env = process.env) {
   const rpc = env.CONCLAVE_VERIFIER_RPC; if (!rpc) throw new Error("CONCLAVE_VERIFIER_RPC is required: the dedicated devnet RPC URL the capture daemon reads (it holds a provider key, so set it as a secret). The public devnet RPC rate-limits this daemon.");
   const store = env.CONCLAVE_STORE_DIR || (env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(env.RAILWAY_VOLUME_MOUNT_PATH, "store") : null);
   if (!store) throw new Error("CONCLAVE_STORE_DIR is required (or attach a Railway volume, whose mount path is RAILWAY_VOLUME_MOUNT_PATH): the capture daemon writes its store there");
-  // the Railway default: poll every five minutes, sweep every hour (about the free RPC tier). We control when seasons settle, so a slow poll loses nothing: a receipt waits on base until ReleaseBond.
+  // the Railway default: poll every five minutes, sweep every hour (about a fifth of the free RPC plan: docs/DEPLOY_RAILWAY.md). We control when seasons settle, so a slow poll loses nothing: a receipt waits on base until ReleaseBond.
   const poll = num(env, "CONCLAVE_POLL_SECONDS", 300, 30), sweep = num(env, "CONCLAVE_SWEEP_MINUTES", 60, 1);
   // the record is built every cycle, so it is "stale" only after two missed polls and a minute
   const stale = num(env, "CONCLAVE_STALE_AFTER_SECONDS", 2 * poll + 60, 1);
