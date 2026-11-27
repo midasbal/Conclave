@@ -1,6 +1,6 @@
 # Conclave web
 
-The browser app. So far: the entry page, the shell around it (header, footer, 404), a spectator view of the public record at `/app`, and the docs at `/docs` (`/docs/using` and `/docs/technical`).
+The browser app. So far: the entry page, the shell around it (header, footer, 404), a spectator view of the public record at `/app`, the Workshop at `/workshop`, and the docs at `/docs` (`/docs/using` and `/docs/technical`).
 
 The docs are written by hand from the repository's documents and the program. The docs set their prose in Source Serif 4 (`lib/docsFont.ts`), loaded on the docs routes only, with Caslon kept for headings. When the repository's documents or the program change, check the pages under `app/docs/`; `lib/links.ts` also repeats the program id and the build hash.
 
@@ -18,6 +18,12 @@ npm run dev                  # http://localhost:3000
 npm run typecheck
 npm run build && npm start   # the production build
 ```
+
+## The Workshop
+
+`/workshop` writes, assembles and simulates strategies in the browser, with no wallet and no chain. The engine is the VM compiled to WebAssembly, run in a background worker that is replaced if it crashes or stops answering; where the file came from and how it was checked is in `public/engine/README.md`. The strategy is not sent to any server: the only request the worker makes is for the engine file. The draft is kept in local storage. A report is deterministic: the same bytecode gives the same bytes, and its settings are those of `conclave-author sim`, so a report can be reproduced from the command line. The practice season derives its two seed words from the text of the practice seed.
+
+It cannot seal or enter. When it can, it must not be the first place a draft's privacy is assumed: drafts in local storage are plain text.
 
 ## Environment
 
@@ -46,9 +52,11 @@ From the command line: `cd web && npx vercel env add CONCLAVE_API_URL production
 
 | Path | |
 |---|---|
-| `app/` | Routes: the entry page, `/app`, `/app/season/[season]`, `/docs` and its two pages, the not-found pages, and the global tokens in `globals.css` |
+| `app/` | Routes: the entry page, `/workshop`, `/app`, `/app/season/[season]`, `/docs` and its two pages, the not-found pages, and the global tokens in `globals.css` |
 | `components/` | Header, footer, the receipt sheet (shared by the exhibit and the season pages), the seal mark, the not-found sheet, the docs layout (`components/docs/`), motion, and the wallet provider and menu |
 | `lib/` | Typefaces, outbound links, the server-side record reader and its types, and the record's codes in words |
+| `public/engine/` | The WebAssembly engine and the note on its origin |
+| `lib/engine/`, `lib/workshop/`, `components/workshop/` | The engine's loader, worker and client; the examples and instruction list; the Workshop's interface |
 | `data/exhibit.json` | One real devnet receipt (below) |
 
 ## The exhibit

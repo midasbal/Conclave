@@ -63,6 +63,10 @@ const SECTIONS: Section[] = [
         </p>
         <Commands lines={[{ cmd: "node client/custody_cli.mjs verify ID.cvbundle --season SEASON" }]} />
         <p>
+          The <Link href="/workshop">Workshop</Link> runs the WebAssembly build of this VM in your browser, for practice. Its <Link href="/workshop#reference">language reference</Link> lists
+          every instruction and signal. It does not read a receipt, so it is not a replay check.
+        </p>
+        <p>
           Replay cannot check a <em>ranking</em>. Places depend on every competitor&rsquo;s totals, which would take every competitor&rsquo;s salt and code. Nobody else
           re-executes a season. A replay also needs the VM rules the season ran under: strategies of ruleset 1 do not run on the current VM.
         </p>

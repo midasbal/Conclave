@@ -1,0 +1,24 @@
+.reference { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 4.5rem; padding-top: 2rem; border-top: 3px solid var(--ink); scroll-margin-top: 1rem; max-width: 46rem; }
+.reference header { display: grid; gap: 0.6rem; max-width: 36.5rem; padding-bottom: 1.5rem; }
+.reference header h2 { font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.12; }
+.reference > details { border-top: 1px solid var(--rule); }
+.reference > details:first-of-type { border-top: 1px solid var(--ink); }
+.reference > details:last-of-type { border-bottom: 1px solid var(--ink); }
+.reference > details > summary { display: grid; grid-template-columns: minmax(0, 1fr) 2rem; align-items: center; padding: 0.95rem 0.4rem; cursor: pointer; list-style: none; }
+.reference > details > summary::-webkit-details-marker { display: none; }
+.reference > details > summary::after { content: ""; justify-self: center; width: 0.9rem; height: 0.9rem; background: currentColor; clip-path: polygon(45% 0, 55% 0, 55% 45%, 100% 45%, 100% 55%, 55% 55%, 55% 100%, 45% 100%, 45% 55%, 0 55%, 0 45%, 45% 45%); }
+.reference > details[open] > summary::after { clip-path: polygon(45% 45%, 55% 45%, 55% 45%, 100% 45%, 100% 55%, 55% 55%, 55% 55%, 45% 55%, 45% 55%, 0 55%, 0 45%, 45% 45%); }
+.reference > details > summary:hover { background: var(--wash); }
+.reference > details > summary:focus-visible { outline-offset: -3px; }
+.reference h3 { font-size: 1.45rem; line-height: 1.3; }
+.reference h4 { font-family: var(--font-display), Georgia, serif; font-weight: 400; font-size: 1.2rem; margin: 0; }
+.reference > details > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 0.25rem 0.4rem 1.75rem; }
+.reference ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.6rem; max-width: 36.5rem; }
+.reference p { max-width: 36.5rem; }
+.reference :global(p code), .reference li code { font-family: var(--font-mono), monospace; font-size: 0.82em; background: var(--sheet); padding: 0.08em 0.3em; overflow-wrap: anywhere; }
+.group { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.4rem; }
+.group dl { margin: 0; border-top: 1px solid var(--ink); }
+.group dl > div { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 0.25rem 1.25rem; padding-block: 0.6rem; border-bottom: 1px solid var(--rule); }
+.group dt code { font-family: var(--font-mono), monospace; font-size: 0.82rem; }
+.group dd { margin: 0; font-size: 0.98rem; line-height: 1.6; overflow-wrap: anywhere; }
+@media (max-width: 36rem) { .group dl > div { grid-template-columns: minmax(0, 1fr); } }

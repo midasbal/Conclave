@@ -34,4 +34,6 @@
   .brand { font-size: 1.6rem; gap: 0.75rem; }
   .brand svg { width: 30px; }
 }
-@media (max-width: 22rem) { .nav { column-gap: 0.3rem; font-size: 0.8rem; } }
+/* five links: smaller type holds them on one line at 360 pixels; narrower still, they are set in two deliberate rows */
+@media (max-width: 26rem) { .nav { column-gap: 0.4rem; font-size: 0.8125rem; } }
+@media (max-width: 22.4rem) { .nav { display: grid; grid-template-columns: repeat(3, auto); } .nav a { justify-self: start; padding-block: 0.65rem 0.6rem; } }
