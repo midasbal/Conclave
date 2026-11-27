@@ -55,7 +55,7 @@ export default async function SeasonPage({ params }: Props) {
     <div className={`page ${styles.season}`}>
       <p className={styles.back}><Link href="/app" className="ruled">All seasons</Link></p>
 
-      <div className={styles.layout}>
+      <div className={styles.layout} data-arrive="">
         <div className={styles.receipt}>
           {flags.length > 0 && (
             <div className={styles.alarm} role="alert">

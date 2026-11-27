@@ -1,4 +1,4 @@
-.start { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title title" "steps go"; align-items: end; gap: 0.6rem 2.5rem; padding-block: 1.25rem 1.4rem; border-top: 3px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.start { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title title" "steps go"; align-items: end; gap: 0.9rem 2.5rem; padding-block: 1.6rem 1.75rem; border-top: 3px solid var(--ink); border-bottom: 1px solid var(--ink); }
 .start h2 { grid-area: title; font-size: 1.6rem; line-height: 1.2; }
 .start ol { grid-area: steps; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1.75rem; counter-reset: step; align-self: start; }
 .start li { counter-increment: step; display: grid; grid-template-columns: 1.7rem minmax(0, 1fr); align-content: start; column-gap: 0.65rem; line-height: 1.55; }

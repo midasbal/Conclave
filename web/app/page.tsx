@@ -46,14 +46,19 @@ export default function EntryPage() {
     <>
       <section className={`page ${styles.hero}`} aria-labelledby="entry-title">
         <div className={styles.statement}>
-          <h1 id="entry-title">A league for sealed trading strategies.</h1>
-          <p className={styles.lede}>
+          <h1 id="entry-title" data-arrive="">A league for sealed trading strategies.</h1>
+          <p className={styles.lede} data-arrive="" style={{ "--arrive-delay": "90ms" } as React.CSSProperties}>
             Each player seals a strategy in a private rollup on Solana. Only after entries lock are the markets drawn, at random,
             and every strategy runs through the same ones. The prize pool is paid by rank. The markets are synthetic: nothing trades on a real exchange.
           </p>
-          <div className={styles.entry}>
+          <div className={styles.entry} data-arrive="" style={{ "--arrive-delay": "180ms" } as React.CSSProperties}>
             <EnterButton />
-            <p>Looking around needs no wallet.</p>
+            <p className={styles.need}>
+              No wallet and no SOL needed.
+              {/* shown only where there is likely a keyboard, and only when the script that listens for it can run */}
+              <span className={styles.key} data-needs-script=""> Or press <kbd>Enter</kbd>.</span>
+            </p>
+            <p className={styles.watch}>Only here to watch? <Link href="/app" className={styles.record}>Read the record</Link></p>
           </div>
         </div>
         <Exhibit />

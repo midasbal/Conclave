@@ -1,5 +1,6 @@
 "use client";
 // Client-side only because it marks where you are, and offers the wallet inside the app and nowhere else.
+// Three places to read and work in, and one thing to do: sealing is the only filled control in the header.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { WalletMenu } from "./WalletMenu";
@@ -10,18 +11,18 @@ export function SiteNav() {
   const inside = path === "/app" || path.startsWith("/app/");
   const docs = path === "/docs" || path.startsWith("/docs/");
   const workshop = path === "/workshop";
+  const sealing = path === "/seal";
   return (
-    <div className={styles.tools}>
-      <nav aria-label="Main" className={styles.nav}>
-        {/* not fetched ahead of time: that would preload the Workshop's stylesheet on pages that never use it, which the browser reports */}
+    <nav aria-label="Main" className={styles.tools}>
+      {/* the Workshop and the seal page are not fetched ahead of time: that would preload their stylesheets on pages that never use them, which the browser reports */}
+      <div className={styles.links}>
         <Link className="ruled" href="/workshop" prefetch={false} aria-current={workshop ? "page" : undefined}>Workshop</Link>
         <Link className="ruled" href="/app" aria-current={inside ? "page" : undefined}>The record</Link>
         <Link className="ruled" href="/docs" aria-current={docs ? "page" : undefined}>Docs</Link>
-        <Link className="ruled" href="/#season">How it runs</Link>
-        <Link className="ruled" href="/#limits">Limits</Link>
-      </nav>
+      </div>
       {/* in the record, and on the seal page, where a connected wallet is shown and never asked to sign */}
-      {(inside || path === "/seal") && <WalletMenu />}
-    </div>
+      {(inside || sealing) && <div className={styles.wallet}><WalletMenu /></div>}
+      <Link className={styles.seal} href="/seal" prefetch={false} aria-current={sealing ? "page" : undefined}>Seal<span className={styles.rest}> a strategy</span></Link>
+    </nav>
   );
 }

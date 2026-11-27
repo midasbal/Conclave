@@ -40,6 +40,12 @@ The ticket (`lib/seal/ticket.ts`) is JSON: `kind: "conclave-claim-ticket"`, `ver
 
 `lib/seal/chain.ts` holds the instructions, the login and the account layout, ported from `client/flows.mjs`. The app does not use the MagicBlock SDK: the login and the permission address were compared with `@magicblock-labs/ephemeral-rollups-sdk` 0.18.0 against the devnet enclave before it was removed. The app does not check the enclave's attestation, and never closes a strategy.
 
+## Getting around
+
+The header holds three places (Workshop, The record, Docs) and one filled control, **Seal a strategy** ("Seal" on a phone, with the same accessible name). The landing's two anchors are in the footer, whose links inside the app open in the same tab and all others in a new one. The entry page's primary button leads to `/seal`; "Read the record" under it is the way for a visitor who only watches. The Enter key opens `/seal` from the entry page only while nothing holds the focus, no modifier is pressed and the button is on screen (`components/EnterButton.tsx`).
+
+Pages share their spacing and title size through `--top`, `--section` and `--title` in `globals.css`.
+
 ## Environment
 
 | Variable | |
@@ -86,10 +92,10 @@ From the command line: `cd web && npx vercel env add CONCLAVE_API_URL production
 
 * One flat theme: warm grey paper, soft ink, and a red that belongs to the seal alone. Text pairs hold at least 5.9:1. No gradients, blur, glow or shadows.
 * Libre Caslon for the page and the brand, IBM Plex Mono for what a machine wrote, and Source Serif 4 for the long prose of the docs. All are served from this site.
-* One large motion: when the exhibit is first on screen it is sealed, over about three seconds (`components/ReceiptSheet.module.css`). Sections of the entry page enter once as they are scrolled to; links, rows and the Enter button answer pointer and keyboard. With reduced motion nothing moves. Without JavaScript, or if it fails to load, everything is shown at once.
+* One large motion: when the exhibit is first on screen it is sealed, over about three seconds (`components/ReceiptSheet.module.css`). Sections of the entry page enter once as they are scrolled to; links, rows and the entry page's doors answer pointer and keyboard. The top of each page settles in as it opens (`data-arrive`, styles alone), and on `/seal` each stage and the receipt's checks do the same. With reduced motion nothing moves. Without JavaScript, or if it fails to load, everything is shown at once.
 
 ## Wallets
 
-Wallet adapter is provided at the root with `autoConnect` off, and nothing is gated on it. Wallets that follow the Wallet Standard are listed when the browser announces them. One Connect action sits in the header inside `/app` and opens a menu of the wallets found. It gates nothing. The RPC endpoint is the public devnet node: no keyed URL may be put in browser code.
+Wallet adapter is provided at the root with `autoConnect` off, and nothing is gated on it. Wallets that follow the Wallet Standard are listed when the browser announces them. One quiet Connect action sits in the header inside `/app` and on `/seal` and opens a menu of the wallets found (a phone shows it as "Wallet"). It gates nothing. The RPC endpoint is the public devnet node: no keyed URL may be put in browser code.
 
 `next.config.ts` sets `agentRules: false`. Without it, `next dev` writes an `AGENTS.md` file into this folder.

@@ -26,7 +26,7 @@ export default function DocsHome() {
   return (
     <div className={`page ${styles.home} ${reading.variable}`}>
       <DocsSwitch current="/docs" />
-      <header className={styles.head}>
+      <header className={styles.head} data-arrive="">
         <h1>Documentation</h1>
         <p>
           Conclave runs on Solana devnet and has not been audited. These pages say what it does, what you have to trust to believe it, and what has not been tested.

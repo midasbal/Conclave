@@ -25,6 +25,21 @@ type Attempt = { claim: Claim; progress: Progress; resumed: "prepared" | "sealed
 type Steps = Partial<Record<StepId, StepReport>>;
 type Failure = { step: StepId; message: string; retryable: boolean };
 
+const STAGES = ["Strategy", "Claim ticket", "Seal"] as const;
+
+/** where the visitor is among the three stages. It only shows what the state below already says: it is not a control */
+function Stages({ at }: { at: number }) {
+  return (
+    <ol className={styles.rail} aria-label="Stages">
+      {STAGES.map((name, i) => (
+        <li key={name} data-state={i < at ? "done" : i === at ? "current" : "ahead"} aria-current={i === at ? "step" : undefined}>
+          {name}{i < at && <span className="sr-only">, done</span>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
   const a = document.createElement("a");
@@ -150,12 +165,13 @@ export function SealFlow() {
     return (
       <div ref={top}>
         {identity}
-        <section className={styles.block} aria-labelledby="write-title">
+        <Stages at={0} />
+        <section key="write" className={styles.block} aria-labelledby="write-title">
           <h2 id="write-title">1. Bring in your strategy</h2>
           <p className={styles.read}>This is the Workshop&rsquo;s editor and engine, with the draft you left there. Simulate it as often as you like, then choose <strong>Use this strategy</strong>.</p>
           <Workshop sealing={{ onUse: (source, assembly) => void prepare(source, assembly) }} />
         </section>
-        <section className={styles.block} aria-labelledby="resume-title">
+        <section key="resume" className={styles.block} aria-labelledby="resume-title">
           <h2 id="resume-title">Continue from a claim ticket</h2>
           <p className={styles.read}>If a seal stopped part way, or you want to check a sealed strategy again, choose its claim ticket. It is read in this page and not uploaded. Nothing already done is done twice.</p>
           <ChooseFile label="Choose a claim ticket" onFile={t => void resume(t)} testid="resume-file" />
@@ -171,8 +187,10 @@ export function SealFlow() {
   return (
     <div ref={top}>
       {identity}
+      {/* on to the third stage once the gate is open, or a run has begun; all three are behind you once there is a receipt */}
+      <Stages at={sealedNow ? STAGES.length : ready || started || running ? 2 : 1} />
 
-      <section className={styles.block} aria-labelledby="what-title">
+      <section key="what" className={styles.block} aria-labelledby="what-title">
         <h2 id="what-title">The strategy</h2>
         <p className={styles.read}><strong>{claim.name ?? "Unnamed strategy"}</strong>. {(claim.code.length - 4) / 4} instructions, {claim.code.length} bytes. It is fixed now: the ticket holds exactly this code.</p>
         <details className={styles.source}>
@@ -191,7 +209,7 @@ export function SealFlow() {
       </section>
 
       {!sealedNow && (
-        <section className={styles.block} aria-labelledby="ticket-title">
+        <section key="ticket" className={styles.block} aria-labelledby="ticket-title">
           <h2 id="ticket-title">2. Save your claim ticket</h2>
           <div className={styles.stern}>
             <p><strong>This file is the only proof of ownership, and the only copy of the salt and code. We never store it. If you lose it, you lose the strategy.</strong></p>
@@ -228,7 +246,7 @@ export function SealFlow() {
         </section>
       )}
 
-      <section className={styles.block} aria-labelledby="seal-title">
+      <section key="seal" className={styles.block} aria-labelledby="seal-title">
         <h2 id="seal-title">{sealedNow ? "Sealed" : "3. Seal it"}</h2>
         {!sealedNow && (
           <>

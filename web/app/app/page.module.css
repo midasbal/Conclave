@@ -1,7 +1,7 @@
-.record { padding-block: clamp(2.25rem, 6vh, 4rem) clamp(4rem, 10vh, 6.5rem); }
+.record { padding-block: var(--top) var(--section); }
 
-.head { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 1.5rem 3rem; align-items: end; padding-bottom: 2rem; }
-.head h1 { font-size: clamp(2.6rem, 6vw, 4.4rem); line-height: 1.02; margin-bottom: 0.9rem; }
+.head { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 1.75rem 3rem; align-items: end; padding-bottom: 3rem; }
+.head h1 { font-size: var(--title); line-height: 1.05; margin-bottom: 1.1rem; }
 .head > div:first-child p { max-width: 38rem; }
 .head > div:last-child { justify-self: end; justify-items: end; text-align: right; }
 
@@ -17,7 +17,7 @@
 .register ol { list-style: none; margin: 0; padding: 0; }
 .columns, .row { display: grid; grid-template-columns: 8.5rem 6.75rem minmax(0, 1fr) 7.25rem 8.5rem 6rem; gap: 0 1.25rem; align-items: baseline; padding-inline: 1.25rem; }
 .columns { padding-block: 0.65rem 0.5rem; border-bottom: 1px solid var(--ink); font-family: var(--font-mono), monospace; font-size: 0.72rem; font-weight: 500; }
-.row { position: relative; padding-block: 0.85rem 0.8rem; text-decoration: none; border-bottom: 1px solid var(--rule); transition: background-color 150ms var(--ease); }
+.row { position: relative; padding-block: 1rem 0.95rem; text-decoration: none; border-bottom: 1px solid var(--rule); transition: background-color 150ms var(--ease); }
 .register li:last-child .row { border-bottom: 0; }
 /* the row under the pointer or the keyboard gets a bar of ink at its edge and its number is ruled */
 .row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--ink); transform: scaleY(0); transition: transform 180ms var(--ease); }
@@ -56,4 +56,6 @@
 @media (min-width: 40rem) and (max-width: 62rem) {
   .row { grid-template-columns: 9rem minmax(0, 1fr) 8rem; grid-template-areas: "number outcome status" "opened field fee"; justify-content: stretch; gap: 0.3rem 1.25rem; padding-inline: 1.25rem; }
 }
-.toSeal { margin-top: 0.9rem; font-family: var(--font-display), Georgia, serif; font-size: 1.3rem; }
+.toSeal { margin-top: 1.4rem; }
+.toSeal a { display: inline-block; font-family: var(--font-display), Georgia, serif; font-size: 1.25rem; line-height: 1.25; padding: 0.6rem 1.35rem 0.5rem; border: 1px solid var(--ink); text-decoration: none; transition: background-color 180ms var(--ease), color 180ms var(--ease); }
+.toSeal a:hover { background: var(--ink); color: var(--paper); text-decoration: none; }

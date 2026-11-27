@@ -1,6 +1,7 @@
 .root { position: relative; }
-.trigger { display: inline-flex; align-items: center; gap: 0.6rem; font: inherit; font-size: 0.95rem; color: var(--ink); background: transparent; border: 1px solid var(--ink); border-radius: 0; padding: 0.4rem 0.85rem 0.35rem 1rem; cursor: pointer; transition: background-color 160ms var(--ease), color 160ms var(--ease); }
-.trigger:hover, .trigger[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
+/* quiet until wanted: it is optional, and the header's one filled control is Seal */
+.trigger { display: inline-flex; align-items: center; gap: 0.5rem; font: inherit; font-size: 0.9rem; color: var(--ink-soft); background: transparent; border: 1px solid transparent; border-radius: 0; padding: 0.4rem 0.5rem 0.35rem; white-space: nowrap; cursor: pointer; transition: border-color 160ms var(--ease), color 160ms var(--ease); }
+.trigger:hover, .trigger[aria-expanded="true"] { color: var(--ink); border-color: var(--rule); }
 .caret { transition: transform 200ms var(--ease); }
 .trigger[aria-expanded="true"] .caret { transform: rotate(180deg); }
 .panel { position: absolute; z-index: 5; top: calc(100% + 8px); right: 0; width: min(19rem, calc(100vw - 2 * var(--gutter))); background: var(--sheet); border: 1px solid var(--ink); border-top-width: 5px; animation: drop 180ms var(--ease) both; }
@@ -21,3 +22,9 @@
 
 @keyframes drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+/* on a phone it shares a row with the places: "Wallet" is shown, and the whole phrase is still its name */
+@media (max-width: 36rem) {
+  .trigger { font-size: 0.875rem; padding-inline: 0.35rem 0; gap: 0.35rem; }
+  .long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .label { text-transform: capitalize; }
+}

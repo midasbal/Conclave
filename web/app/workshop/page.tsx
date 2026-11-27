@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Workshop", description: "Write a Con
 export default function WorkshopPage() {
   return (
     <div className={`page ${styles.page} ${reading.variable}`} data-tip-root="">
-      <header className={styles.head}>
+      <header className={styles.head} data-arrive="">
         <div>
           <h1>Workshop</h1>
           <p className={styles.lede}>Write a short trading strategy, run it, and see how it scores and ranks against a built-in field. All on your own device, with no wallet.</p>

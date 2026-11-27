@@ -31,7 +31,7 @@ export default async function RecordPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className={`page ${styles.record}`}>
-      <header className={styles.head}>
+      <header className={styles.head} data-arrive="">
         <div>
           <h1>The record</h1>
           <p>
@@ -40,7 +40,7 @@ export default async function RecordPage({ searchParams }: { searchParams: Promi
           </p>
           <p className={styles.toSeal}>
             {/* not fetched ahead of time: that would preload the seal page's stylesheet here */}
-            <Link href="/seal" prefetch={false} className="ruled">Seal a strategy of your own</Link>
+            <Link href="/seal" prefetch={false}>Seal a strategy of your own</Link>
           </p>
         </div>
         <RecordAsOf asOf={asOf} now={Date.now()} />

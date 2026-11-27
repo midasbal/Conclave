@@ -227,7 +227,7 @@ export function Workshop({ reference, sealing }: { reference?: ReactNode; sealin
           ) : fresh && assembly?.ok ? (
             <p className={styles.handoff}>
               {/* not fetched ahead of time: that would preload the seal page's stylesheet here */}
-              <Link href="/seal" prefetch={false} className="ruled">Seal this strategy on devnet</Link>
+              <Link href="/seal" prefetch={false}>Seal this strategy on devnet</Link>
               <span>No wallet and no SOL needed. It leaves this practice tool.</span>
             </p>
           ) : null}

@@ -9,12 +9,12 @@ export const metadata: Metadata = { title: "Seal a strategy", description: "Seal
 export default function SealPage() {
   return (
     <div className={`page ${styles.page} ${reading.variable}`} data-tip-root="">
-      <header className={styles.head}>
+      <header className={styles.head} data-arrive="">
         <h1>Seal a strategy</h1>
         <p>Put your strategy&rsquo;s commitment on Solana devnet and its code into a private rollup. A temporary key made in this browser owns it. No wallet and no SOL are needed.</p>
         <noscript><p className={styles.noscript}>Sealing needs JavaScript: the key that owns your strategy is made, and signs, in your browser.</p></noscript>
       </header>
-      <aside className={styles.know} aria-labelledby="know-title">
+      <aside className={styles.know} aria-labelledby="know-title" data-arrive="" style={{ "--arrive-delay": "90ms" } as React.CSSProperties}>
         <h2 id="know-title">Before you seal</h2>
         <ul>
           <li><strong>You keep the only copy.</strong> Before anything happens you save a claim ticket. It is the only proof of ownership and the only copy of the salt and code. We never store it.</li>

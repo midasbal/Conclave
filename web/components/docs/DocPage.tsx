@@ -29,7 +29,7 @@ export function DocPage({ path, title, intro, sections, faqTitle, faq, sources }
         </details>
 
         <article className={styles.article}>
-          <header>
+          <header data-arrive="">
             <h1>{title}</h1>
             <div className={styles.intro}>{intro}</div>
           </header>

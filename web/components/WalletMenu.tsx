@@ -58,7 +58,7 @@ export function WalletMenu() {
       onBlur={e => { if (open && e.relatedTarget && !e.currentTarget.contains(e.relatedTarget as Node)) close(false); }}>
       <button ref={trigger} type="button" className={styles.trigger} aria-expanded={open} aria-controls={open ? panelId : undefined}
         onClick={() => { setProblem(null); setOpen(o => !o); }}>
-        {connected && publicKey ? <span className={styles.mono}>{short(publicKey.toBase58())}</span> : "Connect wallet"}
+        {connected && publicKey ? <span className={styles.mono}>{short(publicKey.toBase58())}</span> : <span className={styles.label}><span className={styles.long}>Connect </span>wallet</span>}
         <svg className={styles.caret} viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
       </button>
 

@@ -1,7 +1,7 @@
-.home { padding-block: 2rem clamp(5rem, 11vh, 8rem); font-family: var(--font-reading), Georgia, serif; line-height: 1.75; }
+.home { padding-block: 2rem var(--section); font-family: var(--font-reading), Georgia, serif; line-height: 1.75; }
 .home > nav { font-family: var(--font-text), Georgia, serif; line-height: 1.65; }
-.head { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 6fr); gap: 1.25rem 3rem; align-items: end; padding-block: 4rem 3rem; }
-.head h1 { font-size: clamp(2.6rem, 6vw, 4.4rem); line-height: 1.04; }
+.head { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 6fr); gap: 1.25rem 3rem; align-items: end; padding-block: var(--top) 3.25rem; }
+.head h1 { font-size: var(--title); line-height: 1.05; }
 .head p { max-width: 32rem; justify-self: end; font-size: 1.18rem; line-height: 1.7; color: var(--ink-soft); }
 .doors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.5rem; }
 .slot { display: grid; }

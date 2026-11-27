@@ -12,6 +12,10 @@
   --measure: 34rem;
   --page: 74rem;
   --gutter: clamp(1.25rem, 4vw, 3rem);
+  /* one vertical rhythm: pages start the same distance under the header, set their titles at one size, and end with the same room */
+  --top: clamp(2.5rem, 7vh, 4.75rem);
+  --section: clamp(5rem, 12vh, 8.5rem);
+  --title: clamp(2.7rem, 5.6vw, 4.25rem);
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   color-scheme: light;
 }
@@ -56,7 +60,8 @@ a:hover { text-decoration-thickness: 2px; text-underline-offset: 0.3em; }
 .notice h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); line-height: 1.06; }
 /* controls that only work with script are not shown without it. The html element has the js class only where the layout's early script ran */
 html:not(.js) [data-needs-script] { display: none !important; }
-.plain-button { font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--ink); padding: 0.5rem 1.2rem; cursor: pointer; }
+.plain-button { font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--ink); padding: 0.5rem 1.2rem; cursor: pointer; transition: background-color 160ms var(--ease), color 160ms var(--ease), transform 120ms var(--ease); }
+.plain-button:active { transform: translateY(1px); }
 .plain-button:hover { background: var(--ink); color: var(--paper); }
 
 /* ---- the not-found sheet (components/NotOnRecord.tsx). Here rather than in a module: a stylesheet of the root 404's own is preloaded on every page ---- */
@@ -106,6 +111,14 @@ html:not(.js) [data-needs-script] { display: none !important; }
 .js [data-reveal][data-shown] { opacity: 1; transform: none; }
 /* whatever holds the keyboard focus is never left faded out, wherever it is on the screen */
 .js [data-reveal]:focus-within { opacity: 1; transform: none; transition: none; }
+
+/* the top of a page settles into place as it opens. Styles alone, so it needs no script, and what moves is always there at the end.
+   Where less motion has been asked for, nothing is held back at all. */
+@media screen and (prefers-reduced-motion: no-preference) {
+  [data-arrive] { animation: arrive 620ms var(--ease) var(--arrive-delay, 0ms) backwards; }
+  [data-arrive]:focus-within { animation: none; }
+}
+@keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

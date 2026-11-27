@@ -1,5 +1,5 @@
-.season { padding-block: 1.75rem clamp(4rem, 10vh, 6.5rem); }
-.back { margin-bottom: 1.5rem; }
+.season { padding-block: clamp(1.75rem, 4.5vh, 3rem) var(--section); }
+.back { margin-bottom: 2rem; }
 .layout { display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 2.5rem clamp(2rem, 4vw, 3.5rem); align-items: start; }
 .receipt { min-width: 0; }
 .caption { margin-top: 1.75rem; max-width: 40rem; font-size: 0.95rem; color: var(--ink-soft); }
