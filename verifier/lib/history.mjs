@@ -22,6 +22,16 @@ export function receiptEvents(tx, signature, address, program) {
   return out;
 }
 
+/** InitPool [payer, eata, pool, mint, ...] data: tag 13, season u64. The mint is the only place on the public record that names the token fees are paid in */
+export function poolEvents(tx, signature, pool, program) {
+  if (!tx || tx.meta?.err) return [];
+  const keys = [...tx.transaction.message.accountKeys, ...(tx.meta.loadedAddresses?.writable ?? []), ...(tx.meta.loadedAddresses?.readonly ?? [])]; const out = [];
+  for (const ix of [...tx.transaction.message.instructions, ...(tx.meta.innerInstructions ?? []).flatMap(x => x.instructions)]) {
+    if (keys[ix.programIdIndex] !== program) continue; const acc = ix.accounts.map(i => keys[i]), data = Buffer.from(bs58.decode(ix.data));
+    if (data[0] === 13 && acc[2] === pool && acc[3]) out.push({ signature, slot: tx.slot, time: tx.blockTime ?? null, mint: acc[3] });
+  }
+  return out;
+}
 /** every successful transaction naming the address, with the events in the ones not already examined. `known` is {examined: [signature], events: []} from an earlier run */
 export async function readHistory(source, address, program, known = { examined: [], events: [] }) {
   const seen = new Set(known.examined); const examined = [...known.examined], events = [...known.events]; const fresh = [];

@@ -68,11 +68,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install client and server dependencies from their lockfiles
+      - name: Install client, server and verifier dependencies from their lockfiles
         run: |
           (cd client && npm ci --no-audit --no-fund)
           (cd server && npm ci --no-audit --no-fund)
-      - name: Auth, gating, rate limit, key hygiene and leak-surface tests
+          (cd verifier && npm ci --no-audit --no-fund)
+      - name: Auth, gating, rate limit, key hygiene, leak-surface tests, and the record API contract over recorded devnet data
         run: cd server && npm test
       - name: Record builder, counting policy and verifier (offline, over recorded devnet responses)
         run: cd verifier && npm ci --no-audit --no-fund && npm test

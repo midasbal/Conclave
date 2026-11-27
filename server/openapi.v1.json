@@ -1,0 +1,3483 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Conclave record API",
+    "version": "v1",
+    "description": "Public, read-only. Everything here is derived from public on-chain receipts. No secret, no rollup token and no strategy code is ever served or accepted."
+  },
+  "paths": {
+    "/v1/leaderboard": {
+      "get": {
+        "operationId": "leaderboard",
+        "summary": "The counting policy's output: the ranking, every excluded season with its reasons, and the exact rules in force.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=30, s-maxage=60, stale-while-revalidate=300"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Leaderboard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/seasons": {
+      "get": {
+        "operationId": "seasons",
+        "summary": "Every season in the verified record, with its raw facts.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "creator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=30, s-maxage=60, stale-while-revalidate=300"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/seasons/{season}": {
+      "get": {
+        "operationId": "season",
+        "summary": "One season: raw facts, entries, the validator as a trust input, and flags.",
+        "parameters": [
+          {
+            "name": "season",
+            "in": "path",
+            "required": true,
+            "description": "Decimal season id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=30, s-maxage=60, stale-while-revalidate=300"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/strategies/{id}": {
+      "get": {
+        "operationId": "strategy",
+        "summary": "A strategy by its permanent id: full history, the owner at each entry, whether it is closed, and flags.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Decimal strategy id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=30, s-maxage=60, stale-while-revalidate=300"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/wallets/{pubkey}": {
+      "get": {
+        "operationId": "wallet",
+        "summary": "Results by the owner recorded on each receipt.",
+        "parameters": [
+          {
+            "name": "pubkey",
+            "in": "path",
+            "required": true,
+            "description": "Base58 wallet",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=30, s-maxage=60, stale-while-revalidate=300"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/commitments/{commitment}": {
+      "get": {
+        "operationId": "commitment",
+        "summary": "Results grouped by code commitment (same salt and bytecode only).",
+        "parameters": [
+          {
+            "name": "commitment",
+            "in": "path",
+            "required": true,
+            "description": "Lowercase hex, 64 characters",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=30, s-maxage=60, stale-while-revalidate=300"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/legacy": {
+      "get": {
+        "operationId": "legacy",
+        "summary": "Receipts of earlier builds, labelled as not verified history.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=30, s-maxage=60, stale-while-revalidate=300"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Legacy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "operationId": "status",
+        "summary": "Freshness, last build, alarms and archive digests.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=5"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/proofs": {
+      "get": {
+        "operationId": "proofLevels",
+        "summary": "The four proof levels, what each establishes and does not, and where each runs.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "public, max-age=3600"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProofLevels"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/proofs/recorded": {
+      "post": {
+        "operationId": "proofRecorded",
+        "summary": "Level 1, stateless: the receipt lists this strategy (and commitment).",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordedRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProofResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/proofs/totals": {
+      "post": {
+        "operationId": "proofTotals",
+        "summary": "Level 3, stateless: the score commitment binds these totals, given the season's score salt.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotalsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProofResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/proofs/wallet/challenges": {
+      "post": {
+        "operationId": "proofChallenge",
+        "summary": "Level 2, step 1: a single-use, expiring challenge to sign with the entering wallet.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeIssued"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/proofs/wallet/verify": {
+      "post": {
+        "operationId": "proofWallet",
+        "summary": "Level 2, step 2: the signature over that challenge.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletVerifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProofResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/proofs/code": {
+      "post": {
+        "operationId": "proofCode",
+        "summary": "Level 4 is never accepted here: it runs in the browser or CLI, and the server never receives a salt or code.",
+        "parameters": [],
+        "responses": {
+          "422": {
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "openapi",
+        "summary": "This contract as an OpenAPI 3.1 document.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No usable record store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Pubkey": {
+        "type": "string",
+        "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+      },
+      "Hex32": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "Signature": {
+        "type": "string",
+        "pattern": "^[1-9A-HJ-NP-Za-km-z]{80,90}$"
+      },
+      "DecimalU64": {
+        "type": "string",
+        "pattern": "^[0-9]{1,20}$"
+      },
+      "DecimalI64": {
+        "type": "string",
+        "pattern": "^-?[0-9]{1,20}$"
+      },
+      "IsoTime": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$"
+      },
+      "Notice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "sealing-disclosure",
+              "validator-trust-input",
+              "fee-token",
+              "counts-not-proof",
+              "legacy-not-verified",
+              "provisional",
+              "owner-at-entry"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 20
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "AsOf": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "builtAt": {
+            "$ref": "#/components/schemas/IsoTime"
+          },
+          "recordVersion": {
+            "type": "integer",
+            "const": 2
+          },
+          "archive": {
+            "type": "object",
+            "properties": {
+              "copies": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sha256": {
+                "$ref": "#/components/schemas/Hex32"
+              },
+              "recordSha256": {
+                "$ref": "#/components/schemas/Hex32"
+              }
+            },
+            "required": [
+              "copies",
+              "sha256",
+              "recordSha256"
+            ],
+            "additionalProperties": false
+          },
+          "ledgerHead": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Hex32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "slot",
+          "builtAt",
+          "recordVersion",
+          "archive",
+          "ledgerHead"
+        ],
+        "additionalProperties": false
+      },
+      "Page": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "limit",
+          "offset",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "StakeToken": {
+        "type": "object",
+        "properties": {
+          "mint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pubkey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "observed",
+              "unknown"
+            ]
+          },
+          "recoveredFrom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mint",
+          "status",
+          "recoveredFrom",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "Fee": {
+        "type": "object",
+        "properties": {
+          "perEntry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecimalU64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totalOwed": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "token": {
+            "$ref": "#/components/schemas/StakeToken"
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 20
+          }
+        },
+        "required": [
+          "perEntry",
+          "totalOwed",
+          "token",
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "Validator": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pubkey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "observed",
+              "unknown",
+              "unnamed",
+              "conflicting"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pubkey"
+            }
+          },
+          "trustInput": {
+            "const": true
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "status",
+          "detail",
+          "sources",
+          "trustInput",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "Flag": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "info": {
+            "type": "boolean"
+          },
+          "firstSeenAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IsoTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "detail",
+          "info",
+          "firstSeenAt"
+        ],
+        "additionalProperties": false
+      },
+      "Registry": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "retired",
+              "unknown",
+              "unchecked"
+            ]
+          },
+          "closed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delegated": {
+            "type": "boolean"
+          },
+          "slot": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "closed",
+          "delegated",
+          "slot",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "CreatedAt": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "unixTime": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "basis": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "unixTime",
+              "basis"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "SeasonSummary": {
+        "type": "object",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "permalink": {
+            "type": "string",
+            "pattern": "^/v1/seasons/[0-9]{1,20}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "final",
+              "provisional"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "settled",
+              "cancelled"
+            ]
+          },
+          "finals": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "played",
+                  "voided"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fieldSize": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          },
+          "distinctEntrantWallets": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          },
+          "creator": {
+            "$ref": "#/components/schemas/Pubkey"
+          },
+          "creatorIsAlsoAnEntrant": {
+            "type": "boolean"
+          },
+          "fee": {
+            "$ref": "#/components/schemas/Fee"
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/CreatedAt"
+          },
+          "validator": {
+            "$ref": "#/components/schemas/Validator"
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Flag"
+            }
+          },
+          "alarm": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "season",
+          "permalink",
+          "status",
+          "kind",
+          "finals",
+          "reason",
+          "fieldSize",
+          "distinctEntrantWallets",
+          "creator",
+          "creatorIsAlsoAnEntrant",
+          "fee",
+          "createdAt",
+          "validator",
+          "flags",
+          "alarm"
+        ],
+        "additionalProperties": false
+      },
+      "SeasonEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "created",
+              "delegated",
+              "bond-released"
+            ]
+          },
+          "slot": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "signature": {
+            "$ref": "#/components/schemas/Signature"
+          },
+          "validator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pubkey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "slot",
+          "signature"
+        ],
+        "additionalProperties": false
+      },
+      "Entry": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 19
+          },
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "strategy": {
+            "type": "string",
+            "pattern": "^/v1/strategies/[0-9]{1,20}$"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Pubkey"
+          },
+          "wallet": {
+            "type": "string",
+            "pattern": "^/v1/wallets/"
+          },
+          "codeCommitment": {
+            "$ref": "#/components/schemas/Hex32"
+          },
+          "commitment": {
+            "type": "string",
+            "pattern": "^/v1/commitments/[0-9a-f]{64}$"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seasonRank": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finalist": {
+            "type": "boolean"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "scoreCommitment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Hex32"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "slot",
+          "strategyId",
+          "strategy",
+          "owner",
+          "wallet",
+          "codeCommitment",
+          "commitment",
+          "rank",
+          "seasonRank",
+          "finalist",
+          "published",
+          "scoreCommitment"
+        ],
+        "additionalProperties": false
+      },
+      "SeasonDetail": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/AsOf"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SeasonSummary"
+          },
+          "facts": {
+            "type": "object",
+            "properties": {
+              "distinctCodeCommitments": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "publishedEntries": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "episodes": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "finalsEpisodes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "division": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bondLamports": {
+                "$ref": "#/components/schemas/DecimalU64"
+              },
+              "bondForfeitedLamports": {
+                "$ref": "#/components/schemas/DecimalU64"
+              },
+              "totalRefunded": {
+                "$ref": "#/components/schemas/DecimalU64"
+              },
+              "vmRules": {
+                "type": "string",
+                "pattern": "^[0-9a-f]+$"
+              }
+            },
+            "required": [
+              "distinctCodeCommitments",
+              "publishedEntries",
+              "episodes",
+              "finalsEpisodes",
+              "division",
+              "bondLamports",
+              "bondForfeitedLamports",
+              "totalRefunded",
+              "vmRules"
+            ],
+            "additionalProperties": false
+          },
+          "receipt": {
+            "type": "object",
+            "properties": {
+              "address": {
+                "$ref": "#/components/schemas/Pubkey"
+              },
+              "copy": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "$ref": "#/components/schemas/Hex32"
+                  },
+                  "savedAt": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/IsoTime"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "finalizedSlot": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "from",
+                  "sha256",
+                  "savedAt",
+                  "finalizedSlot"
+                ],
+                "additionalProperties": false
+              },
+              "currentSha256": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Hex32"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "historyProblem": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SeasonEvent"
+                }
+              }
+            },
+            "required": [
+              "address",
+              "copy",
+              "currentSha256",
+              "historyProblem",
+              "events"
+            ],
+            "additionalProperties": false
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            }
+          }
+        },
+        "required": [
+          "apiVersion",
+          "asOf",
+          "permalink",
+          "notices",
+          "summary",
+          "facts",
+          "receipt",
+          "entries"
+        ],
+        "additionalProperties": false
+      },
+      "HistoryRow": {
+        "type": "object",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "seasonPermalink": {
+            "type": "string"
+          },
+          "slot": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Pubkey"
+          },
+          "codeCommitment": {
+            "$ref": "#/components/schemas/Hex32"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "settled",
+              "cancelled"
+            ]
+          },
+          "finals": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "played",
+                  "voided"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fieldSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "creator": {
+            "$ref": "#/components/schemas/Pubkey"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seasonRank": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finalist": {
+            "type": "boolean"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "seasonFlagged": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "season",
+          "seasonPermalink",
+          "slot",
+          "strategyId",
+          "owner",
+          "codeCommitment",
+          "kind",
+          "finals",
+          "fieldSize",
+          "creator",
+          "rank",
+          "seasonRank",
+          "finalist",
+          "published",
+          "seasonFlagged"
+        ],
+        "additionalProperties": false
+      },
+      "Results": {
+        "type": "object",
+        "properties": {
+          "final": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryRow"
+            }
+          },
+          "provisional": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryRow"
+            }
+          }
+        },
+        "required": [
+          "final",
+          "provisional"
+        ],
+        "additionalProperties": false
+      },
+      "StrategyPage": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/AsOf"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "registry": {
+            "$ref": "#/components/schemas/Registry"
+          },
+          "disclosure": {
+            "type": "object",
+            "properties": {
+              "closed": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 20
+              }
+            },
+            "required": [
+              "closed",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          "codeCommitments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Hex32"
+            }
+          },
+          "ownersAtEntry": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pubkey"
+            }
+          },
+          "results": {
+            "$ref": "#/components/schemas/Results"
+          },
+          "anomaly": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "apiVersion",
+          "asOf",
+          "permalink",
+          "notices",
+          "strategyId",
+          "registry",
+          "disclosure",
+          "codeCommitments",
+          "ownersAtEntry",
+          "results",
+          "anomaly"
+        ],
+        "additionalProperties": false
+      },
+      "WalletStrategy": {
+        "type": "object",
+        "properties": {
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "registry": {
+            "$ref": "#/components/schemas/Registry"
+          }
+        },
+        "required": [
+          "strategyId",
+          "permalink",
+          "registry"
+        ],
+        "additionalProperties": false
+      },
+      "WalletPage": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/AsOf"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "wallet": {
+            "$ref": "#/components/schemas/Pubkey"
+          },
+          "strategies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WalletStrategy"
+            }
+          },
+          "results": {
+            "$ref": "#/components/schemas/Results"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "asOf",
+          "permalink",
+          "notices",
+          "wallet",
+          "strategies",
+          "results"
+        ],
+        "additionalProperties": false
+      },
+      "CommitmentPage": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/AsOf"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "commitment": {
+            "$ref": "#/components/schemas/Hex32"
+          },
+          "caveat": {
+            "type": "string",
+            "minLength": 20
+          },
+          "strategyIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecimalU64"
+            }
+          },
+          "ownersAtEntry": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pubkey"
+            }
+          },
+          "results": {
+            "$ref": "#/components/schemas/Results"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "asOf",
+          "permalink",
+          "notices",
+          "commitment",
+          "caveat",
+          "strategyIds",
+          "ownersAtEntry",
+          "results"
+        ],
+        "additionalProperties": false
+      },
+      "Rules": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trustedCreators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/components/schemas/Pubkey"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "note"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "trustedValidators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/components/schemas/Pubkey"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "note"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "countVoidedFinals": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "name",
+          "note",
+          "trustedCreators",
+          "trustedValidators",
+          "countVoidedFinals"
+        ],
+        "additionalProperties": false
+      },
+      "RankRow": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "seasons": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "wins": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "podiums": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "beatenShare": {
+            "type": "number"
+          },
+          "ownersAtEntry": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pubkey"
+            }
+          },
+          "anomaly": {
+            "type": "boolean"
+          },
+          "registry": {
+            "$ref": "#/components/schemas/Registry"
+          }
+        },
+        "required": [
+          "position",
+          "strategyId",
+          "permalink",
+          "seasons",
+          "wins",
+          "podiums",
+          "beatenShare",
+          "ownersAtEntry",
+          "anomaly",
+          "registry"
+        ],
+        "additionalProperties": false
+      },
+      "ExcludedSeason": {
+        "type": "object",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SeasonSummary"
+          }
+        },
+        "required": [
+          "season",
+          "permalink",
+          "reasons",
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "Leaderboard": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/AsOf"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "name",
+              "version"
+            ],
+            "additionalProperties": false
+          },
+          "rules": {
+            "$ref": "#/components/schemas/Rules"
+          },
+          "rankingBasis": {
+            "type": "string",
+            "minLength": 20
+          },
+          "disclaimers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "counted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeasonSummary"
+            }
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExcludedSeason"
+            }
+          },
+          "ranking": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RankRow"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "asOf",
+          "permalink",
+          "notices",
+          "policy",
+          "rules",
+          "rankingBasis",
+          "disclaimers",
+          "counted",
+          "excluded",
+          "ranking",
+          "page"
+        ],
+        "additionalProperties": false
+      },
+      "SeasonList": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/AsOf"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "seasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeasonSummary"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "asOf",
+          "permalink",
+          "notices",
+          "seasons",
+          "page"
+        ],
+        "additionalProperties": false
+      },
+      "LegacyReceipt": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/Pubkey"
+          },
+          "season": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "format": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "size": {
+            "type": "integer"
+          },
+          "delegated": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "strategyId": {
+                  "$ref": "#/components/schemas/DecimalU64"
+                },
+                "commitment": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Hex32"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "strategyId",
+                "commitment"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "address",
+          "season",
+          "format",
+          "size",
+          "delegated",
+          "label",
+          "entries"
+        ],
+        "additionalProperties": false
+      },
+      "Legacy": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/AsOf"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "label": {
+            "type": "string",
+            "minLength": 20
+          },
+          "verified": {
+            "const": false
+          },
+          "receipts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LegacyReceipt"
+            }
+          },
+          "unverifiable": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "$ref": "#/components/schemas/Pubkey"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "address",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "apiVersion",
+          "asOf",
+          "permalink",
+          "notices",
+          "label",
+          "verified",
+          "receipts",
+          "unverifiable"
+        ],
+        "additionalProperties": false
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "permalink": {
+            "type": "string"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
+          },
+          "store": {
+            "type": "object",
+            "properties": {
+              "configured": {
+                "type": "boolean"
+              },
+              "usable": {
+                "type": "boolean"
+              },
+              "problem": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "genesis": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "program": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Pubkey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "recordVersion": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "builtAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/IsoTime"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ageSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "stale": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "staleAfterSeconds": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "currentTo": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "slot": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "at": {
+                        "$ref": "#/components/schemas/IsoTime"
+                      }
+                    },
+                    "required": [
+                      "slot",
+                      "at"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lastSweep": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "at": {
+                        "$ref": "#/components/schemas/IsoTime"
+                      },
+                      "slot": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "slot"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "nextSweepAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/IsoTime"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "service": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "$ref": "#/components/schemas/IsoTime"
+                      },
+                      "cycles": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "lastError": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "at": {
+                                "$ref": "#/components/schemas/IsoTime"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "rateLimitedUntil": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "at",
+                              "message",
+                              "rateLimitedUntil"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "updatedAt",
+                      "cycles",
+                      "lastError"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "counts": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "final": {
+                        "type": "integer"
+                      },
+                      "provisional": {
+                        "type": "integer"
+                      },
+                      "legacy": {
+                        "type": "integer"
+                      },
+                      "empty": {
+                        "type": "integer"
+                      },
+                      "rejected": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "final",
+                      "provisional",
+                      "legacy",
+                      "empty",
+                      "rejected"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "archive": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "copies": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "sha256": {
+                        "$ref": "#/components/schemas/Hex32"
+                      },
+                      "recordSha256": {
+                        "$ref": "#/components/schemas/Hex32"
+                      }
+                    },
+                    "required": [
+                      "copies",
+                      "sha256",
+                      "recordSha256"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ledger": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "entries": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "head": {
+                        "$ref": "#/components/schemas/Hex32"
+                      }
+                    },
+                    "required": [
+                      "entries",
+                      "head"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "alarms": {
+                "type": "object",
+                "properties": {
+                  "record": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "season": {
+                          "$ref": "#/components/schemas/DecimalU64"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "detail": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "season",
+                        "kind",
+                        "detail"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "backup": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "address": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "detail": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "address",
+                        "detail"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "record",
+                  "backup"
+                ],
+                "additionalProperties": false
+              },
+              "backupConfigured": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "configured",
+              "usable",
+              "problem",
+              "genesis",
+              "program",
+              "recordVersion",
+              "builtAt",
+              "ageSeconds",
+              "stale",
+              "staleAfterSeconds",
+              "currentTo",
+              "lastSweep",
+              "nextSweepAt",
+              "service",
+              "counts",
+              "archive",
+              "ledger",
+              "alarms",
+              "backupConfigured"
+            ],
+            "additionalProperties": false
+          },
+          "chain": {
+            "type": "object",
+            "properties": {
+              "currentSlot": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lagSlots": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "checkedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/IsoTime"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "currentSlot",
+              "lagSlots",
+              "checkedAt",
+              "error"
+            ],
+            "additionalProperties": false
+          },
+          "rules": {
+            "type": "object",
+            "properties": {
+              "configured": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "configured"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "apiVersion",
+          "permalink",
+          "notices",
+          "store",
+          "chain",
+          "rules"
+        ],
+        "additionalProperties": false
+      },
+      "ProofCheck": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ok"
+        ],
+        "additionalProperties": false
+      },
+      "ProofResult": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "wallet",
+              "totals"
+            ]
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProofCheck"
+            }
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "establishes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "doesNot": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "receipt": {
+            "type": "object",
+            "properties": {
+              "address": {
+                "$ref": "#/components/schemas/Pubkey"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "final",
+                  "provisional"
+                ]
+              },
+              "from": {
+                "type": "string"
+              },
+              "sha256": {
+                "$ref": "#/components/schemas/Hex32"
+              },
+              "alarms": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "address",
+              "status",
+              "from",
+              "sha256",
+              "alarms"
+            ],
+            "additionalProperties": false
+          },
+          "entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Entry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "claimed": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "$ref": "#/components/schemas/DecimalI64"
+                  },
+                  "finalsTotal": {
+                    "$ref": "#/components/schemas/DecimalI64"
+                  }
+                },
+                "required": [
+                  "total",
+                  "finalsTotal"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "apiVersion",
+          "level",
+          "verified",
+          "checks",
+          "blockers",
+          "establishes",
+          "doesNot",
+          "receipt",
+          "entry",
+          "claimed",
+          "notes"
+        ],
+        "additionalProperties": false
+      },
+      "ChallengeIssued": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "singleUse": {
+            "const": true
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/IsoTime"
+          },
+          "challenge": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "conclave-wallet-challenge"
+              },
+              "genesis": {
+                "type": "string"
+              },
+              "program": {
+                "$ref": "#/components/schemas/Pubkey"
+              },
+              "season": {
+                "$ref": "#/components/schemas/DecimalU64"
+              },
+              "strategyId": {
+                "$ref": "#/components/schemas/DecimalU64"
+              },
+              "askedBy": {
+                "type": "string"
+              },
+              "nonce": {
+                "$ref": "#/components/schemas/Hex32"
+              },
+              "issuedAt": {
+                "$ref": "#/components/schemas/IsoTime"
+              },
+              "expiresAt": {
+                "$ref": "#/components/schemas/IsoTime"
+              }
+            },
+            "required": [
+              "type",
+              "genesis",
+              "program",
+              "season",
+              "strategyId",
+              "askedBy",
+              "nonce",
+              "issuedAt",
+              "expiresAt"
+            ],
+            "additionalProperties": false
+          },
+          "signThis": {
+            "type": "object",
+            "properties": {
+              "encoding": {
+                "const": "base64"
+              },
+              "bytes": {
+                "type": "string",
+                "minLength": 8
+              },
+              "text": {
+                "type": "string",
+                "minLength": 8
+              },
+              "howTo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "encoding",
+              "bytes",
+              "text",
+              "howTo"
+            ],
+            "additionalProperties": false
+          },
+          "verifyAt": {
+            "const": "/v1/proofs/wallet/verify"
+          },
+          "signatureEncoding": {
+            "const": "hex"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "singleUse",
+          "expiresAt",
+          "challenge",
+          "signThis",
+          "verifyAt",
+          "signatureEncoding"
+        ],
+        "additionalProperties": false
+      },
+      "ProofLevels": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "levels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                "name": {
+                  "type": "string",
+                  "enum": [
+                    "recorded",
+                    "wallet",
+                    "totals",
+                    "code"
+                  ]
+                },
+                "where": {
+                  "type": "string",
+                  "enum": [
+                    "server",
+                    "browser-or-cli"
+                  ]
+                },
+                "endpoint": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "establishes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "doesNot": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "level",
+                "name",
+                "where",
+                "endpoint",
+                "establishes",
+                "doesNot"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "level4": {
+            "type": "string",
+            "minLength": 20
+          }
+        },
+        "required": [
+          "apiVersion",
+          "levels",
+          "level4"
+        ],
+        "additionalProperties": false
+      },
+      "RecordedRequest": {
+        "type": "object",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "codeCommitment": {
+            "$ref": "#/components/schemas/Hex32"
+          },
+          "allowProvisional": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "season",
+          "strategyId"
+        ],
+        "additionalProperties": false
+      },
+      "TotalsRequest": {
+        "type": "object",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "slot": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 19
+          },
+          "total": {
+            "$ref": "#/components/schemas/DecimalI64"
+          },
+          "finalsTotal": {
+            "$ref": "#/components/schemas/DecimalI64"
+          },
+          "scoreSalt": {
+            "$ref": "#/components/schemas/Hex32"
+          },
+          "allowProvisional": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "season",
+          "strategyId",
+          "total",
+          "finalsTotal",
+          "scoreSalt"
+        ],
+        "additionalProperties": false
+      },
+      "ChallengeRequest": {
+        "type": "object",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "strategyId": {
+            "$ref": "#/components/schemas/DecimalU64"
+          },
+          "askedBy": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "season",
+          "strategyId",
+          "askedBy"
+        ],
+        "additionalProperties": false
+      },
+      "WalletVerifyRequest": {
+        "type": "object",
+        "properties": {
+          "nonce": {
+            "$ref": "#/components/schemas/Hex32"
+          },
+          "signature": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{128}$"
+          },
+          "allowProvisional": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nonce",
+          "signature"
+        ],
+        "additionalProperties": false
+      },
+      "ErrorBody": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "v1"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 3
+              }
+            },
+            "required": [
+              "type",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "apiVersion",
+          "error"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

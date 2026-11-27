@@ -1,7 +1,7 @@
 // The capture loop over REAL recorded devnet responses (test/fixtures). Where a test needs something that did not happen on devnet (a changed byte, a second delegation, a killed process) it alters a copy and says SYNTHETIC.
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "fs"; import os from "os"; import path from "path"; import { fileURLToPath } from "url"; import { spawn } from "child_process";
 import { Ingest } from "../lib/ingest.mjs"; import { buildRecord } from "../lib/builder.mjs"; import { Store, verifyStore } from "../lib/store.mjs"; import { readLedger } from "../lib/ledger.mjs"; import { RateLimited } from "../lib/chain.mjs";
-import { PROGRAM_ID, DEVNET_GENESIS } from "../lib/chain.mjs"; import { replay } from "./recorded.mjs";
+import { PROGRAM_ID, DEVNET_GENESIS, poolAddress } from "../lib/chain.mjs"; import { replay } from "./recorded.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`)));
 const ALL = load("all"); const STAGE = Object.fromEntries(["provisional", "provisional-republished", "final", "bond-released"].map(n => [n, load(n)]));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "ingest-test-")); const clone = x => JSON.parse(JSON.stringify(x));
@@ -12,7 +12,7 @@ function spy(source) { const calls = { receiptsOwnedBy: 0, account: [], signatur
   s.reset = () => { calls.receiptsOwnedBy = 0; calls.account.length = calls.signatures.length = calls.transaction.length = 0; }; return s; }
 const open = async (source, dir, o = {}) => new Ingest(source, { dir, ...o }).open();
 // the clock moves between two builds, so the moments a first copy was saved or a flag first seen are blanked; everything else is compared exactly
-const strip = r => { const c = clone(r); for (const k of ["builtAt", "currentTo", "service", "ledger", "counts", "newFlags", "archive"]) delete c[k]; const blank = v => { if (Array.isArray(v)) v.forEach(blank); else if (v && typeof v === "object") for (const k of Object.keys(v)) { if (k === "savedAt" || k === "firstSeenAt") v[k] = "T"; else blank(v[k]); } }; blank(c); return c; };
+const strip = r => { const c = clone(r); for (const k of ["builtAt", "currentTo", "service", "ledger", "counts", "newFlags", "archive", "registriesAt"]) delete c[k]; const blank = v => { if (Array.isArray(v)) v.forEach(blank); else if (v && typeof v === "object") for (const k of Object.keys(v)) { if (k === "savedAt" || k === "firstSeenAt") v[k] = "T"; else blank(v[k]); } }; blank(c); return c; };
 const finalAddress = () => Object.keys(ALL.accounts).find(a => ALL.accounts[a] && ALL.accounts[a].data.length > 3000 && ALL.listed[PROGRAM_ID].includes(a));
 const edit = (tape, address, f) => { const d = Buffer.from(tape.accounts[address].data, "base64"); f(d); tape.accounts[address].data = d.toString("base64"); };
 
@@ -39,7 +39,7 @@ test("a changed account is the only one processed, and a change to a closed rece
   const dir = tmp(); let a = await open(spy(replay(ALL)), dir); await a.cycle(); const before = a.store.ledger.n; a.close();
   const addr = finalAddress(); const tape = clone(ALL); edit(tape, addr, d => { d[224 + 72] ^= 3; }); /* SYNTHETIC: one rank byte */
   const s = spy(replay(tape)); a = await open(s, dir); const r = await a.cycle(); a.close();
-  assert.deepEqual([r.processed, r.skipped], [1, 74]); assert.deepEqual([...new Set(s.calls.signatures.map(x => x.address))], [addr]); assert.deepEqual(r.newFlags.map(f => f.kind), ["record-changed"]);
+  assert.deepEqual([r.processed, r.skipped], [1, 74]); assert.deepEqual([...new Set(s.calls.signatures.map(x => x.address))].sort(), [addr, poolAddress(BigInt(JSON.parse(fs.readFileSync(path.join(root(dir), addr, "first-final.json"))).season), PROGRAM_ID)].sort(), "its own history and its pool, nothing else"); assert.deepEqual(r.newFlags.map(f => f.kind), ["record-changed"]);
   const season = r.record.seasons.find(x => x.address === addr); assert.deepEqual(season.entries, JSON.parse(JSON.stringify(replayRecord().seasons.find(x => x.address === addr).entries)), "the record still reads the first copy");
   const l = readLedger(path.join(root(dir), "_service", "ledger.jsonl")); assert.ok(l.ok); assert.ok(l.entries.slice(before).some(e => e.type === "flag" && e.kind === "record-changed" && e.address === addr));
   // put the bytes back: the account changed again, so it is processed again, and the flag is still there and is not raised twice

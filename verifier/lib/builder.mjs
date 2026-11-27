@@ -1,11 +1,11 @@
 // The record builder: read every receipt from base, keep the first final copy of each, flag whatever changes afterwards, and assemble the career record. It ranks nothing: see ../policy.
 import { PROGRAM_ID, DELEGATION_PROGRAM_ID, DEVNET_GENESIS, delegationRecordAddress, receiptAddress, sha256 } from "./chain.mjs";
 import { classify, readDelegationRecord, seasonFromReceipt } from "./receipt.mjs";
-import { readHistory, validatorOf } from "./history.mjs";
+import { readHistory, validatorOf } from "./history.mjs"; import { readPoolMint, stakeToken, readRegistryStatuses } from "./enrich.mjs";
 import { Archive, compareToFirst, ALARMS } from "./archive.mjs";
 import { buildViews } from "./views.mjs";
 
-export const RECORD_VERSION = 1;
+export const RECORD_VERSION = 2; // 2: each season names its stake token (or says it is unknown), and the record says which strategies are closed
 
 /** Everything the record needs about ONE address, decided from the account as it is now, the archive, and base's history. The first-final-copy rule, the flags and the validator are all here, so that a full
  *  build and an incremental refresh (lib/ingest.mjs) run exactly the same code. Returns what the address is: a season, a legacy row, an empty receipt, or a rejection with its reason. */
@@ -28,6 +28,12 @@ export async function processAddress(ctx, address, account) {
   let history = null, historyProblem = null;
   try { history = await readHistory(source, address, program, seen.history); seen.history = { examined: history.examined, events: history.events, newest: history.newest }; if (!history.complete) historyProblem = "base did not serve the whole transaction history"; }
   catch (e) { if (e.name === "RateLimited") throw e; historyProblem = "transaction history could not be read: " + e.message; history = { ...seen.history }; }
+  // the stake token: named once, in the season's InitPool transaction. Remembered once found; "none found" is asked again next time
+  const sid = first ? (first.data.length >= 16 ? first.data.readBigUInt64LE(8) : null) : c.receipt?.season; let poolProblem = null; // from the receipt bytes, not from a text field
+  if (sid != null && !seen.pool?.mint) {
+    try { const f = await readPoolMint(source, program, sid); seen.pool = f ? { mint: f.mint, signature: f.signature, slot: f.slot, time: f.time } : { mint: null }; }
+    catch (e) { if (e.name === "RateLimited") throw e; poolProblem = "the pool's transactions could not be read: " + e.message; }
+  }
   archive.saveSeen(address, seen);
   const delegations = history.events.filter(e => e.type === "delegated");
   if (delegations.length > 1) raise({ kind: "multiple-delegations", detail: `delegated ${delegations.length} times: ${delegations.map(d => d.signature).join(" ")}` });
@@ -51,7 +57,7 @@ export async function processAddress(ctx, address, account) {
   const flags = archive.flags(address).map(({ kind, detail, info, firstSeenAt }) => ({ kind, detail, info: !!info && !ALARMS.includes(kind), firstSeenAt }));
   const created = history.events.find(e => e.type === "created");
   return { kind: "season", savedFirst, season: {
-    ...seasonFromReceipt(data.receipt), address, status,
+    ...seasonFromReceipt(data.receipt), address, status, stakeToken: stakeToken(seen.pool?.mint ? seen.pool : null, poolProblem),
     copy: first ? { from: "the first final copy this archive saw", sha256: first.sha256, savedAt: first.observedAt, finalizedSlot: first.finalizedSlot } : { from: "current base state, still delegated: it can still change", sha256: data.sha256 },
     current,
     validator: validatorOf(history, seen.delegationRecords),
@@ -63,7 +69,7 @@ export async function processAddress(ctx, address, account) {
 export const newContext = (source, archive, { program, now = () => new Date().toISOString() }) => ({ source, archive, program, now, newFlags: [], firstCopies: 0 });
 
 /** descriptors: what processAddress returned for every address, in any order. `currentTo`: the slot and time the underlying reads were served at. `extra`: more fields for the record (the service adds its own) */
-export function assembleRecord(descriptors, { archive, genesis, program, now = () => new Date().toISOString(), source, ctx, currentTo = null, extra = {} }) {
+export function assembleRecord(descriptors, { archive, genesis, program, now = () => new Date().toISOString(), source, ctx, currentTo = null, registries = {}, registriesAt = null, extra = {} }) {
   const seasons = [], legacy = [], rejected = []; let empty = 0;
   for (const d of descriptors) { if (d.kind === "season") seasons.push(d.season); else if (d.kind === "legacy") legacy.push(d.row); else if (d.kind === "rejected") rejected.push(d.row); else empty++; }
   seasons.sort((a, b) => (a.createdAt?.unixTime ?? Infinity) - (b.createdAt?.unixTime ?? Infinity) || a.season.localeCompare(b.season, "en", { numeric: true }));
@@ -78,7 +84,7 @@ export function assembleRecord(descriptors, { archive, genesis, program, now = (
       "Accounts and history come from one RPC node. It could leave receipts out; archived ones are rechecked individually, but a receipt never listed cannot be noticed.",
     ],
     counts: { final: seasons.filter(s => s.status === "final").length, provisional: seasons.filter(s => s.status === "provisional").length, legacy: legacy.length, empty, rejected: rejected.length, firstCopiesSavedNow: ctx?.firstCopies ?? 0, flagsRaisedNow: ctx?.newFlags.length ?? 0 },
-    seasons, views, anomalies, newFlags: ctx?.newFlags ?? [], ...extra,
+    seasons, views, anomalies, registries, registriesAt, newFlags: ctx?.newFlags ?? [], ...extra,
     legacy: { label: "LEGACY. Not verified history: these earlier layouts record no owner, and a commitment only where a result was published. They are in none of the views and no ranking.", receipts: legacy },
     rejected,
   };
@@ -95,6 +101,8 @@ export async function buildRecord(source, { archiveDir, program = PROGRAM_ID, ge
   log(`${listed.size} candidate accounts (listed or previously archived)`);
   const ctx = newContext(source, archive, { program, now }); const descriptors = [];
   for (const address of [...listed.keys()].sort()) descriptors.push(await processAddress(ctx, address, listed.get(address)));
-  return assembleRecord(descriptors, { archive, genesis, program, now, source, ctx, currentTo: slots.length ? { slot: Math.min(...slots), at: now() } : null });
+  const ids = [...new Set(descriptors.filter(d => d.kind === "season").flatMap(d => d.season.entries.map(e => e.strategyId)))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  const registries = await readRegistryStatuses(source, program, ids);
+  return assembleRecord(descriptors, { archive, genesis, program, now, source, ctx, currentTo: slots.length ? { slot: Math.min(...slots), at: now() } : null, registries, registriesAt: { at: now() } });
 }
 const legacyRow = c => ({ address: c.address, season: c.season, format: c.format, size: c.size, delegated: c.delegated, label: "LEGACY: no recorded owner", entries: c.entries });

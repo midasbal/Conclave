@@ -6,11 +6,11 @@ const PLAYER_METHODS = new Set([...PUBLIC_METHODS, "getBalance", "getProgramAcco
 const CREDENTIAL_PARAMS = /^(token|access_token|id_token|auth|authorization|jwt|session|sig|signature|key|api[-_]?key|apikey|secret|bearer)$/i;
 const MAX_BODY = 64 * 1024;
 
-export function createApp({ auth, upstream, rollupUpstream = null, programId, origins = [], limits = {}, trustProxy = false, now = () => Date.now() / 1000, log = () => {}, fetchImpl = fetch, upstreamTimeoutMs = 10000 }) {
+export function createApp({ auth, upstream, rollupUpstream = null, api = null, programId, origins = [], limits = {}, trustProxy = false, now = () => Date.now() / 1000, log = () => {}, fetchImpl = fetch, upstreamTimeoutMs = 10000 }) {
   if (!upstream) throw new Error("upstream RPC url required (it may contain the provider key; it is only ever used server-side)");
-  const L = { auth: limits.auth ?? 20, open: limits.open ?? 60, player: limits.player ?? 120 };
-  const lim = { auth: createLimiter({ capacity: L.auth, perMinute: L.auth, now }), open: createLimiter({ capacity: L.open, perMinute: L.open, now }), player: createLimiter({ capacity: L.player, perMinute: L.player, now }) };
-  const program = new PublicKey(programId);
+  const L = { auth: limits.auth ?? 20, open: limits.open ?? 60, player: limits.player ?? 120, api: limits.api ?? 300, challenge: limits.challenge ?? 30 };
+  const lim = { auth: createLimiter({ capacity: L.auth, perMinute: L.auth, now }), open: createLimiter({ capacity: L.open, perMinute: L.open, now }), player: createLimiter({ capacity: L.player, perMinute: L.player, now }), api: createLimiter({ capacity: L.api, perMinute: L.api, now }), challenge: createLimiter({ capacity: L.challenge, perMinute: L.challenge, now }) };
+  const program = new PublicKey(programId); if (api) api.bind?.({ callUpstream: (m, p) => callUpstream(m, p) });
   const ok = (res, status, body, extra = {}) => { const s = JSON.stringify(body); res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(s), ...extra }); res.end(s); };
   const fail = (res, status, error, extra = {}) => ok(res, status, { error }, extra);
   async function readJson(req) { const chunks = []; let n = 0; for await (const c of req) { n += c.length; if (n > MAX_BODY) throw new AuthError("body_too_large", 413); chunks.push(c); } if (!n) return {}; try { const j = JSON.parse(Buffer.concat(chunks).toString("utf8")); if (j === null || typeof j !== "object" || Array.isArray(j)) throw 0; return j; } catch { throw new AuthError("bad_json", 400); } }
@@ -40,11 +40,15 @@ export function createApp({ auth, upstream, rollupUpstream = null, programId, or
       const u = new URL(req.url, "http://x"); const origin = req.headers.origin;
       res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("Cache-Control", "no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
       if (origin && origins.includes(origin)) { res.setHeader("Access-Control-Allow-Origin", origin); res.setHeader("Vary", "Origin"); res.setHeader("Access-Control-Allow-Headers", "authorization, content-type"); res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS"); }
+      // the v1 API is public, read-only data: any origin may ask what it may send
+      if (req.method === "OPTIONS" && u.pathname.startsWith("/v1/") && api) { res.removeHeader("Vary"); res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "content-type, if-none-match", "Access-Control-Max-Age": "86400" }); return res.end(); }
       if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
       for (const k of u.searchParams.keys()) if (CREDENTIAL_PARAMS.test(k)) return fail(res, 400, "credentials_in_url_refused"); // never accept a credential in a URL, not even to ignore it
       const ip = (trustProxy && req.headers["x-forwarded-for"] ? String(req.headers["x-forwarded-for"]).split(",")[0].trim() : req.socket.remoteAddress) || "?"; const path = u.pathname;
       const limit = (l, key) => { const r = lim[l].take(key); if (!r.ok) { fail(res, 429, "rate_limited", { "retry-after": String(r.retryAfter) }); return false; } return true; };
       if (path === "/health" && req.method === "GET") return ok(res, 200, { ok: true, audience: auth.audience });
+      // ---- the public record API (docs/API.md). It reads the record store, holds no token and no secret, and has its own rate-limit buckets
+      if (api && path.startsWith("/v1/")) { who = ip; if (await api.handle(req, res, { url: u, ip, limit, readJson })) return; }
       // ---- auth
       if (path === "/auth/challenge" && req.method === "POST") { who = ip; if (!limit("auth", ip)) return; const b = await readJson(req); return ok(res, 200, auth.issueChallenge(b.pubkey)); }
       if (path === "/auth/token" && req.method === "POST") { who = ip; if (!limit("auth", ip)) return; const b = await readJson(req); return ok(res, 200, auth.redeem({ pubkey: b.pubkey, nonce: b.nonce, signature: b.signature })); }

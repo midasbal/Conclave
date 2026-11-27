@@ -6,7 +6,7 @@ Each strategy is a short program for a small deterministic virtual machine. It i
 
 ## Records and proofs
 
-`verifier/` is a standalone, read-only tool: it rebuilds a career record from the on-chain receipts, keeps the first final copy of each, applies a separate counting policy, and checks four levels of proof. A capture loop keeps those first copies in a managed, backed-up store (`docs/RECORD_SERVICE.md`). What each level does and does not show, and what has to be trusted (including the validator, which receipts do not record), is in [`verifier/README.md`](verifier/README.md).
+`verifier/` is a standalone, read-only tool: it rebuilds a career record from the on-chain receipts, keeps the first final copy of each, applies a separate counting policy, and checks four levels of proof. A capture loop keeps those first copies in a managed, backed-up store (`docs/RECORD_SERVICE.md`), and a public read-only API serves the record (`docs/API.md`). What each level does and does not show, and what has to be trusted (including the validator, which receipts do not record), is in [`verifier/README.md`](verifier/README.md).
 
 ## Status
 

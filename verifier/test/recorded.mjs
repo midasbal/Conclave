@@ -8,6 +8,7 @@ export function recorder(source) {
     async receiptsOwnedBy(owner) { const r = await source.receiptsOwnedBy(owner); tape.listed[owner] = r.map(x => x.address); for (const x of r) tape.accounts[x.address] = pack(x); return r; },
     async account(a) { const r = await source.account(a); tape.accounts[a] = pack(r); return r; },
     async signatures(a, before) { const r = await source.signatures(a, before); tape.signatures[a + (before ? " " + before : "")] = r.map(({ signature, slot, blockTime, err }) => ({ signature, slot, blockTime, err })); return r; },
+    async accounts(addrs) { const r = await source.accounts(addrs); addrs.forEach((a, i) => { tape.accounts[a] = pack(r[i]); }); return r; },
     async transaction(sig) { const t = await source.transaction(sig); tape.transactions[sig] = t && { slot: t.slot, blockTime: t.blockTime, transaction: { message: { accountKeys: t.transaction.message.accountKeys, instructions: t.transaction.message.instructions.map(({ programIdIndex, accounts, data }) => ({ programIdIndex, accounts, data })) } }, meta: { err: t.meta.err, loadedAddresses: t.meta.loadedAddresses, innerInstructions: (t.meta.innerInstructions ?? []).map(x => ({ instructions: x.instructions.map(({ programIdIndex, accounts, data }) => ({ programIdIndex, accounts, data })) })) } }; return t; },
   };
 }
@@ -18,6 +19,7 @@ export function replay(tape, only = null) {
     async genesisHash() { return tape.genesis; },
     async receiptsOwnedBy(owner) { const out = (tape.listed[owner] ?? []).filter(a => !only || only.includes(a)).map(a => ({ address: a, ...unpack(tape.accounts[a]) })); out.contextSlot = out.length ? Math.max(...out.map(x => x.slot ?? 0)) : null; return out; },
     async account(a) { return unpack(need(tape.accounts, a, "account")); },
+    async accounts(addrs) { return addrs.map(a => unpack(need(tape.accounts, a, "account"))); },
     async signatures(a, before, until) { return need(tape.signatures, a + (before ? " " + before : ""), "signature list for"); },
     async slot() { return Math.max(...Object.values(tape.accounts).filter(Boolean).map(x => x.slot ?? 0)); },
     async transaction(s) { return need(tape.transactions, s, "transaction"); },

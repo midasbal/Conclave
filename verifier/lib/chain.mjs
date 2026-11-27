@@ -16,6 +16,10 @@ export const u64le = n => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt
 const find = (seeds, program) => PublicKey.findProgramAddressSync(seeds, new PublicKey(program))[0].toBase58();
 /** the only address a season's receipt can live at */
 export const receiptAddress = (season, program) => find([Buffer.from("receipt"), u64le(season)], program);
+/** the pool a season's entry fees are paid into: a PDA of the program, named by InitPool together with the stake token's mint */
+export const poolAddress = (season, program) => find([Buffer.from("pool"), u64le(season)], program);
+/** the registry of a strategy id: public, on base, holds the owner and the code commitment, and is what CloseStrategy marks closed */
+export const registryAddress = (id, program) => find([Buffer.from("reg"), u64le(id)], program);
 /** the delegation program's own record of an account it holds: who owned it before, and which validator may commit it */
 export const delegationRecordAddress = address => find([Buffer.from("delegation"), unkey58(address)], DELEGATION_PROGRAM_ID);
 
@@ -51,6 +55,8 @@ export function rpcSource(url = DEFAULT_RPC, { pause, retries = 4, timeoutMs = 6
     slot: () => call("getSlot", [{ commitment: "finalized" }]),
     receiptsOwnedBy: byMagic,
     async account(address) { const r = await call("getAccountInfo", [address, { encoding: "base64", commitment: "finalized" }]); return r.value ? account(r.value, r.context.slot) : null; },
+    /** many accounts in as few requests as the node allows (100 each); null for an account that does not exist */
+    async accounts(addresses) { const out = []; for (let i = 0; i < addresses.length; i += 100) { const r = await call("getMultipleAccounts", [addresses.slice(i, i + 100), { encoding: "base64", commitment: "finalized" }]); out.push(...r.value.map(a => account(a, r.context.slot))); } return out; },
     /** newest first. `before` pages backwards; `until` stops at a signature already known, so only NEW signatures are fetched */
     signatures: (address, before, until) => call("getSignaturesForAddress", [address, { limit: 1000, commitment: "finalized", ...(before ? { before } : {}), ...(until ? { until } : {}) }]),
     transaction: signature => call("getTransaction", [signature, { encoding: "json", commitment: "finalized", maxSupportedTransactionVersion: 1 }]),

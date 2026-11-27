@@ -8,7 +8,7 @@
 import fs from "fs"; import path from "path";
 import { PROGRAM_ID, DELEGATION_PROGRAM_ID, DEVNET_GENESIS, sha256 } from "./chain.mjs";
 import { processAddress, assembleRecord, newContext } from "./builder.mjs";
-import { Store } from "./store.mjs"; import { syncMirror } from "./mirror.mjs";
+import { Store } from "./store.mjs"; import { syncMirror } from "./mirror.mjs"; import { readRegistryStatuses } from "./enrich.mjs";
 
 const fingerprint = a => a ? sha256(Buffer.from(a.owner), Buffer.from("|"), Buffer.from(String(a.lamports)), Buffer.from("|"), a.data).toString("hex") : "absent";
 const abortableSleep = (ms, signal) => new Promise(res => { const t = setTimeout(res, ms); signal?.addEventListener("abort", () => { clearTimeout(t); res(); }, { once: true }); });
@@ -47,7 +47,12 @@ export class Ingest {
     if (sweepDue && Date.parse(at) - Date.parse(state.lastHeartbeatAt) >= this.heartbeatMs) { state.lastHeartbeatAt = at; store.ledger.append({ type: "heartbeat", slot, copies: archive.digest().copies }); }
     store.writeState(state);
     const descriptors = known.map(a => store.entry(a)).filter(Boolean);
-    const record = assembleRecord(descriptors, { archive, genesis: this.genesis, program, now: this.now, source, ctx, currentTo: { slot, at },
+    // which strategies are closed: every sweep for all of them, and at once for any strategy not seen before
+    const ids = [...new Set(descriptors.filter(d => d.kind === "season").flatMap(d => d.season.entries.map(e => e.strategyId)))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+    state.registries ??= {}; const want = sweepDue ? ids : ids.filter(id => !state.registries[id]);
+    if (want.length) { try { Object.assign(state.registries, await readRegistryStatuses(source, program, want)); state.registriesAt = { at, slot }; store.writeState(state); } catch (e) { if (e.name === "RateLimited") { this.error = { at, message: e.message, rateLimited: e.retryAt }; this.writeStatus({ state: "rate-limited", at, processed, skipped }); } throw e; } }
+    const registries = Object.fromEntries(ids.map(id => [id, state.registries[id]]).filter(([, v]) => v));
+    const record = assembleRecord(descriptors, { archive, genesis: this.genesis, program, now: this.now, source, ctx, currentTo: { slot, at }, registries, registriesAt: state.registriesAt ?? null,
       extra: { service: { cycle: state.cycles, lastSweep: state.lastSweep, sweepIntervalMs: this.sweepMs, thisCycle: { sweep: sweepDue, processed, skipped, lookedUp: looked, ms: Date.now() - t0 } } } });
     store.writeService("record.json", record); if (this.publishTo) { fs.mkdirSync(path.dirname(this.publishTo), { recursive: true }); const tmp = this.publishTo + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(record, null, 1) + "\n"); fs.renameSync(tmp, this.publishTo); }
     this.last = record; this.error = null;

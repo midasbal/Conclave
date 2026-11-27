@@ -55,6 +55,15 @@ Both run the **same per-address code as the one-shot builder** (`lib/builder.mjs
 
 **When the RPC fails.** The record stays at its last good state and `status.json` says `degraded` with the error. A server error backs off (up to five minutes). A rate limit waits until the time the endpoint named and sends nothing meanwhile.
 
+## What a version 2 record adds
+
+The receipt carries neither of these, so the capture loop recovers them from public base data and says where each came from. Both can be `unknown`, which is a real answer.
+
+* **`stakeToken` on every season.** The receipt records a fee as a bare number. The mint it is paid in is named once, in the season's `InitPool` transaction on base (`[payer, eata, pool, mint, ...]`). The loop reads that transaction the first time it processes a season and remembers the mint; a season with no pool (abandoned before one was made) is `unknown` and asked again at each sweep. A read that fails is never remembered as "no token", and a rate limit stops the cycle. On devnet: 23 seasons name a token (the project's one stake mint), the 6 abandoned ones do not.
+* **`registries` for every strategy in the record.** The registry is public on base. `open` (a registry delegated to the rollup shows base's last view, which the record says), `closed` (closed, not yet removed), `retired` (shrunk to the permanent marker) or `unknown`. A close done in the rollup is not visible on base until the registry returns to base, so `open` on a delegated registry means "not known to be closed". Read in one batched request at every sweep, and at once for any strategy not seen before. On devnet: 54 retired, 66 open and delegated.
+
+Records of version 1 (before this) are not read by the API; the first cycle of this version rewrites the record.
+
 ## What 4B guarantees, and that capture keeps
 
 | 4B rule | In the capture |
@@ -101,7 +110,7 @@ node verifier/cli.mjs store restore --store NEW --snapshot FILE  # both refuse a
 * One writer per store. A second `ingest` on the same store is refused while the first is alive; a lock left by a process that has gone is taken over.
 * A kill at any moment loses nothing: the first copy is written before its ledger line, and the next start adds any line that is missing. A ledger line cut short by the kill is dropped on the next start; any other damage refuses to start.
 * SIGTERM and SIGINT finish the cycle in progress, then stop and release the lock.
-* **Not built here:** an HTTP API (Phase 5B), reading the rollup, and more than one instance.
+* The HTTP API over the record is in `docs/API.md`. **Not built here:** reading the rollup, and more than one instance.
 
 ## Observed on devnet
 

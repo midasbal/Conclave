@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { loadConfig } from "../src/config.mjs"; import { createAuth } from "../src/auth.mjs"; import { createApp } from "../src/server.mjs";
+import { createApi } from "../src/api/index.mjs"; import { RecordStore, RulesSource } from "../src/api/store.mjs";
 const c = loadConfig(); const auth = createAuth({ audience: c.audience, secret: c.secret });
-const app = createApp({ auth, upstream: c.upstream, rollupUpstream: c.rollupUpstream, programId: c.programId, origins: c.origins, limits: c.limits, trustProxy: c.trustProxy, log: l => console.log(l) });
-app.listen(c.port, c.host, () => console.log(`conclave-server listening on ${c.host}:${c.port} audience=${c.audience} origins=${c.origins.length} (upstream and secret loaded, not printed)`));
+// the record API reads the store the capture loop writes. Without CONCLAVE_STORE_DIR it answers 404 store_not_configured
+const api = createApi({ store: new RecordStore({ dir: c.storeDir, genesis: c.genesis, program: c.programId, staleAfterSeconds: c.staleAfterSeconds }), rules: new RulesSource(c.rulesFile), genesis: c.genesis, program: c.programId, staleAfterSeconds: c.staleAfterSeconds });
+const app = createApp({ auth, upstream: c.upstream, rollupUpstream: c.rollupUpstream, api, programId: c.programId, origins: c.origins, limits: c.limits, trustProxy: c.trustProxy, log: l => console.log(l) });
+app.listen(c.port, c.host, () => console.log(`conclave-server listening on ${c.host}:${c.port} audience=${c.audience} origins=${c.origins.length} record-api=${c.storeDir ? "store configured" : "no store"} (upstream and secret loaded, not printed)`));

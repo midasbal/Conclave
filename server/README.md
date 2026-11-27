@@ -60,6 +60,18 @@ Private reads through the TEE (a player's sealed strategy) go from the client st
 
 The upstream URL (which may embed a provider key) and the token secret come from the environment or `*_FILE` paths (`server/env.example`), never from the repo and never from a client-visible URL. The server never echoes the upstream URL (failures return a bare 502), never forwards the player's `Authorization` header, and per-pubkey token buckets protect the key from one player. `CONCLAVE_RPC_UPSTREAM` is the only place a key lives.
 
+## The record API (`/v1`)
+
+A second, public surface on the same server: the read-only record API the Phase 7 app consumes, served from the store the capture loop writes. It is open, holds no token and no secret, and never reads the chain except one finalized slot for `/v1/status`. Contract, endpoints, proofs, caching and the single-instance limit of level 2's challenges: [`docs/API.md`](../docs/API.md). The contract itself is `src/api/schema.mjs`; `openapi.v1.json` is generated from it (`node bin/gen-openapi.mjs`) and a test fails if they differ.
+
+| Route | Access |
+|---|---|
+| `GET /v1/leaderboard`, `/v1/seasons`, `/v1/seasons/:season`, `/v1/strategies/:id`, `/v1/wallets/:pubkey`, `/v1/commitments/:commitment`, `/v1/legacy`, `/v1/status`, `/v1/proofs`, `/v1/openapi.json` | open, cacheable |
+| `POST /v1/proofs/recorded`, `/totals`, `/wallet/challenges`, `/wallet/verify` | open, never cached |
+| `POST /v1/proofs/code` | always refused (422): level 4 never reaches the server |
+
+It imports the verifier's code, so `cd verifier && npm ci` must have been run. `ajv` is a dev dependency, used only by the tests.
+
 ## Tests
 
 `cd server && npm test` (CI job `server-and-auth`): 20 tests with real ed25519 keys and real HMAC. They cover the exact message, signature rejection (wrong key, altered message, wrong pubkey, foreign protocol), replay including two concurrent redemptions, challenge expiry, session expiry with the client re-signing, forged and edited tokens, wrong audience, identity-from-token, gating, credentials-in-URL refusal, method allowlists, per-pubkey and per-address rate limits, upstream-key hygiene in responses and logs, headers and CORS, and a static scan that fails the build if any file puts a credential in a URL or commits key material. `server/test/live.mjs` is the manual live check with real player keys against devnet and the real TEE.

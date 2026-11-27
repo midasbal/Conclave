@@ -3,6 +3,16 @@
   "private": true,
   "type": "module",
   "description": "Auth and access layer: wallet-signed expiring session tokens, gated player endpoints, keyed RPC proxy with per-pubkey rate limits",
-  "scripts": { "test": "node --test \"test/*.test.mjs\"", "start": "node bin/serve.mjs" },
-  "dependencies": { "@solana/web3.js": "^1.99.0", "bs58": "^6.0.0", "tweetnacl": "^1.0.3" }
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "start": "node bin/serve.mjs"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
+  }
 }

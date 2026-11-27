@@ -3,7 +3,7 @@
  "version": 1,
  "genesis": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
  "program": "HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne",
- "takenAt": "2026-11-27T04:35:41.167Z",
+ "takenAt": "2026-11-27T05:23:09.886Z",
  "ledger": [
   {
    "n": 1,
@@ -429,6 +429,17 @@
    "info": true,
    "prev": "edef21a6d5bf85c1f3359e8bfd979b10e135254a11acc6af46b4ce143d584eb3",
    "hash": "1081eb8dd62a4cd7134d6aefb416d0ad208dc387fbef972e404f9a8042b1a787"
+  },
+  {
+   "n": 37,
+   "at": "2026-11-27T05:17:33.078Z",
+   "type": "start",
+   "pid": 2433429,
+   "genesis": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+   "program": "HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne",
+   "sweepMs": 900000,
+   "prev": "1081eb8dd62a4cd7134d6aefb416d0ad208dc387fbef972e404f9a8042b1a787",
+   "hash": "0c7b99b7e2a560a4a988e1f2f96d033e5c5ca975fc4c0051bbcb215f63902804"
   }
  ],
  "copies": {
@@ -833,7 +844,13 @@
     ],
     "newest": "3dbscaR7CNgQC4x3aSHgD8XQ4dAr1VXxpRNKAzLojUcmqCfhae3HEjdMRJoPCLp6b4XB2hzy9eJoXWJ7AEonbaHZ"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "5WQzTNfy94g4vah3ecp3z9FrBuXf72Wsy19w54TRggpzQec9Z9T5QfTt1bP3wasKWYqj17ETPgWWciHYvVaENWjw",
+    "slot": 526677530,
+    "time": 1795736738
+   }
   },
   "2ntkxH7kZpp3XorhARfa2in923BiEM1KiUH3gn3HZZBH": {
    "history": {
@@ -867,7 +884,13 @@
     ],
     "newest": "4sJVot8pmkyVW7aBvEpooWCbe6aJsnuF1X6b2sDihTnLhXcn9EYzpcKLsVhBRVnJ8tL8aXsVgGBWMgTytM9W3SNU"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "3mwrNLWCpBkzSdA3Lf7bcmKWGVdiRfdW8Hja4trPYk6CwbpWsnb4FJXRpGq1HawzFdTaRnYgQMyf8sUqXXDRC9ap",
+    "slot": 526659692,
+    "time": 1795732447
+   }
   },
   "2tZYXgcwgf7XKJp2byE1CRYxu3mpy6i7GZJtfqkT3CQX": {
    "history": {
@@ -903,7 +926,13 @@
     ],
     "newest": "4YYCLrT8VBfxqpGsp2Mwq75N9T81KknRLbQh6LqU6EXnRCWd2Mp415gEpi6dcbmJ9QccWgFthtW3HPVSMdgDAm6o"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "igvFEEDsezF5kv73R867fh6JYVJAeV6zUJqxEKzNEcSetw8wpCmRLMQ1Uhxsc8uLdVFXLaskgoetqhM4NNaDMsJ",
+    "slot": 526658996,
+    "time": 1795732278
+   }
   },
   "2xs71hvNnQEzwhp9AAKTrbzQ5ERiRFrcFDoVpvzbEBFQ": {
    "history": {
@@ -938,7 +967,13 @@
     ],
     "newest": "5Bwivr23aP3zqcxyZ3XZSLvuDD98BNqJcJTUo5LLEkd4bqRifn9zmS4pAKMzEuzqhH5AwyiKG76vSqh8Abqi5Lcx"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "4wFoW4eyBckwwqBFSo3qPLHDfSDVshoeJkWekgYJdJCvtMRTMgRtteoHLkUFbPo2Mvb8S44Zt2r6pS1W4T5hdRmQ",
+    "slot": 526676422,
+    "time": 1795736472
+   }
   },
   "3nqH6jpxDxGAAgnkTGUmo1cNWQPRWmpXd23VEh2Avc7A": {
    "history": {
@@ -972,7 +1007,10 @@
     ],
     "newest": "2RESCH4AraBEwTy13wZpBiJCYoXvfz2p9hvKU9EaS8LtTTYZG6LfZL57t3bU1z6GCvzhLpcDbS2ceWBcPUVcjRCr"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": null
+   }
   },
   "4QLc2SgUrK6CwJZd9fy3waBMWJUquSrWWapXKAyqXDVp": {
    "history": {
@@ -1006,7 +1044,10 @@
     ],
     "newest": "5A7dpHusfYSjfaSbRRGtmyrTAJRZQWFnnaUUvLqMfnxz7K9DPm5UFuV3Sdkdpk7MQf4RikDHVYJYndgQzJw58uuY"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": null
+   }
   },
   "56f3ZoG2um2ipZtbSC1YnjFoEa5LRgcqSHKowqz2wqrW": {
    "history": {
@@ -1041,7 +1082,13 @@
     ],
     "newest": "3w41c8F6DHXuvtd42irS8Hy2eWJDKj1jVWTgqvKJ7FG3tkBLBTRhtGGLGBx7qsiZQ77LuEXExVmjLbxUP3GDPsNm"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "5V9Vp8j83EZc97g5Rp8G2qXsmvYWrvKRDPNinnfSw4rDBszFnLWC3ZRhug3tZuwzwXWMcnQbkAL48kLcKiqXFDJo",
+    "slot": 526661162,
+    "time": 1795732800
+   }
   },
   "67aSscP7bCSeLpubkJ7xg7Ys1iySqLtTZZq9rpeZThDR": {
    "history": {
@@ -1076,7 +1123,13 @@
     ],
     "newest": "5T38ZfZ7f1jfdtN1yobr336vYhncpVLkdo5os9vbypBNTcaeeAwRjb21JtMaEfpukT32LpN1ghNg5uokaYfbcUp3"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "EAuSfU2gXGzUhakStvgmeCeiXdnmhzguorJj42C3BsFwGQRgA8JTBcxWgf1J14UbnrJBw2B4H4GQ7sj6n9JB3sG",
+    "slot": 526677332,
+    "time": 1795736691
+   }
   },
   "77VLvLeYMvsW6M8nV5aopBh2ufs6TdLe3Qo3wToiZNgh": {
    "history": {
@@ -1110,7 +1163,10 @@
     ],
     "newest": "2yt8mKJ2MrW4MdLuRGnErD8jkegYtqecso2JMA4RBt7zQdLSiZjZVPGQCtk35u5YDBwNUoZpfKqJJJaC9wfiBrWv"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": null
+   }
   },
   "7sZDgZU2szMkumzSioC7XBGjRXg8avoVbeYJsxAwfNzC": {
    "history": {
@@ -1144,7 +1200,10 @@
     ],
     "newest": "3Ppk6nGpziYn1boQyy6sLEa6xcU5SDMCoTfPcQUxkZpdeyR2n7itFiNmWhQoEFWNPwadhWnw6DhSe3BB1WVCNAvD"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": null
+   }
   },
   "84ZYVJFoyvHF3bSg6HLGg3quAjgN1q52W7GWyUqeBqNz": {
    "history": {
@@ -1179,7 +1238,13 @@
     ],
     "newest": "4mT14sEoHA4toJiR7Nms9GR628JNnxuYbij9q3SfaYZSc7wmei7Aqntmb1Auue2UA4KhSJ8eKfYTDV33ibUaEmbh"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "X3LM2jxFgXMPGcLhGKzFoiVawaRejN978seA15RnRD7d54Z2UKZtu1bhhMbypeZoxSQtZoBkFepqGjv2NXgYyLN",
+    "slot": 526663020,
+    "time": 1795733247
+   }
   },
   "8LQdjtCzJnmeDbXgHmCpLARgJdYeKtvoS8eVuAVSa5Sn": {
    "history": {
@@ -1220,7 +1285,13 @@
      "validator": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
      "seenAt": "2026-11-27T01:05:45.270Z"
     }
-   ]
+   ],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "62KSMZddLMqdevTBABaoM1aC3x1n6TLzrcMfsSvvCoPW1KX19MaTufSuwbSf1MuSuNBX5v2JC8gWnfXcQxjJKSUC",
+    "slot": 526696932,
+    "time": 1795741401
+   }
   },
   "AU4t2hHqrutNKnj4979Yym7fdJzoQhPT2aDyWW9QKzg8": {
    "history": {
@@ -1254,7 +1325,13 @@
     ],
     "newest": "5oAPPMrKWPG11tpKhHwYhmfkV9JLQ74ncE5Ydd51zxRT1fdPjAjKf86thEogVNfyvs2PRdjcXKRWQnMHza1iXmSk"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "exn7Ey37XGxakEdJKWiWKVGstzrWjAab9AE45uyVynodp5pgEsi7WJQUhAXx8BY3knCNQWwghjJPUTshf6A5Az6",
+    "slot": 526657678,
+    "time": 1795731959
+   }
   },
   "AfZKU5V5NumMMJUttnNfDJVaE7fe8rmmpzAyELtPNYwY": {
    "history": {
@@ -1289,7 +1366,13 @@
     ],
     "newest": "46gDikF1gVF2assRfSZUH95LBb4VH94DtWRjGu6x7ERC2iroQfjiFuXHy2gyrWjcty7URmUYK35k9iGVDmfzyTda"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "47GNEfGFnk6wiFzUH3C8RvW2E5t7PayEYdhhLymm7pTSCy56B3rXEhQJjsjgp1fuivCThykFNfVr8Nc8qWYa14bu",
+    "slot": 526661570,
+    "time": 1795732899
+   }
   },
   "AzPfEVN7j9y52cfZ71NjKukSb71Fieub4QTwUnF5pSST": {
    "history": {
@@ -1324,7 +1407,13 @@
     ],
     "newest": "2TcrL7CD38r8rusDTntw6dwcfSk27wtybEiK73CUrVACobMJMBYRH6xs3CKm15ERMS5fCAS5XtuzMq34UPPsjxDc"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "4KXUhRY6R45BDdFhcSckxwEr1h9TBae4JRoEn7eqNqMaNujibaqXcr1yRVPHj3bsJWrRrc24FFFDKbaR2X7vqaNF",
+    "slot": 526679272,
+    "time": 1795737157
+   }
   },
   "B4tfw5kerB4mErcDSryAzR8ofDwwgxLeYwRuD88ELVwx": {
    "history": {
@@ -1365,7 +1454,13 @@
      "validator": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
      "seenAt": "2026-11-27T04:32:52.360Z"
     }
-   ]
+   ],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "23zQGpeY2i3V51Vjmb9HsUvDH2693KykwEU5KrW85TZ6tg1Ad6gGb3ECcWdasD9jdby8ecTyMGaFzDTqjTdchBvp",
+    "slot": 526749136,
+    "time": 1795753955
+   }
   },
   "BMjiPMwGz63MgdJnNqEs8UQsAYcYY9pJLWVpUfy9TJkh": {
    "history": {
@@ -1400,7 +1495,13 @@
     ],
     "newest": "4K3gR4HzkodBRWsT8KQmejScZMas53z3cN4vAitVeEQysZS7BwLnzfjcWVk6Xx19B88gwPwMpkKieFQZQm5YmWhQ"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "3JdYTK24GtQsEWVd6YpXPBGcNoUeWaW4jK4dFbfJo7F1SQBQaZgDF7GGh4nU8DbBvHYPVWa1iLucupZxTCCFvzYp",
+    "slot": 526676936,
+    "time": 1795736595
+   }
   },
   "ByrFNg4AXs5ooSEu5PGR6MHLKUAKSzpUUCvHtxxkz4Hh": {
    "history": {
@@ -1436,7 +1537,13 @@
     ],
     "newest": "4Bv5RshpBhiassKtdh5PsVdm925TGy4E1fdNr84i7bY34dHtxHoqP4g121Mc6gxNxuRdTHxSKqMU5DCwDWjeS1nd"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "Mfyc5LmAXRiztLpNt2KRb7zGXhEx6AC2TWqxE4VqhB2AUDCPfThimi1hYneRsmVtgJPUY4YHagY98oaQT1vcELb",
+    "slot": 526654423,
+    "time": 1795731171
+   }
   },
   "C296RpaXQ3jUKiU5fGcnh9MgnvbYBFuAhYgf58UCpdkG": {
    "history": {
@@ -1471,7 +1578,13 @@
     ],
     "newest": "39Scgzx7oPAskpkNZXMhKGksJoRq3XejS183RVmTj6uZZ3zSp29eDKfNLNjJCumEnsV79Zr7Txfs5JXKbPEgdLaq"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "R2SLdLQhSVLbYgW8HYS2VY3vfh451cGkAv6TaDTt2xmDNNigsphfAJu7qov5B3tLz9bCsCBZMPTCMikq91PbDfA",
+    "slot": 526660663,
+    "time": 1795732680
+   }
   },
   "CTLKE9XyL1KrZrxaPE3cerDNDAzftgfTFrayJ7nU5pWh": {
    "history": {
@@ -1505,7 +1618,13 @@
     ],
     "newest": "2Eu8AzRWB8vRksY5HyvAmnNCnhLx1kQYkxn15EDjY3KvNEfrKmxxdmh6nWDo9WtdmCsS8Q1erEdVwCtpFcDsZteN"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "4vGM1xBsGmGeXZob3ntPw5mtE3TsxWqoV8otVpw9N7v4p6B9DNGxiXpb39cx9kap95SexMpkJDypR9u3onBw2r5x",
+    "slot": 526673583,
+    "time": 1795735790
+   }
   },
   "EGX3Gfoc4jyMCLvtbreEEddJXc6onDi265CYyqwyuDFR": {
    "history": {
@@ -1540,7 +1659,13 @@
     ],
     "newest": "54PeCy5vAkhzuksishq2dwqNNVEUhLPieDQWQsYmkv8QLCpq667fEs5tgX5WCKs4gxAL4GY25FeLo54GUwsbzpEo"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "VM8XXr3nxi2tkasufi7Ksfjqb2woiwSJomSx1VJcQU9bPPKqQiHSr3EzmA9th3yukfSdDp4aC7HuC7zUPDvUgRJ",
+    "slot": 526661754,
+    "time": 1795732944
+   }
   },
   "FzVQyAa21TdENbe8G28fsGsj1BSmwGmLHdfshXZa4fyv": {
    "history": {
@@ -1575,7 +1700,13 @@
     ],
     "newest": "ZukbomGpvaTAxNeW1PUV5RkTJN3H8HfJREzWihUMVXzojmMuiJhxEbVwuXiGd5zPjUQcfgFNVUoufjhuZZueTrz"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "4jxdjWpaZaXTwsVTK2e4HJSwjYTipcik8kUuFWeW3Yz9d8mtUje9UFdSFnD9MJRH87PAoZyiGpodAjjGx4qo9nwH",
+    "slot": 526662298,
+    "time": 1795733074
+   }
   },
   "GorjaNsX2BSGNU86xPdnXUCqd5kXz2s8cgcm1FoxnPtF": {
    "history": {
@@ -1610,7 +1741,13 @@
     ],
     "newest": "23kvsJUCd4p28Qxmw7aka5q8WZrXU8MXSpVLE3WiZ2HzJ6UAtADssF4zosxcqGbzy1WMXtqQUcHd5c5GuwA2bSv3"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "4c1J6xLb6J1FjvUUJ6ht5AWLXoZ7eZnyeymGXKakqRz44g3X5KyefTxPcSSCEETeHw5YTUtbvkVWhffWMaJe5xGV",
+    "slot": 526678104,
+    "time": 1795736877
+   }
   },
   "H8FhuLz6J3j3oYGoPjZhtgXRo4jE4aft1NfQV1nUtoyU": {
    "history": {
@@ -1645,7 +1782,13 @@
     ],
     "newest": "YhMYTHgvpHu7Yg7qhNZw6LNSAp8iDmBiiUi6f8WSSdSRgxxWwfQd4HjpJ595J8mSfJT3hdpMXxvTMJfgX3DUw25"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "5SgmhanRnmi1xkQRaftMTUGxaPCDtedVY7m91mLC6fX4BhPdX942b46FAxnFov3ugPoU6nje5WU5YSRQuoCrEAZ8",
+    "slot": 526662696,
+    "time": 1795733170
+   }
   },
   "HrPWnBR5DNmBZ3g6oxk41uyPoRwKXW4PfGReEHSULZFi": {
    "history": {
@@ -1680,7 +1823,13 @@
     ],
     "newest": "5HEw9SDE949bQ2jDEbZaLpRozNjMwTRVUu5QJgjoWPxmSPgGhHQvzVubS9QaAer3XNgkiL3nmNcaeb3Yi4nXLrXX"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "3SuSCE1VKzLTYkTThfH4heeUXNYEvA2gw3xSfRQJSLRXLZkEJEFdCfVpN2npmeEdteYAbmLizUmWornLTQKt8Vpr",
+    "slot": 526678810,
+    "time": 1795737046
+   }
   },
   "J55z2hFPweRWP9kXik1x4HrCgfHhYWo61aWgQkFUoNsc": {
    "history": {
@@ -1714,7 +1863,13 @@
     ],
     "newest": "5TCs1vgVuVjLnVCYQT4ytotRZojVmiGhQSVG55rSazeWZPr7s4nFc6rntC9MXMPc7uPN2dREhhmkW6T4rxRLTrox"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "N7vxPZ8XZA96fqFQtSACkKxzHVx94oz4tarceWpyux8bk8fs91zrRCzupPi9u32YQNMkxvwVJFix6drqP79HaEy",
+    "slot": 526675078,
+    "time": 1795736149
+   }
   },
   "JXxQEoZDYatAQASi9ZFPPbLEEHHXhiwWrTxFB3X9gSV": {
    "history": {
@@ -1748,7 +1903,10 @@
     ],
     "newest": "4UxwkZi83JYPkMN34FZVcaBALN9ZkY7nGfbGbJFGtX3pkmZ9voiH4NJf17ndufF55tzEpZfYvf9QPXmYfse55NW5"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": null
+   }
   },
   "ZyWARhRnH38zFv6aMs7VBmHYKwY8BLF42MLNWbLnECa": {
    "history": {
@@ -1783,7 +1941,13 @@
     ],
     "newest": "3kVzACEeGSS6CcQhPoqaT8x8FHEw5kgXXAvu4EDECj1krHeuoGZaMD7oEr5f9epawT18YCv1wiWc81HWHk3nxp9v"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": "7UF5qBHPKLjtyHnM4KQrYhrSkFr4TfB42663zkWL7etX",
+    "signature": "3keXuniK38tt3cZGJT4K6ccTqT9CWysnan8iQ3MTCM3KPoVwtn5xaUEkidsppPbWTFxZz2sN6f3X93zbhERzGsX8",
+    "slot": 526678488,
+    "time": 1795736969
+   }
   },
   "nhq5KKDGUhMGFeDq1g3j2pVYHQrm3npWVj5u9xsxU1U": {
    "history": {
@@ -1817,8 +1981,11 @@
     ],
     "newest": "4XpQQbZUmvcL6eMWPmNQgjRUaLvF6JKsgApyB6BJZzTsZpngCpAtwz5nGuagCjYMJH6GXNnpwoBhUUQr2rzC9d8N"
    },
-   "delegationRecords": []
+   "delegationRecords": [],
+   "pool": {
+    "mint": null
+   }
   }
  },
- "digest": "b904870f1d4175b3f492948b2dba95b855ff20d978bda0276041728315eac749"
+ "digest": "27891a5144a2a61e2cb0ceee0a851e30b142af4cde27043d99d71bf586a2ee9e"
 }

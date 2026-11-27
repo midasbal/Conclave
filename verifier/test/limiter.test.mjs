@@ -30,3 +30,8 @@ test("every read is at finalized commitment", async () => {
   const s = await server((n, b, res) => ok(res, b.method === "getProgramAccounts" ? { context: { slot: 5 }, value: [] } : { context: { slot: 5 }, value: null })); const src = rpcSource(s.url, { pause: 10 }); await src.receiptsOwnedBy("P"); await src.account("A"); await src.signatures("A"); await src.transaction("S"); await s.close();
   for (const x of s.seen) assert.equal(x.params.find(p => p && typeof p === "object")?.commitment, "finalized", x.method);
 });
+
+test("many accounts are read in requests of at most 100, in order, with null for one that does not exist", async () => {
+  const s = await server((n, b, res) => ok(res, { context: { slot: 9 }, value: b.params[0].map((a, i) => a.endsWith("7") ? null : { owner: "O", lamports: 1, data: ["AAAA", "base64"] }) })); const src = rpcSource(s.url, { pause: 5 }); const addrs = Array.from({ length: 250 }, (_, i) => "addr" + i);
+  const got = await src.accounts(addrs); await s.close(); assert.deepEqual(s.seen.map(x => x.params[0].length), [100, 100, 50]); assert.equal(got.length, 250); assert.equal(got[7], null); assert.equal(got[8].slot, 9); assert.ok(s.seen.every(x => x.method === "getMultipleAccounts" && x.params[1].commitment === "finalized"));
+});
