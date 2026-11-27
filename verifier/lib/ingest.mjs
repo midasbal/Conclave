@@ -49,11 +49,12 @@ export class Ingest {
     state.cycles = (state.cycles ?? 0) + 1;
     try {
       // a first copy whose ledger line could not be written (the disk refused it) gets its line now, not only at the next start
-      store.reconcileLedger();
-      await this.verifyCluster();
+      this.phase = null; store.reconcileLedger();
+      this.phase = "checking the RPC's cluster"; await this.verifyCluster();
+      this.phase = "listing the receipts";
       for (const owner of [program, DELEGATION_PROGRAM_ID]) { const got = await source.receiptsOwnedBy(owner); if (got.contextSlot != null) slots.push(got.contextSlot); for (const a of got) listed.set(a.address, a); }
       known = [...new Set([...Object.keys(state.fingerprints), ...archive.addresses(), ...listed.keys()])].sort();
-      const failures = []; let inARow = 0;
+      this.phase = "processing the receipts"; const failures = []; let inARow = 0;
       for (const address of known) {
         try {
           let account = listed.get(address);
@@ -80,12 +81,14 @@ export class Ingest {
       const ids = [...new Set(descriptors.filter(d => d.kind === "season").flatMap(d => d.season.entries.map(e => e.strategyId)))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
       // a read that failed is remembered and asked again until it succeeds: this cycle has already counted its sweep, so without this the next poll would skip the read and report success
       state.registries ??= {}; const want = sweepDue ? ids : ids.filter(id => !state.registries[id] || state.registryRetry?.includes(id));
+      this.phase = "reading the strategy registries";
       if (want.length) {
         try { Object.assign(state.registries, await readRegistryStatuses(source, program, want, { strict: true })); state.registriesAt = { at, slot }; delete state.registryRetry; store.writeState(state); }
         catch (e) { state.registryRetry = want; store.writeState(state); throw e; }
       }
       // anything that could not be read: say so and publish nothing. Every first copy this cycle could save has been saved, and the registries above are not asked for again
       if (failures.length) throw new Error(failures.length === 1 ? failures[0] : `${failures[0]} (and ${failures.length - 1} more read failure(s) in this cycle)`);
+      this.phase = "writing the record";
       const registries = Object.fromEntries(ids.map(id => [id, state.registries[id]]).filter(([, v]) => v));
       const record = assembleRecord(descriptors, { archive, genesis: this.genesis, program, now: this.now, source, ctx, currentTo: { slot, at }, registries, registriesAt: state.registriesAt ?? null,
         extra: { service: { cycle: state.cycles, lastSweep: state.lastSweep, sweepIntervalMs: this.sweepMs, thisCycle: { sweep: sweepDue, processed, skipped, lookedUp: looked, ms: Date.now() - t0 } } } });
@@ -102,7 +105,7 @@ export class Ingest {
 
   /** records why a cycle failed. Each write is attempted on its own: a disk that refuses one must not keep the reason out of the other. If the status cannot be written either, only its age can tell (and the free-space check) */
   failed(e, { at, processed, skipped }) {
-    this.error = { at, message: e.message, rateLimited: e.name === "RateLimited" ? e.retryAt : null };
+    this.error = { at, message: e.message, rateLimited: e.name === "RateLimited" ? e.retryAt : null, phase: this.phase };
     try { this.store.writeState(this.state); } catch (w) { this.log(`could not save the state after a failed cycle: ${w.message}`); }
     try { this.writeStatus({ state: e.name === "RateLimited" ? "rate-limited" : "degraded", at, processed, skipped }); } catch (w) { this.log(`could not write the status after a failed cycle: ${w.message}`); }
   }
@@ -135,7 +138,7 @@ export class Ingest {
     while (!signal?.aborted) {
       let wait = pollMs;
       try { const r = await this.cycle(); failures = 0; onCycle(r); }
-      catch (e) { failures++; if (once) throw e; if (e.name === "RateLimited") { wait = Math.max(pollMs, e.retryAt - Date.now() + 1000); this.log(`rate limited: waiting ${Math.round(wait / 1000)} s`); } else { wait = Math.min(5 * 60_000, pollMs * 2 ** Math.min(failures, 5)); this.log(`cycle failed (${e.message}); retrying in ${Math.round(wait / 1000)} s`); } }
+      catch (e) { failures++; if (once) throw e; if (e.name === "RateLimited") { wait = Math.max(pollMs, e.retryAt - Date.now() + 1000); this.log(`rate limited: waiting ${Math.round(wait / 1000)} s (${e.message})`); } else { wait = Math.min(5 * 60_000, pollMs * 2 ** Math.min(failures, 5)); this.log(`cycle failed (${e.message}); retrying in ${Math.round(wait / 1000)} s`); } }
       if (once) break; await abortableSleep(wait, signal);
     }
   }

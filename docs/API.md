@@ -45,6 +45,8 @@ Every `GET` response is JSON with `apiVersion`, `asOf` (the slot the record is c
 
 Errors are `{ "apiVersion": "v1", "error": { "type": "...", "message": "..." } }`. `503` means there is no usable record (`store_empty`, `store_format`, `store_unreadable`) or the rules file is unusable; `/v1/status` still answers and says why.
 
+**Failure text in public answers.** `/v1/status` and `/healthz` name the step that failed and a generic reason, for example `reading transaction history (receipt <address>): the RPC answered HTTP 503` or `writing the record: the disk is full`. The text is built from fixed phrases plus at most a receipt address, an HTTP status number and a count (`verifier/lib/public_error.mjs`), so file paths, host names and an RPC's own error text cannot appear. The full message is in the service log, and in `status.json` on the server's own disk. Receipt flags are not rewritten: they describe public chain data.
+
 ## Caching
 
 The data is public and changes at most once per capture-loop poll, so it is shareable and revalidated:

@@ -2,6 +2,7 @@
 // (or an explicit "unknown"), a validator is always marked as a trust input, a strategy is always returned with the sealing-disclosure notice, and no function reads a strategy's secrets because the record holds none.
 import { evaluate, NAME as POLICY_NAME, VERSION as POLICY_VERSION } from "../../../verifier/policy/official.mjs";
 import { NOTICE, COMMITMENT_CAVEAT, RANKING_BASIS } from "./notices.mjs";
+import { publicStatusError, publicBackupAlarm } from "../../../verifier/lib/public_error.mjs";
 
 export const asOf = r => ({ slot: r.currentTo?.slot ?? null, builtAt: r.builtAt, recordVersion: r.version, archive: { copies: r.archive.copies, sha256: r.archive.sha256, recordSha256: r.archive.recordSha256 }, ledgerHead: r.ledger?.head ?? null });
 const head = (r, permalink, notices) => ({ apiVersion: "v1", asOf: asOf(r), permalink, notices });
@@ -72,8 +73,8 @@ export function status({ record, st, problem, genesis, program, staleAfterSecond
   return { apiVersion: "v1", permalink: "/v1/status", notices: [],
     store: { configured: problem !== "store_not_configured", usable: !!record, problem: problem ?? null, genesis: record?.genesis ?? genesis ?? null, program: record?.program ?? program ?? null, recordVersion: record?.version ?? null, builtAt: record?.builtAt ?? null, ageSeconds: age, stale: age == null ? null : age > staleAfterSeconds, staleAfterSeconds,
       currentTo: record?.currentTo ? { slot: record.currentTo.slot ?? null, at: record.currentTo.at } : null, lastSweep: record?.service?.lastSweep ? { at: record.service.lastSweep.at, slot: record.service.lastSweep.slot ?? null } : null, nextSweepAt: st?.nextSweepAt ?? null,
-      service: st ? { state: st.state, updatedAt: st.updatedAt, cycles: st.cycles ?? 0, lastError: st.lastError ? { at: st.lastError.at, message: st.lastError.message, rateLimitedUntil: st.lastError.rateLimited ?? null } : null } : null,
+      service: st ? { state: st.state, updatedAt: st.updatedAt, cycles: st.cycles ?? 0, lastError: st.lastError ? { at: st.lastError.at, message: publicStatusError(st.lastError), rateLimitedUntil: st.lastError.rateLimited ?? null } : null } : null,
       counts: record ? { final: record.counts.final, provisional: record.counts.provisional, legacy: record.counts.legacy, empty: record.counts.empty, rejected: record.counts.rejected } : null, archive: record ? { copies: record.archive.copies, sha256: record.archive.sha256, recordSha256: record.archive.recordSha256 } : null, ledger: record?.ledger ? { entries: record.ledger.entries, head: record.ledger.head } : null,
-      alarms: { record: (record?.seasons ?? []).flatMap(s => s.flags.filter(f => !f.info).map(f => ({ season: s.season, kind: f.kind, detail: f.detail }))), backup: (st?.backup?.alarms ?? []).map(a => ({ kind: a.kind, address: a.address ?? null, detail: a.detail })) }, backupConfigured: st?.backup ? !!st.backup.configured : null },
+      alarms: { record: (record?.seasons ?? []).flatMap(s => s.flags.filter(f => !f.info).map(f => ({ season: s.season, kind: f.kind, detail: f.detail }))), backup: (st?.backup?.alarms ?? []).map(publicBackupAlarm) }, backupConfigured: st?.backup ? !!st.backup.configured : null },
     chain: { currentSlot: chain.currentSlot ?? null, lagSlots: sl, checkedAt: chain.checkedAt ?? null, error: chain.error ?? null }, rules: { configured: rulesConfigured } };
 }

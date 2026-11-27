@@ -32,11 +32,11 @@ async function rig({ backupDir = null, publishTo = null, hidden = [], dir = tmp(
     close: async () => { ing.close(); await new Promise(x => app.close(x)); } };
   return r;
 }
-/** degraded, with the reason, in the status, in /v1/status and as the one failing health check */
-async function assertDegraded(r, reason) {
+/** degraded: the full reason in status.json on the server's disk; in public, the step and a generic reason (lib/public_error.mjs), in /v1/status and as the one failing health check */
+async function assertDegraded(r, reason, shown) {
   const st = r.f.status(); assert.equal(st.state, "degraded"); assert.match(st.lastError.message, reason); assert.equal(st.lastError.rateLimited, null);
-  const h = await r.failing(); assert.equal(h.status, 503); assert.deepEqual(h.bad, ["no-error-or-alarm"], "caught by the error itself, not by staleness"); assert.match(h.detail, /last cycle failed/);
-  const s = (await r.get("/v1/status")).body; assert.equal(s.store.usable, true); assert.equal(s.store.stale, false); assert.equal(s.store.service.state, "degraded"); assert.match(s.store.service.lastError.message, reason);
+  const h = await r.failing(); assert.equal(h.status, 503); assert.deepEqual(h.bad, ["no-error-or-alarm"], "caught by the error itself, not by staleness"); assert.match(h.detail, /^last cycle failed: /); assert.match(h.detail.replace(/^last cycle failed: /, ""), shown);
+  const s = (await r.get("/v1/status")).body; assert.equal(s.store.usable, true); assert.equal(s.store.stale, false); assert.equal(s.store.service.state, "degraded"); assert.match(s.store.service.lastError.message, shown);
 }
 const assertHealthy = async r => { assert.equal(r.f.status().state, "ok"); assert.equal(r.f.status().lastError, null); assert.equal((await r.failing()).status, 200); };
 const recoveredSeason = async r => { const s = (await r.season()).body; const text = JSON.stringify(s); assert.equal((await r.season()).status, 200); assert.ok(text.includes(TARGET.validator.key), "the validator is back"); const rec = r.f.record().seasons.find(x => x.address === ADDR); assert.equal(rec.validator.status, "observed"); assert.equal(rec.stakeToken.mint, TARGET.stakeToken.mint); assert.equal(rec.history.problem, null); };
@@ -46,7 +46,7 @@ test("HISTORY, a new receipt: the first copy is saved although the read fails, t
   const r = await rig({ hidden: [ADDR] }); try {
     await r.cycle(); await assertHealthy(r); const before = r.recordBytes(); const served = await r.served(); r.hide.clear();
     r.fault.signatures = a => a === ADDR ? http503("getSignaturesForAddress")() : undefined;
-    await assert.rejects(() => r.cycle(), /reading the transaction history of/); await assertDegraded(r, /^reading the transaction history of \w+: getSignaturesForAddress on rpc\.example: HTTP 503$/);
+    await assert.rejects(() => r.cycle(), /reading the transaction history of/); await assertDegraded(r, /^reading the transaction history of \w+: getSignaturesForAddress on rpc\.example: HTTP 503$/, /^reading transaction history \(receipt \w+\): the RPC answered HTTP 503$/);
     assert.ok(fs.existsSync(r.firstCopy(ADDR)), "THE FIRST COPY IS ON DISK"); assert.equal(r.onLedger(ADDR), 1);
     assert.ok(r.recordBytes().equals(before), "the record is byte for byte the last good one"); assert.deepEqual(await r.served(), served); assert.equal((await r.season()).status, 404, "the new season is not published without its history");
     await assert.rejects(() => r.cycle(), /transaction history/); assert.ok(r.asked.signatures.includes(ADDR), "an ordinary poll asks for it again although the bytes did not change"); assert.equal(r.f.status().state, "degraded");
@@ -57,7 +57,7 @@ test("HISTORY, a known receipt on a sweep: what was already read is kept, nothin
   const r = await rig(); try {
     await r.cycle(); const before = r.recordBytes(); const season = (await r.season()).body; const history = r.observed(ADDR).history; assert.ok(history.events.length >= 2);
     r.fault.signatures = a => a === ADDR ? http503("getSignaturesForAddress")() : undefined;
-    await assert.rejects(() => r.cycle({ sweep: true }), /transaction history/); await assertDegraded(r, /reading the transaction history of/);
+    await assert.rejects(() => r.cycle({ sweep: true }), /transaction history/); await assertDegraded(r, /reading the transaction history of/, /^reading transaction history \(receipt \w+\): the RPC answered HTTP 503$/);
     assert.deepEqual(r.observed(ADDR).history, history, "the history already read is untouched"); assert.ok(r.recordBytes().equals(before)); assert.deepEqual((await r.season()).body.history ?? null, season.history ?? null); assert.equal(r.f.record().seasons.find(x => x.address === ADDR).history.problem, null);
     await assert.rejects(() => r.cycle(), /transaction history/); r.fault.signatures = undefined; await r.cycle(); assert.deepEqual(r.asked.signatures.filter(a => a === ADDR), [ADDR], "the one receipt that failed is read again"); await assertHealthy(r); await recoveredSeason(r);
   } finally { await r.close(); }
@@ -75,7 +75,7 @@ test("HISTORY, down for every receipt on an empty store: every first copy is sti
 test("HISTORY, a transaction the node lists and does not serve is a failed read", async () => {
   const r = await rig({ hidden: [ADDR] }); try {
     await r.cycle(); const before = r.recordBytes(); r.hide.clear(); r.fault.transaction = s => s === DELEGATION_TX ? null : undefined;
-    await assert.rejects(() => r.cycle(), /did not serve 1 listed transaction/); await assertDegraded(r, /reading the transaction history of \w+: base did not serve 1 listed transaction\(s\)/); assert.ok(r.recordBytes().equals(before)); assert.ok(fs.existsSync(r.firstCopy(ADDR)));
+    await assert.rejects(() => r.cycle(), /did not serve 1 listed transaction/); await assertDegraded(r, /reading the transaction history of \w+: base did not serve 1 listed transaction\(s\)/, /^reading transaction history \(receipt \w+\): the RPC did not serve a transaction it listed$/); assert.ok(r.recordBytes().equals(before)); assert.ok(fs.existsSync(r.firstCopy(ADDR)));
     r.fault.transaction = undefined; await r.cycle(); await assertHealthy(r); await recoveredSeason(r);
   } finally { await r.close(); }
 });
@@ -84,7 +84,7 @@ test("HISTORY, a transaction the node lists and does not serve is a failed read"
 test("POOL: a read that fails is not published as an unknown token; the last record is kept and served; the next poll retries", async () => {
   const r = await rig({ hidden: [ADDR] }); try {
     await r.cycle(); const before = r.recordBytes(); const served = await r.served(); r.hide.clear(); r.fault.signatures = a => a === POOL ? http503("getSignaturesForAddress")() : undefined;
-    await assert.rejects(() => r.cycle(), /reading the pool's transactions/); await assertDegraded(r, /^reading the pool's transactions for \w+: getSignaturesForAddress on rpc\.example: HTTP 503$/);
+    await assert.rejects(() => r.cycle(), /reading the pool's transactions/); await assertDegraded(r, /^reading the pool's transactions for \w+: getSignaturesForAddress on rpc\.example: HTTP 503$/, /^reading the stake token pool \(receipt \w+\): the RPC answered HTTP 503$/);
     assert.ok(r.recordBytes().equals(before)); assert.deepEqual(await r.served(), served); assert.equal(r.observed(ADDR).pool, undefined, "nothing is remembered about the pool"); assert.ok(fs.existsSync(r.firstCopy(ADDR)));
     await assert.rejects(() => r.cycle(), /pool's transactions/); assert.ok(r.asked.signatures.includes(POOL));
     r.fault.signatures = undefined; await r.cycle(); await assertHealthy(r); await recoveredSeason(r);
@@ -93,7 +93,7 @@ test("POOL: a read that fails is not published as an unknown token; the last rec
 test("POOL: an InitPool transaction the node does not serve is 'not known', never 'there is none'", async () => {
   const r = await rig({ hidden: [ADDR] }); try {
     await r.cycle(); const before = r.recordBytes(); r.hide.clear(); r.fault.transaction = s => s === INITPOOL ? null : undefined;
-    await assert.rejects(() => r.cycle(), /whether it holds an InitPool is not known/); await assertDegraded(r, /reading the pool's transactions for \w+: base did not serve 1 listed transaction\(s\) of the pool/); assert.equal(r.observed(ADDR).pool, undefined); assert.ok(r.recordBytes().equals(before));
+    await assert.rejects(() => r.cycle(), /whether it holds an InitPool is not known/); await assertDegraded(r, /reading the pool's transactions for \w+: base did not serve 1 listed transaction\(s\) of the pool/, /^reading the stake token pool \(receipt \w+\): the RPC did not serve a transaction it listed$/); assert.equal(r.observed(ADDR).pool, undefined); assert.ok(r.recordBytes().equals(before));
     r.fault.transaction = undefined; await r.cycle(); await assertHealthy(r); await recoveredSeason(r);
   } finally { await r.close(); }
 });
@@ -127,7 +127,7 @@ test("RECORD WRITE: a failed write marks the status degraded with the reason; th
   const r = await rig({ hidden: [ADDR] }); try {
     await r.cycle(); const before = r.recordBytes(); const served = await r.served(); r.hide.clear();
     const real = r.ing.store.writeService.bind(r.ing.store); r.ing.store.writeService = (name, v) => { if (name === "record.json") throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" }); return real(name, v); };
-    await assert.rejects(() => r.cycle(), /^Error: writing the record: ENOSPC/); await assertDegraded(r, /^writing the record: ENOSPC: no space left on device/); assert.ok(r.recordBytes().equals(before)); assert.deepEqual(await r.served(), served); assert.ok(fs.existsSync(r.firstCopy(ADDR)));
+    await assert.rejects(() => r.cycle(), /^Error: writing the record: ENOSPC/); await assertDegraded(r, /^writing the record: ENOSPC: no space left on device/, /^writing the record: the disk is full$/); assert.ok(r.recordBytes().equals(before)); assert.deepEqual(await r.served(), served); assert.ok(fs.existsSync(r.firstCopy(ADDR)));
     r.ing.store.writeService = real; await r.cycle(); await assertHealthy(r); await recoveredSeason(r);
   } finally { await r.close(); }
 });
@@ -148,7 +148,7 @@ test("MIRROR: a sync that fails raises the backup alarm health reads; the good r
     const done = await r.cycle(); assert.ok(done.record, "the cycle itself succeeds: the record is right"); const st = r.f.status(); assert.equal(st.state, "backup-alarm"); assert.equal(st.lastError, null);
     assert.deepEqual(st.backup.alarms.map(a => a.kind), ["backup-sync-failed"]); assert.match(st.backup.alarms[0].detail, /the backup mirror could not be synced: E(NOTDIR|EXIST)/);
     const h = await r.failing(); assert.equal(h.status, 503); assert.deepEqual(h.bad, ["no-error-or-alarm"]); assert.match(h.detail, /1 backup alarm/); assert.equal((await r.season()).status, 200, "the new season is served");
-    const api = (await r.get("/v1/status")).body; assert.deepEqual(api.store.alarms.backup.map(a => [a.kind, a.address]), [["backup-sync-failed", null]]); assert.equal(validateAgainst("Status", api), null, "the answer still fits the API's contract");
+    const api = (await r.get("/v1/status")).body; assert.deepEqual(api.store.alarms.backup.map(a => [a.kind, a.address, a.detail]), [["backup-sync-failed", null, "the backup mirror could not be synced: a file could not be read or written"]]); assert.equal(validateAgainst("Status", api), null, "the answer still fits the API's contract");
     await r.cycle(); await r.cycle(); assert.equal(r.f.status().backup.alarms.length, 1, "one alarm, not one per attempt"); assert.equal(readLedger(path.join(r.f.svc, "ledger.jsonl")).entries.filter(e => e.type === "backup-alarm").length, 1, "and one ledger line for the episode");
     fs.rmSync(blocker); const rec = await r.cycle(); assert.equal(rec.sweep, false); assert.equal(rec.processed, 0, "nothing changed on base, and the sync was still retried"); await assertHealthy(r); assert.deepEqual(r.f.status().backup.alarms, []);
     const v = verifyMirror(path.join(backupDir, G, P), G, P, r.root); assert.ok(v.ok, v.problems.join("; "));
@@ -174,7 +174,7 @@ test("MIRROR on a full disk, where the alarm's own ledger line cannot be written
 test("DAMAGED FIRST COPY: the season does not silently vanish from the record: the last record is kept and served, and the status names the damage", async () => {
   const r = await rig(); try {
     await r.cycle(); const before = r.recordBytes(); const good = fs.readFileSync(r.firstCopy(ADDR)); fs.writeFileSync(r.firstCopy(ADDR), "{damaged");
-    await assert.rejects(() => r.cycle({ sweep: true }), /the first copy of \w+ on disk is damaged/); await assertDegraded(r, /^the first copy of \w+ on disk is damaged: the first copy cannot be parsed/); assert.ok(r.recordBytes().equals(before)); assert.equal((await r.season()).status, 200);
+    await assert.rejects(() => r.cycle({ sweep: true }), /the first copy of \w+ on disk is damaged/); await assertDegraded(r, /^the first copy of \w+ on disk is damaged: the first copy cannot be parsed/, /^reading a first final copy \(receipt \w+\): the copy on disk is damaged$/); assert.ok(r.recordBytes().equals(before)); assert.equal((await r.season()).status, 200);
     fs.writeFileSync(r.firstCopy(ADDR), good); await r.cycle(); assert.equal(r.f.status().state, "ok", "publishing resumes"); assert.equal((await r.season()).status, 200);
     assert.deepEqual(r.f.record().seasons.find(x => x.address === ADDR).flags.filter(f => !f.info).map(f => f.kind), ["archive-damaged"], "the flag stays, as every alarm flag does"); assert.equal((await r.failing()).status, 503); assert.match((await r.failing()).detail, /1 receipt flag/);
   } finally { await r.close(); }

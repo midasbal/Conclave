@@ -30,7 +30,7 @@ test("SYNTHETIC: a record older than the stale threshold fails", async () => {
 test("SYNTHETIC: a failed last cycle, a receipt flag, and a backup alarm each fail the check; an informational flag does not", async () => {
   const dir = await make(); const f = storeFiles(dir); const status = path.join(f.svc, "status.json"), record = path.join(f.svc, "record.json");
   const keep = { s: fs.readFileSync(status, "utf8"), r: fs.readFileSync(record, "utf8") }; const reset = () => { fs.writeFileSync(status, keep.s); fs.writeFileSync(record, keep.r); };
-  editJson(status, s => { s.lastError = { at: BUILT_AT, message: "getProgramAccounts on x: HTTP 503" }; }); const e = checker(dir)(); only(e, "no-error-or-alarm"); assert.match(by(e)["no-error-or-alarm"].detail, /last cycle failed: getProgramAccounts/); reset();
+  editJson(status, s => { s.lastError = { at: BUILT_AT, message: "getProgramAccounts on x: HTTP 503" }; }); const e = checker(dir)(); only(e, "no-error-or-alarm"); assert.equal(by(e)["no-error-or-alarm"].detail, "last cycle failed: listing the receipts: the RPC answered HTTP 503"); reset();
   editJson(record, r => { r.seasons[0].flags.push({ kind: "changed-after-final", detail: "x", info: false }); }); const fl = checker(dir)(); only(fl, "no-error-or-alarm"); assert.match(by(fl)["no-error-or-alarm"].detail, /1 receipt flag/); reset();
   editJson(record, r => { r.seasons[0].flags.push({ kind: "bond-released", detail: "x", info: true }); }); assert.equal(checker(dir)().ok, true, "an informational flag is not an alarm"); reset();
   editJson(status, s => { s.backup = { configured: true, alarms: [{ kind: "backup-mismatch" }] }; }); only(checker(dir)(), "no-error-or-alarm");
@@ -44,7 +44,7 @@ test("SYNTHETIC: the ledger check: a changed line, a ledger shorter than status.
   fs.writeFileSync(status, keep.s); const lg = new Ledger(ledger, {}); lg.append({ type: "heartbeat" }); const ahead = checker(dir)(); assert.equal(ahead.ok, true, JSON.stringify(ahead.checks)); assert.match(by(ahead)["ledger-matches-status"].detail, /1 newer line\(s\) not yet in status.json/);
 });
 test("the volume check: too little free space fails, an unreadable volume fails", async () => {
-  const dir = await make(); const low = checker(dir, { statfs: () => ({ bavail: 100n, bsize: 4096n }) })(); only(low, "volume-free-space"); assert.match(by(low)["volume-free-space"].detail, /0 MB free, at least 64 MB/);
+  const dir = await make(); const low = checker(dir, { statfs: () => ({ bavail: 100n, bsize: 4096n }) })(); only(low, "volume-free-space"); assert.equal(by(low)["volume-free-space"].detail, "less than 64 MB free");
   assert.equal(checker(dir, { statfs: () => ({ bavail: 10n ** 9n, bsize: 4096n }) })().ok, true);
   only(checker(dir, { statfs: () => { throw Object.assign(new Error("x"), { code: "EIO" }); } })(), "volume-free-space");
 });
