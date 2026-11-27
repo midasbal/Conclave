@@ -42,7 +42,6 @@ export async function sendTee(url, ixs, signers, { cu = 1_400_000, poll = 40 } =
   const bh = (await rpc(url, "getLatestBlockhash")).result.value.blockhash; tx.recentBlockhash = bh; tx.sign(...signers); const t0 = Date.now();
   const r = await rpc(url, "sendTransaction", [tx.serialize().toString("base64"), { encoding: "base64", skipPreflight: true }]); const sig = r.result; if (!sig) return { sig: null, err: r.error?.message || JSON.stringify(r) };
   for (let i = 0; i < 300; i++) { const x = (await rpc(url, "getSignatureStatuses", [[sig]])).result?.value?.[0]; if (x?.confirmationStatus) return { sig, err: x.err, ms: Date.now() - t0, slot: x.slot }; await sleep(poll); } return { sig, err: "timeout" }; }
-export async function cuOf(url, sig) { for (let i = 0; i < 20; i++) { const t = (await rpc(url, "getTransaction", [sig, { maxSupportedTransactionVersion: 0, encoding: "json" }])).result; if (t?.meta) return { cu: t.meta.computeUnitsConsumed, err: t.meta.err, logs: t.meta.logMessages }; await sleep(300); } return null; }
 export const tokenFor = async (url, kp) => (await getAuthToken(url, kp.publicKey, async m => nacl.sign.detached(m, kp.secretKey))).token;
 export async function readAcct(url, a) { const r = (await rpc(url, "getAccountInfo", [a.toBase58(), { encoding: "base64" }])).result?.value; return r ? Buffer.from(r.data[0], "base64") : null; }
 export function logger(file) { return (...a) => { const s = a.join(" "); console.log(s); fs.appendFileSync(file, s + "\n"); }; }
@@ -66,14 +65,13 @@ export const scoreCommitFor = (format, ...args) => (format === 3 ? scoreCommit :
 /** strategy ids are random 64-bit numbers (the namespace is global); the secret salts live with the keys, outside the repo */
 export const newId = () => crypto.randomBytes(8).readBigUInt64LE();
 /** the key file. Writes are durable and serialised, and no write may drop a secret it holds (client/custody.mjs) */
-export const stratFile = () => path.join(KEYS, "strategies.json");
+export const stratFile = () => process.env.CONCLAVE_STRATS_FILE || path.join(KEYS, "strategies.json"); // the canary points this at its own file, so its secrets are saved the same way (before the first send) without touching the real key file
 export const loadStrats = () => readRecords(stratFile());
 export const saveStrats = a => writeRecords(stratFile(), a);
 export const addStrat = rec => addRecord(stratFile(), rec);
 export const players = () => readKey("players.json").map(a => Keypair.fromSecretKey(Uint8Array.from(a)));
 // arena / receipt layouts (mirror of program/src/lib.rs)
 export const A = { HDR: 1280, SLOT: 440 };
-export const RC = { SIZE: 224 + 20 * 80, ENT: 224, ESZ: 80 };
 export { parseReceipt, parseReceiptMoney, parseClaims, receiptFormat, parseTerms, termsHash } from "./layouts.mjs";
 /** the season roster: private in the rollup (no members), it holds each entry's code commitment until Settle or Cancel writes it to the receipt */
 export const rosterPda = sid => pda([Buffer.from("roster"), u64(sid)]);

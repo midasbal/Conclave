@@ -95,3 +95,9 @@ export function stability(seasonRanks, realised) {
   const order = a => { const o = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0] || x[1] - y[1]); const r = Array(a.length); o.forEach(([, i], k) => { r[i] = k + 1; }); return r; }; const mr = order(mean); const d2 = realised.reduce((s, r, i) => s + (r - mr[i]) ** 2, 0); const spearman = 1 - 6 * d2 / (n * (n * n - 1));
   return { meanRank: mean, dominance, spearman, pairsAgreeing: agree, pairs };
 }
+/** is the long-run order itself reproducible? Spearman between the mean-rank orders of two disjoint halves of the same simulated seasons. Deterministic for a given set of seasons; says nothing about any one realised season */
+export function halvesAgreement(seasonRanks) {
+  const h = Math.floor(seasonRanks.length / 2), n = seasonRanks[0].length, ids = Array.from({ length: n }, (_, i) => i + 1);
+  const order = m => { const o = m.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0] || x[1] - y[1]); const r = Array(n); o.forEach(([, i], k) => { r[i] = k + 1; }); return r; };
+  return stability([order(stability(seasonRanks.slice(0, h), ids).meanRank)], order(stability(seasonRanks.slice(h), ids).meanRank)).spearman;
+}

@@ -1,4 +1,6 @@
-# Season lifecycle and money safety (v2: pull payouts, two-phase finals)
+# Season lifecycle and money safety (pull payouts, two-phase finals, registry-paid strategies, public terms)
+
+This file describes the program deployed on devnet (build `68d37e0f...`). Sections headed "Upgrading to ..." or "Done on devnet" are the history of one earlier build each and say which; where a later section differs from an earlier one, the later one is current.
 
 ```
 InitReceipt (base, bond) -> CreateSeason -> Enter... -> Lock -> RequestSeed -> Advance...            season phase
@@ -81,11 +83,11 @@ An entrant whose token account cannot be paid (closed, or withdrawn from the rol
 
 Each (season, entry) is published at most once: the mark is in that season's arena slot and receipt entry (9120), so publishing a strategy in another season never reopens an earlier one, and the publish counters cannot exceed the number of entries. Cleanup checks every entry's own mark and refuses inside the grace while any is unpublished (9123). The registry records the **final** rank and adds the **season-phase** total.
 
-The score commitment is `sha256("CNCL-SCORE-v2", salt, season, id, season_total, finals_total, episodes, finals_episodes)` on the deployed build, and changes in the receipts build below. The last two finals fields are zero for an entry that did not play the finals. The owner's sealed record holds the final rank, the season total and, for strategies sealed since the finals build, the finals total (older sealed accounts are 8 bytes shorter, stay usable, and their owners get the finals total by replaying the finals seed).
+The score commitment is `sha256("CNCL-SCORE-v3", score_salt, season, id, season_total, finals_total, episodes, finals_episodes)`, where `score_salt` is derived from the sealed salt for that season (see "Score salt" below; the v2 form, keyed by the sealed salt itself, exists only on format 2 receipts). The last two finals fields are zero for an entry that did not play the finals. The owner's sealed record holds the final rank, the season total and, for strategies sealed since the finals build, the finals total (older sealed accounts are 8 bytes shorter, stay usable, and their owners get the finals total by replaying the finals seed).
 
 ## Strategy reclaim and the open-entry guard
 
-**Deployed on devnet** (see Observed on devnet).
+**Deployed on devnet** (the reclaim build of 2026-11-26 is under "Observed on devnet"; the Phase 6 build of 2026-11-27 is under "Phase 6").
 
 **Who pays.** Since the Phase 6 build the strategy's own **registry** pays the sealed account's rent and its permission's at Seal (20,000 lamports), and is repaid when the strategy is closed. The registry is a program-owned PDA that is already delegated to the rollup (Enter and Publish need that) and already holds the 2,000,000 lamports the owner put in at Register above its rent: the rollup's Magic program, which collects the rent, checks only that the sponsor signed (the program signs for the registry with its own seeds), is writable (the rollup grants write access only to a delegated account) and holds the amount; it checks nothing about the sponsor's owner. An owner's wallet could not be the sponsor (the rollup refuses to debit an account that is not delegated to it: observed on the devnet TEE by simulation, a 1 lamport debit of an owner wallet answers `Immutable`). **A strategy that is never closed keeps 20,000 lamports of its own owner's money, not the hub's.** The hub still pays for seasons (arena, roster, claims account, terms record) and gets that back; strategies of earlier builds were paid for by the hub and still repay it (see Phase 6 below).
 
@@ -112,11 +114,11 @@ The count moves down only where the slot's bit is set, and the bit is cleared wi
 * A registry that was never delegated to this rollup cannot be marked closed there, so such a strategy cannot be closed until its owner delegates the registry.
 * A registry that is registered but never sealed has no close instruction, so what its owner paid at Register stays in it.
 
-**Only a publishable strategy may enter.** Publish writes the registry, and Seal only reads it, so an owner who registers and never delegates can still seal (observed). Enter therefore takes the strategy's own registry and requires it **writable** (9133: read-only, another registry, a closed one, or one naming another owner). The program cannot see whether an account is delegated. The rule that makes this a guard is the rollup's: it refuses any transaction that marks writable an account it does not hold, even when nothing changes it (observed on the devnet TEE, by simulation and then with real transactions: `InvalidWritableAccount`). A delegated registry stays delegated until its owner closes the strategy, which an open entry forbids, so an entry that got in can always be published.
+**Only a publishable strategy may enter.** Publish writes the registry, and Seal only reads it, so an owner who registers and never delegates can still seal (observed). Enter therefore takes the strategy's own registry and requires it **writable** (9133: read-only, another registry, a closed one, or one naming another owner). Since the Phase 6 build Seal requires the same of its registry (9133), so a strategy whose registry is not delegated can no longer be sealed. The program cannot see whether an account is delegated. The rule that makes this a guard is the rollup's: it refuses any transaction that marks writable an account it does not hold, even when nothing changes it (observed on the devnet TEE, by simulation and then with real transactions: `InvalidWritableAccount`). A delegated registry stays delegated until its owner closes the strategy, which an open entry forbids, so an entry that got in can always be published.
 
-**Upgrading to this build.** No account changes size and the arena magic is unchanged. Old strategies read a count of zero. Seasons opened by the previous build can still publish, cancel and clean up, and never decrement anything; a strategy entered only in such a season is NOT protected by the counter, so deploy with no season open. A client whose Enter does not pass the strategy and its registry writable stops working, and so does one that asks for a grace under 180,000 slots.
+**Upgrading to the reclaim build (`0ea300bf`, historical).** No account changes size and the arena magic is unchanged. Old strategies read a count of zero. Seasons opened by the previous build can still publish, cancel and clean up, and never decrement anything; a strategy entered only in such a season is NOT protected by the counter, so deploy with no season open. A client whose Enter does not pass the strategy and its registry writable stops working, and so does one that asks for a grace under 180,000 slots.
 
-**Done on devnet on 2026-11-26** (build sha256 `0ea300bf...`, 504,536 bytes, program data extended by 12,648 bytes, on-chain bytes equal to the artifact). Every receipt of a build that requires one was closed beforehand, so no season was open.
+**Done on devnet on 2026-11-26** (the reclaim build, sha256 `0ea300bf...`, 504,536 bytes, program data extended by 12,648 bytes, on-chain bytes equal to the artifact). Every receipt of a build that requires one was closed beforehand, so no season was open.
 
 ## Security considerations: sealing disclosure
 
@@ -140,7 +142,7 @@ The count moves down only where the slot's bit is set, and the bit is cleared wi
 
 ## Receipts and identity
 
-**Deployed on devnet** (sha256 `7bd612e7...`); what was seen there is at the end of this section. Everything in this section replaces what the rest of this file says where they differ.
+**Deployed on devnet** (build `7bd612e7...`, 2026-11-26; later builds keep everything below); what was seen there is at the end of this section. Everything in this section replaces what the sections before it say where they differ.
 
 **Two gaps, closed.** Each was reproduced against the deployed bytecode before it was fixed (`tests/svm/tests/gaps_4a.rs`).
 
@@ -184,7 +186,7 @@ Only a format 3 receipt can open a season or be delegated. Earlier ones keep the
 * CloseRegistry left an 8-byte marker holding 690,880 lamports and paid the owner 2,609,600. Registering the id again (old owner and stranger), sealing it, delegating the marker and CloseRegistry on it all failed.
 * **What a strategy costs its owner for good:** 3,641,920 lamports plus base transaction fees: the 690,880 in the marker and 2,951,040 paid at delegation. The latter funds the delegation record and metadata accounts; at undelegation the delegation program paid it to its validator fee vault (2,655,936) and protocol fee vault (295,104).
 
-**Upgrading to this build.** The arena magic changes to `ARN4`, so every arena of the previous build is refused outright: **deploy with no season open**, or that season and its money are stuck, and its strategies stay counted. A fresh format 2 receipt (InitReceipt with no season yet) could neither open a season nor be delegated afterwards, so there must be none. Old strategies and registries work unchanged, including a registry closed but not yet removed. CreateSeason, Enter, Settle, Cancel and Cleanup take new accounts, so **the client of this build does not work against the previous program, and the previous client does not work against this one**.
+**Upgrading to the receipts build (`7bd612e7`, historical).** The arena magic changes to `ARN4`, so every arena of the previous build is refused outright: **deploy with no season open**, or that season and its money are stuck, and its strategies stay counted. A fresh format 2 receipt (InitReceipt with no season yet) could neither open a season nor be delegated afterwards, so there must be none. Old strategies and registries work unchanged, including a registry closed but not yet removed. CreateSeason, Enter, Settle, Cancel and Cleanup take new accounts, so **the client of this build does not work against the previous program, and the previous client does not work against this one**.
 
 ## Randomness queue
 
@@ -199,7 +201,7 @@ RequestSeed accepts only `5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc` (9110). 
 | Entry window, Lock | As before: Enter is refused after the window; the creator may lock any time, anyone after the window; Lock cancels an under-minimum field | 9030, 9031, 9032 |
 | Cancel | Creator while unlocked; anyone for an unseeded season past the seed timeout, a season phase past its deadline, or after an under-minimum Lock; once only | 9033, 9034 |
 | Creation bond | `InitReceipt` posts a bond held in the season receipt; a receipt opens exactly one arena | 9050 to 9053 |
-| Hub accounting | The arena's rent is measured at CreateSeason and topped up from the bond at Cleanup if the close returns less. The claims account's rent is measured separately and does not touch the bond. 25% of the bond is forfeited when a season is abandoned (under-minimum or creator cancel). A void or a missed deadline forfeits nothing | |
+| Hub accounting | The arena's rent is measured at CreateSeason and topped up from the bond at Cleanup if the close returns less. The claims account's and the terms record's rents are measured separately and do not touch the bond. 25% of the bond is forfeited when a season is abandoned (under-minimum or creator cancel). A void or a missed deadline forfeits nothing | |
 | Bond release | After Cleanup: commit and undelegate the receipt, then `ReleaseBond` on base | 9054, 9055 |
 
 ## Error codes added or changed
@@ -240,7 +242,7 @@ Instruction tag 14 (the old StartFinals) is retired and answers InvalidInstructi
 
 ## Account layouts
 
-* **Arena** (size unchanged, magic changed to `ARN3` so the new build refuses old arenas). Header: finals seed at 1112 (32 bytes), flags2 at 1144, published count at 1145, season-phase end slot at 1272. Slot (440 bytes, unchanged): season rank u8 at 42, bits at 43 (1 finalist, 2 published), final rank at 44, season total at 48, finals total at 56. Flags: 1 locked, 2 seed requested, 4 seeded, 8 done, 16 settled, 32 season phase done, 64 finals seed requested, 128 finals seeded.
+* **Arena** (magic `ARN4`, set by the receipts build, so the program refuses arenas of earlier generations; size unchanged since). Header: finals seed at 1112 (32 bytes), flags2 at 1144, published count at 1145, season-phase end slot at 1272. Slot (440 bytes, unchanged): season rank u8 at 42, bits at 43 (1 finalist, 2 published), final rank at 44, season total at 48, finals total at 56. Flags: 1 locked, 2 seed requested, 4 seeded, 8 done, 16 settled, 32 season phase done, 64 finals seed requested, 128 finals seeded.
 * **Claims** (new): 72-byte header (state, entry count, capacity, kind, season, mint, owed total, claimed total, rent) plus 48 bytes per seat (owner, owed, done).
 * **Receipt** (1792 to 1824 bytes). Header grows from 192 to 224: finals seed words, finals packs, finals status, qualifier count, finals episodes, total owed. Entry: final rank at 72, season rank at 76, published at 78, finalist at 79.
 * **Sealed strategy** (396 to 404 bytes): the finals total is appended. 396-byte accounts remain valid. Bytes 6..8 are the open-entry count in the low 15 bits and the **payer flag** in the top bit (0x8000): set at Seal by this build (the registry paid), never set on a strategy of an earlier build (the hub paid). No size change.
@@ -275,25 +277,25 @@ Two changes, one upgrade. Both are off the money path of a season: no entrant's 
 * **Guards.** An undelegated registry passed read-only is refused by the program (9133, `41f3xWsK...`); passed writable the rollup itself refuses before the program runs (`InvalidWritableAccount`, `5VLCL4of...`). Nothing was created. The same strategy sealed after its registry was delegated.
 * **Not shown on devnet:** 9134 (no instruction can take a registry below its floor, so it is shown in the SVM at the exact boundary only), the open-entry count reaching 32,767, and CloseClaims for a season of the previous build with no terms record (no such claims account was left on devnet; shown on the real previous bytecode in `migrate_6.rs`).
 
-## Upgrading from the previous build
+## Upgrading from the build before the receipts build (historical)
 
 1. Deploy only with **no season open**: every arena must be settled or cancelled and cleaned up. An old arena left open would be refused by the new build, with its money in it.
 2. Closed receipts of the old size can still be committed, undelegated, recovered and released: the money fields did not move.
 3. Old clients stop working (CreateSeason, Settle and Cancel take different accounts; StartFinals is gone).
 
-**Done on devnet on 2026-11-26** (build sha256 `928fe971...`, 491,888 bytes, program data extended by 12,592 bytes, on-chain bytes equal to the artifact). Before it, one old season was still open: a fee-0 metering arena from 2026-11-24, created before receipts existed, so a receipt scan could not see it; probing the season numbers in the logs found it. It was closed with the old program (a late receipt and pool, Settle, Cleanup, RecoverBond). That search covers every receipt and every season number the logs imply. A few early test scripts used random season numbers they did not log, with fee 0; an arena of theirs, if one is left, holds no entry money, and the new program refuses it.
+**Done on devnet on 2026-11-26** (the finals build, sha256 `928fe971...`, 491,888 bytes, program data extended by 12,592 bytes, on-chain bytes equal to the artifact). Before it, one old season was still open: a fee-0 metering arena from 2026-11-24, created before receipts existed, so a receipt scan could not see it; probing the season numbers in the logs found it. It was closed with the old program (a late receipt and pool, Settle, Cleanup, RecoverBond). That search covers every receipt and every season number the logs imply. A few early test scripts used random season numbers they did not log, with fee 0; an arena of theirs, if one is left, holds no entry money, and the new program refuses it.
 
 ## Observed on devnet
 
 * The pinned queue answered both seed requests of the same season.
 * A paid five-entry season drew 363,520 lamports from the hub (arena and permission 328,576, claims account 34,944 for 20 seats) and CloseClaims plus Cleanup returned all of it. The claims account is readable with no token.
 * An owner can undelegate its own token account in the rollup. A Claim to it is then rejected (`InvalidWritableAccount`) while every other entry's claim goes through, and Settle, Cleanup and the bond release are unaffected. A wallet other than the owner (the payer) delegated the account again on base, after which the waiting claim paid in full.
-* A sealed strategy account of the new size costs the hub 20,000 lamports.
+* A sealed strategy account of the then-new size cost the hub 20,000 lamports. (Since the Phase 6 build the registry pays that, see "Who pays".)
 * A four-entry season whose finals seed was never requested became voidable after the 360,000-slot timeout. Past it, a finals seed request was refused (9111) and so was a refund (9033). A Settle signed by a wallet outside the season paid the whole pot 50/30/20 by the frozen season ranks, the receipt was marked voided with reason finals seed timeout, and every claim paid. The other void reasons have been exercised only in the SVM tests.
-* **Reclaim, on the `0ea300bf` build.** Four strategies sealed for a paid finals season cost the hub 20,000 lamports each. Their counts went to 1 at Enter; CloseStrategy was refused (9130) after Enter, after the run, and after a Settle that left an entry unpublished; the counts went to 0 as entries were published. After the season each strategy closed, each close returned exactly 20,000 to the hub, and the hub ended at exactly its starting balance. Each registry came back to base and CloseRegistry returned its 3,300,480 lamports to the owner, the amount paid at Register.
+* **Reclaim, on the `0ea300bf` build** (before the registry paid). Four strategies sealed for a paid finals season cost the hub 20,000 lamports each. Their counts went to 1 at Enter; CloseStrategy was refused (9130) after Enter, after the run, and after a Settle that left an entry unpublished; the counts went to 0 as entries were published. After the season each strategy closed, each close returned exactly 20,000 to the hub, and the hub ended at exactly its starting balance. Each registry came back to base and CloseRegistry returned its 3,300,480 lamports to the owner, the amount paid at Register.
 * In a cancelled season Cancel named no strategy and left the counts at 1; Cleanup was refused (9131) with none and with two of three named; a wallet owning none of the three then ran Cleanup naming all of them.
 * A 404-byte and a 396-byte strategy sealed by earlier builds read a count of 0, entered, published and closed (20,000 and 19,744 back to the hub).
-* A registry registered and not delegated: Seal succeeded, Enter was refused by the rollup (`InvalidWritableAccount`), passing it read-only was refused by the program (9133), and CloseStrategy failed too. After the owner delegated it the same strategy entered, published and closed.
+* A registry registered and not delegated (on the `0ea300bf` build; Seal now refuses this, 9133): Seal succeeded, Enter was refused by the rollup (`InvalidWritableAccount`), passing it read-only was refused by the program (9133), and CloseStrategy failed too. After the owner delegated it the same strategy entered, published and closed.
 * A publish grace of 1, 600 and 179,999 slots was refused (9105); 180,000 was accepted.
 
 ## Tests
@@ -304,7 +306,7 @@ The stand-ins move no lamports. With `model_rent` the harness applies ephemeral 
 
 **Stack frames.** `cargo-build-sbf` reports an overflowing stack frame as text and still exits 0, and the program then faults at run time. This happened while building the reclaim. `tests/svm.sh` and the reproducible build now fail on that message; the instructions that grew live in functions of their own.
 
-Known limits: on the deployed build, sealed strategy accounts (20,000 lamports each; 19,744 at the old size) stay in the rollup, and with the new build they stay until their owner closes them; a cranker is not paid.
+Known limits: a sealed strategy account (20,000 lamports; 19,744 at the old size) stays in the rollup until its owner closes it, paid by the registry for strategies sealed since the Phase 6 build and by the hub for earlier ones; a cranker is not paid.
 
 ## Access guards and admin recovery
 

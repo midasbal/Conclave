@@ -2,9 +2,10 @@
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "fs"; import os from "os"; import path from "path"; import { fileURLToPath } from "url"; import { spawn } from "child_process";
 import { Ingest } from "../lib/ingest.mjs"; import { buildRecord } from "../lib/builder.mjs"; import { Store, verifyStore } from "../lib/store.mjs"; import { readLedger } from "../lib/ledger.mjs"; import { RateLimited } from "../lib/chain.mjs";
 import { PROGRAM_ID, DEVNET_GENESIS, poolAddress } from "../lib/chain.mjs"; import { replay } from "./recorded.mjs";
+const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
 const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`)));
 const ALL = load("all"); const STAGE = Object.fromEntries(["provisional", "provisional-republished", "final", "bond-released"].map(n => [n, load(n)]));
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "ingest-test-")); const clone = x => JSON.parse(JSON.stringify(x));
+const tmp = () => (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "ingest-test-")); _made.push(d); return d; })(); const clone = x => JSON.parse(JSON.stringify(x));
 const root = dir => path.join(dir, DEVNET_GENESIS, PROGRAM_ID);
 /** a source that counts what the loop asks of it */
 function spy(source) { const calls = { receiptsOwnedBy: 0, account: [], signatures: [], transaction: [] }; const s = { host: source.host, calls, genesisHash: () => source.genesisHash(), slot: () => source.slot(),

@@ -1,14 +1,15 @@
 // The sealed artifact, offline and keyless: salted commitment, source-equals-sealed proof, registry hygiene, strategies.json custody, salt discipline. Real crypto, the real WASM assembler, no chain.
 //   node --test tests/artifact.test.mjs      (needs: cargo build --release --target wasm32-unknown-unknown -p conclave-author)
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import crypto from "node:crypto"; import { fileURLToPath } from "node:url";
+const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 // lib.mjs reads key files at import unless told otherwise: point it at a throwaway key folder and a throwaway signer
-const KEYS = fs.mkdtempSync(path.join(os.tmpdir(), "ca-keys-")); process.env.CONCLAVE_KEYS = KEYS; process.env.CONCLAVE_PROGRAM_ID = "HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne";
+const KEYS = (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "ca-keys-")); _made.push(d); return d; })(); process.env.CONCLAVE_KEYS = KEYS; process.env.CONCLAVE_PROGRAM_ID = "HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne";
 const kp = (await import(path.join(root, "client/node_modules/@solana/web3.js/lib/index.cjs.js"))).default.Keypair.generate(); process.env.CONCLAVE_SIGNER = JSON.stringify(Array.from(kp.secretKey));
 const L = await import(path.join(root, "client/lib.mjs")); const art = await import(path.join(root, "client/artifact.mjs")); const { load } = await import(path.join(root, "client/author.mjs"));
 const A = await load(); const srcOf = n => fs.readFileSync(path.join(root, "strategies", n + ".cvs"), "utf8"); const names = fs.readdirSync(path.join(root, "strategies")).filter(f => f.endsWith(".cvs")).map(f => f.slice(0, -4)).sort();
 const regData = (id, owner, commitment, extra = {}) => { const d = Buffer.alloc(128); d.writeUInt32LE(0x5245_4753, 0); Buffer.from(owner).copy(d, 8); d.writeBigUInt64LE(BigInt(id), 40); Buffer.from(commitment).copy(d, 48); d.writeUInt32LE(0xffffffff, 84); return d; };
-const captured = []; const origLog = console.log, origErr = console.error, origWrite = process.stdout.write.bind(process.stdout); // salt discipline: capture everything printed while the artifact code runs
+const origLog = console.log, origErr = console.error, origWrite = process.stdout.write.bind(process.stdout); // salt discipline: capture everything printed while the artifact code runs
 
 test("the salted commitment matches an independent implementation, the program's rule and lib.codeCommit", () => {
   const salt = Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1)); const code = Buffer.from("0204000002000400150000040a0000001f000000", "hex");

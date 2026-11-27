@@ -1,7 +1,7 @@
 // One two-phase season end to end on devnet: v1 and over-cap rejection, salted registration, the season phase, the finals phase the program enters by itself, Settle (records), Claim (pays), one receipt
 // verified against a local replay of BOTH phases, the fingerprint test, cleanup.
 import * as L from "./lib.mjs"; import * as F from "./flows.mjs"; import { qualifiersOf, scoreRankChecks, claimsChecks, payoutChecks } from "./campaign_lib.mjs"; import fs from "fs"; import crypto from "crypto"; import { execFileSync } from "child_process"; import path from "path";
-const { K, ixp, u64, O, SystemProgram } = L; const log = L.logger(L.EV + "v2_season.txt"); const c = await F.ctx(); const names = ["Mom20th", "EMAcross", "TrendSwitch", "SwitchTwo", "SwitchFade"];
+const { K, O, SystemProgram } = L; const log = L.logger(L.EV + "v2_season.txt"); const c = await F.ctx(); const names = ["Mom20th", "EMAcross", "TrendSwitch", "SwitchTwo", "SwitchFade"];
 const sid = BigInt(Date.now() % 1_000_000 + 5000); const NEPS = +process.env.NEPS || 15; /* at least 15 with finals */ const FEE = 10; const sol = async () => (await L.base.getBalance(O.publicKey)) / 1e9;
 const checks = []; const check = (name, ok, detail = "") => { checks.push(!!ok); log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? " | " + detail : ""}`); return !!ok; }; const runAll = (title, list) => { log(title); for (const x of list) check(x.name, x.ok, x.detail ?? ""); };
 log("\n== CONCLAVE v2 SEASON", new Date().toISOString(), "program", L.PROGRAM.toBase58(), "season", sid.toString(), "| payer SOL", await sol());

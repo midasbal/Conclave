@@ -1,7 +1,7 @@
 // ruleset pinning, demonstrated across a real program upgrade. phase a: start a season; (shell: upgrade to a build whose generator version differs); phase b: the old arena must refuse; (shell: restore); phase c: it must resume and finish.
 // Phases a and c also run on their own, with no program swap: a season is interrupted after a partial Advance, resumed and finished under the deployed build. Phase b (and pins_extra.mjs) only mean something with the swap,
 // which replaces the live program with a build of a CHANGED conclave-vm: do that only on purpose.
-import * as L from "./lib.mjs"; import * as F from "./flows.mjs"; import fs from "fs"; const { K, ixp, O } = L; const log = L.logger(L.EV + "v2_pins.txt"); const c = await F.ctx(); const phase = process.argv[2]; const stF = L.ROOT + "/client/pins_state.json";
+import * as L from "./lib.mjs"; import * as F from "./flows.mjs"; import fs from "fs"; const { K, O } = L; const log = L.logger(L.EV + "v2_pins.txt"); const c = await F.ctx(); const phase = process.argv[2]; const stF = L.ROOT + "/client/pins_state.json";
 const sim = (sid, ix) => F.simErr(c, [ix], [O]);
 const checks = []; const check = (name, ok, detail = "") => { checks.push(!!ok); log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? " | " + detail : ""}`); return !!ok; }; const done = () => { log(`== pins ${phase}: ${checks.filter(Boolean).length}/${checks.length} checks`); process.exit(checks.every(Boolean) ? 0 : 1); };
 if (phase === "a") { const last = JSON.parse(fs.readFileSync(L.ROOT + "/client/last_v2_entries.json")); const ids = last.ids.slice(0, 2).map(BigInt); const sid = BigInt(Date.now() % 900000 + 100000); fs.writeFileSync(stF, JSON.stringify({ sid: sid.toString(), ids: ids.map(String) }));

@@ -4,9 +4,10 @@ import test from "node:test"; import assert from "node:assert/strict"; import fs
 import { buildRecord } from "../lib/builder.mjs"; import { classify } from "../lib/receipt.mjs"; import { Archive, compareToFirst } from "../lib/archive.mjs"; import { lookupSeason, judge } from "../lib/lookup.mjs";
 import { PROGRAM_ID, DEVNET_GENESIS, DELEGATION_PROGRAM_ID, delegationRecordAddress, receiptAddress, key58, unkey58 } from "../lib/chain.mjs"; import * as P from "../lib/proofs.mjs"; import { assertOutsideRepo } from "../lib/files.mjs";
 import { evaluate } from "../policy/official.mjs"; import { replay } from "./recorded.mjs";
+const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
 const here = path.dirname(fileURLToPath(import.meta.url)); const load = n => JSON.parse(fs.readFileSync(path.join(here, "fixtures", `devnet-${n}.json`)));
 const ALL = load("all"); const STAGE = Object.fromEntries(["provisional", "provisional-republished", "final", "bond-released"].map(n => [n, load(n)]));
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "verifier-test-")); const clone = x => JSON.parse(JSON.stringify(x));
+const tmp = () => (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "verifier-test-")); _made.push(d); return d; })(); const clone = x => JSON.parse(JSON.stringify(x));
 const build = (tape, dir = tmp()) => buildRecord(replay(tape), { archiveDir: dir });
 const example = JSON.parse(fs.readFileSync(path.join(here, "../policy/rules.example.json")));
 const unpack = a => a && { owner: a.owner, lamports: a.lamports, slot: a.slot, data: Buffer.from(a.data, "base64") };

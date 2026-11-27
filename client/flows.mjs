@@ -14,7 +14,7 @@ const delegIx = (c, payer, pdaK, kind, idOrSid) => { const a = L.delegAccts(pdaK
  *  It is never removed on failure: a send that reported an error may still have landed.
  *  meta (optional): extra fields stored with the strategy in strategies.json, e.g. the authored artifact's source hash, ruleset and division. The salt is kept there and in recovery bundles, nowhere else. */
 export async function register(c, ownerIdx, name, code, meta = {}) { const owner = c.players[ownerIdx]; const id = L.newId(); const salt = (await import("crypto")).randomBytes(32); const commit = L.codeCommit(salt, code); const reg = L.regPda(id);
-  if (!process.env.CONCLAVE_SOLO) L.addStrat({ id: id.toString(), owner: ownerIdx, name, salt: salt.toString("hex"), code: code.toString("hex"), ...meta }); /* disposable canary strategies are never written to the key folder */
+  L.addStrat({ id: id.toString(), owner: ownerIdx, name, salt: salt.toString("hex"), code: code.toString("hex"), ...meta }); /* SAVE FIRST, always: durable on disk before anything is sent. The canary does this too, into its own file (CONCLAVE_STRATS_FILE) */
   const s1 = await L.sendBase([registerIx(owner.publicKey, id, commit)], [O, owner]);
   const s2 = await L.sendBase([delegIx(c, owner.publicKey, reg, 1, id)], [O, owner]);
   return { id, salt, commit, sigs: [s1, s2] }; }

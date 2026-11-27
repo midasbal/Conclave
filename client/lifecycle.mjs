@@ -19,7 +19,7 @@ async function closeOut(sid, expectForfeit, label) { // commit + undelegate the 
   check(`${label}: the receipt paid out exactly its releasable amount`, BigInt(l0 - l1) === R.release, `${l0} -> ${l1}`); return R; }
 const closeClaims = async sid => { const r = await L.sendTee(c.URL, [F.closeClaimsIx(c, sid)], [O]); check("CloseClaims", ok(r, "TEE CloseClaims")); };
 async function setup(sid, owners, params) { // strategies, receipt, pool, season
-  const ids = []; const hubS0 = await F.hubLamports(c);
+  const hubS0 = await F.hubLamports(c);
   const entries = []; for (const o of owners) { const nm = names[o % 3]; const r = await F.register(c, o, nm, c.codes[nm].code); entries.push({ o, id: r.id, salt: r.salt, code: c.codes[nm].code, name: nm }); }
   log("SIG base Register x" + entries.length); log("SIG base InitReceipt (bond " + F.BOND + "):", (await F.initReceipt(c, sid)).join(" ")); log("SIG base InitPool:", await F.initPool(c, sid));
   for (const e of entries) ok(await F.seal(c, e.o, e.id, e.salt, e.code), `TEE Seal ${e.name}`);

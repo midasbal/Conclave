@@ -2,11 +2,12 @@
 // The chain-dependent half (a bundle made from the REAL program's sealed account, the close the client builds with it, and the replay after the account is gone) is tests/svm/tests/client_flows.rs.
 //   node --test tests/custody.test.mjs      (needs client/node_modules)
 import test from "node:test"; import assert from "node:assert/strict"; import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import crypto from "node:crypto"; import net from "node:net"; import { spawn } from "node:child_process"; import { fileURLToPath, pathToFileURL } from "node:url"; import util from "node:util";
+const _made = []; process.on("exit", () => { for (const d of _made) fs.rmSync(d, { recursive: true, force: true }); }); /* every temporary folder this file makes is removed when its process ends */
 const here = path.dirname(fileURLToPath(import.meta.url)); const root = path.join(here, ".."); const load = f => import(pathToFileURL(path.join(root, "client", f)));
-const KEYS = fs.mkdtempSync(path.join(os.tmpdir(), "custody-keys-")); process.env.CONCLAVE_KEYS = KEYS; process.env.CONCLAVE_PROGRAM_ID = "HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne";
+const KEYS = (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "custody-keys-")); _made.push(d); return d; })(); process.env.CONCLAVE_KEYS = KEYS; process.env.CONCLAVE_PROGRAM_ID = "HZ3b6zexePfH5cXT5qaKKHfA8B29xwBGGYgu84WgMdne";
 const { Keypair } = (await import(pathToFileURL(path.join(root, "client/node_modules/@solana/web3.js/lib/index.cjs.js")))).default; process.env.CONCLAVE_SIGNER = JSON.stringify(Array.from(Keypair.generate().secretKey));
 const C = await load("custody.mjs"); const Art = await load("artifact.mjs"); const L = await load("lib.mjs"); const F = await load("flows.mjs");
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "custody-")); const PASS = "correct horse battery staple 42"; const sha = b => crypto.createHash("sha256").update(b).digest();
+const tmp = () => (() => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "custody-")); _made.push(d); return d; })(); const PASS = "correct horse battery staple 42"; const sha = b => crypto.createHash("sha256").update(b).digest();
 const key = () => Keypair.generate().publicKey; const GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 /** a strategy with real random secrets, and the two accounts the program keeps for it, laid out as program/src/lib.rs lays them out */
 function strategy({ codeLen = 24, source = "conclave-strategy 1 ruleset 2\n# private notes\n" } = {}) { const salt = crypto.randomBytes(32); const code = Buffer.concat([Buffer.from([2, (codeLen - 4) / 4, 0, 0]), crypto.randomBytes(codeLen - 4)]); const id = crypto.randomBytes(8).readBigUInt64LE(); const owner = key(); const commit = Art.codeCommit(salt, code);
@@ -103,6 +104,15 @@ test("SAVE FIRST: when the first request of a registration leaves the process, t
   proc = child(["register", code], { CONCLAVE_KEYS: dir, CONCLAVE_BASE_URL: `http://127.0.0.1:${srv.address().port}`, CONCLAVE_SOLO: "" }); const done = await exit(proc); srv.close();
   assert.equal(done.signal, "SIGKILL", "the client was killed mid-registration: " + done.out); assert.ok(requests >= 1);
   assert.ok(Array.isArray(atFirstRequest) && atFirstRequest.length === 1, "at the first network request the key file held: " + JSON.stringify(atFirstRequest && atFirstRequest.length)); const after = C.readRecords(keyfile(dir)); assert.equal(after.length, 1); const r = after[0]; assert.equal(r.code, code); assert.equal(Buffer.from(r.salt, "hex").length, 32); assert.ok(!done.out.includes(r.salt), "nothing printed the salt"); });
+
+test("SAVE FIRST holds for the canary's mode too: with CONCLAVE_SOLO set, the secret is in the canary's own file before the first request, and the real key file is not touched", async () => {
+  const dir = tmp(), strats = path.join(tmp(), "canary-strategies.json"); const code = "02040000" + "00".repeat(16); let proc, atFirstRequest, requests = 0;
+  const srv = net.createServer(sock => { sock.once("data", () => { if (requests++ === 0) { try { atFirstRequest = C.readRecords(strats); } catch (e) { atFirstRequest = String(e); } proc.kill("SIGKILL"); } sock.destroy(); }); }); await new Promise(r => srv.listen(0, "127.0.0.1", r));
+  proc = child(["register", code], { CONCLAVE_KEYS: dir, CONCLAVE_STRATS_FILE: strats, CONCLAVE_BASE_URL: `http://127.0.0.1:${srv.address().port}`, CONCLAVE_SOLO: "1" }); const done = await exit(proc); srv.close();
+  assert.equal(done.signal, "SIGKILL", done.out); assert.ok(requests >= 1);
+  assert.ok(Array.isArray(atFirstRequest) && atFirstRequest.length === 1, "at the first network request the canary's file held: " + JSON.stringify(atFirstRequest && atFirstRequest.length));
+  const after = C.readRecords(strats); assert.equal(after.length, 1); assert.equal(after[0].code, code); assert.equal(Buffer.from(after[0].salt, "hex").length, 32); assert.ok(!done.out.includes(after[0].salt), "nothing printed the salt");
+  assert.ok(!fs.existsSync(keyfile(dir)), "the real key file was never written"); });
 
 test("a registration that fails on an unreachable RPC keeps its record", async () => { const dir = tmp(); const port = await new Promise(r => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => r(p)); }); });
   const done = await exit(child(["register", "02040000" + "00".repeat(16)], { CONCLAVE_KEYS: dir, CONCLAVE_BASE_URL: `http://127.0.0.1:${port}`, CONCLAVE_SOLO: "" })); assert.equal(done.code, 3, done.out); assert.equal(C.readRecords(keyfile(dir)).length, 1); });
